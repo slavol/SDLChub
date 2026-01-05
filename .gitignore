@@ -1,0 +1,26 @@
+# --- Python Backend ---
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.env
+.coverage
+htmlcov/
+
+# --- Node.js / Next.js Frontend ---
+node_modules/
+npm-debug.log
+yarn-error.log
+.next/
+out/
+build/
+dist/
+.DS_Store
+
+# --- IDE Settings ---
+.vscode/
+.idea/
+*.swp
