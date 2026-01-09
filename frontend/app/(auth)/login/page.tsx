@@ -1,35 +1,37 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import Link from "next/link"; // <--- AM ADĂUGAT IMPORTUL ASTA
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { Loader2, LogIn, Mail } from "lucide-react";
+// Am adăugat Eye și EyeOff pentru toggle
+import { Loader2, LogIn, Eye, EyeOff } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
-import { loginUser, getMyWorkspaces } from "@/services/auth";
-import { checkPendingInvites, joinByCode } from "@/services/invitations"; 
+import { loginUser } from "@/services/auth";
+import { getMyProjects } from "@/services/project";
+import { useAuthStore } from "@/store/use-auth-store";
 
+// Schema de validare
 const formSchema = z.object({
-  email: z.string().email(),
-  password: z.string().min(1),
+  email: z.string().email({ message: "Invalid email address" }),
+  password: z.string().min(1, { message: "Password is required" }),
 });
 
 export default function LoginPage() {
   const router = useRouter();
+  const setToken = useAuthStore((state) => state.setToken);
   const [isLoading, setIsLoading] = useState(false);
   
-  // Stare pentru Invitație Găsită
-  const [pendingInvite, setPendingInvite] = useState<any>(null);
-  const [showInviteDialog, setShowInviteDialog] = useState(false);
+  // Stare pentru vizibilitatea parolei
+  const [showPassword, setShowPassword] = useState(false);
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -40,133 +42,113 @@ export default function LoginPage() {
     setIsLoading(true);
     try {
       // 1. Login
-      const response = await loginUser(values);
-      localStorage.setItem("token", response.access_token);
+      const data = await loginUser(values);
+      setToken(data.access_token);
       toast.success("Welcome back!");
 
-      // 2. VERIFICARE INVITAȚII (Fluxul A)
-      const inviteCheck = await checkPendingInvites();
-      
-      if (inviteCheck.has_pending) {
-        // Cazul A: Invitație găsită -> Deschidem Dialogul
-        setPendingInvite(inviteCheck);
-        setShowInviteDialog(true);
-        setIsLoading(false); 
-        return; 
+      // 2. Verificăm Invitațiile (Cerința A)
+      if (data.has_pending_invites) {
+        toast.info("You have pending invitations! Check your email or dashboard.");
       }
 
-      // 3. Dacă nu are invitații, verificăm dacă are deja workspace-uri
-      handleRouting();
+      // 3. Routing Inteligent (Dashboard vs Onboarding)
+      try {
+          const projects = await getMyProjects();
+          if (projects.length > 0) {
+              router.push("/dashboard");
+          } else {
+              router.push("/onboarding"); // "The Fork"
+          }
+      } catch (e) {
+          router.push("/onboarding");
+      }
 
     } catch (error: any) {
       console.error(error);
-      const msg = error.response?.data?.detail || "Invalid credentials.";
-      toast.error(msg);
+      toast.error(error.response?.data?.detail || "Invalid credentials. Please try again.");
+    } finally {
       setIsLoading(false);
     }
   }
 
-  const handleRouting = async () => {
-      const workspaces = await getMyWorkspaces();
-      if (workspaces.length > 0) {
-        router.push("/dashboard");
-      } else {
-        router.push("/onboarding"); // Cazul B: The Fork
-      }
-  };
-
-  const acceptInvite = async () => {
-    try {
-        await joinByCode(pendingInvite.code); 
-        toast.success(`Joined ${pendingInvite.workspace_name} successfully!`);
-        router.push("/dashboard");
-    } catch (e) {
-        toast.error("Failed to join.");
-    }
-  };
-
-  const declineInvite = () => {
-      setShowInviteDialog(false);
-      handleRouting(); 
-  };
-
   return (
-    <div className="flex min-h-screen items-center justify-center px-4 py-12 bg-slate-950">
-      
-      {/* Dialog Confirmare Invitație Automată */}
-      <Dialog open={showInviteDialog} onOpenChange={setShowInviteDialog}>
-        <DialogContent className="bg-slate-900 border-slate-800 text-white">
-          <DialogHeader>
-            <DialogTitle>Invitation Found!</DialogTitle>
-            <DialogDescription>
-              We found a pending invitation for <strong>{pendingInvite?.workspace_name}</strong> associated with your email.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="flex items-center justify-center p-4">
-             <Mail className="w-12 h-12 text-blue-500" />
-          </div>
-          <DialogFooter>
-            <Button variant="ghost" onClick={declineInvite}>Skip / Create my own</Button>
-            <Button onClick={acceptInvite} className="bg-blue-600 hover:bg-blue-700">Accept & Join</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Card className="w-full max-w-md border-slate-800 bg-slate-900 text-slate-50 shadow-lg">
-        <CardHeader className="space-y-1">
-          <CardTitle className="text-2xl font-bold text-center text-blue-500 flex items-center justify-center gap-2">
-            <LogIn className="w-6 h-6" /> Login
-          </CardTitle>
-          <CardDescription className="text-center text-slate-400">
-            Enter your credentials to access your workspace
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-              <FormField
-                control={form.control}
-                name="email"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Email</FormLabel>
-                    <FormControl>
-                      <Input placeholder="john@example.com" {...field} className="bg-slate-950 border-slate-700" />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="password"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Password</FormLabel>
-                    <FormControl>
-                      <Input type="password" placeholder="******" {...field} className="bg-slate-950 border-slate-700" />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <Button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white" disabled={isLoading}>
-                {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                Sign In
-              </Button>
-            </form>
-          </Form>
-
-          {/* --- LINK CĂTRE REGISTER ADĂUGAT AICI --- */}
-          <div className="mt-4 text-center text-sm text-slate-400">
-            Don't have an account?{" "}
-            <Link href="/register" className="text-blue-400 hover:underline">
-              Sign Up
-            </Link>
-          </div>
-
-        </CardContent>
-      </Card>
-    </div>
+    <Card className="w-full max-w-md border-slate-800 bg-slate-900/50 text-slate-50 shadow-2xl backdrop-blur-sm">
+      <CardHeader className="space-y-1">
+        <CardTitle className="text-2xl font-bold text-center flex items-center justify-center gap-2">
+           <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-blue-600 to-purple-600 flex items-center justify-center text-sm font-bold">SD</div>
+           SDLC Hub
+        </CardTitle>
+        <CardDescription className="text-center text-slate-400">
+          Enter your credentials to access your workspace
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <Form {...form}>
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+            <FormField
+              control={form.control}
+              name="email"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Email</FormLabel>
+                  <FormControl>
+                    <Input placeholder="john@example.com" {...field} className="bg-slate-950 border-slate-700 focus:border-blue-500" />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="password"
+              render={({ field }) => (
+                <FormItem>
+                  <div className="flex items-center justify-between">
+                     <FormLabel>Password</FormLabel>
+                     <Link href="/forgot-password" className="text-xs text-blue-500 hover:underline">Forgot password?</Link>
+                  </div>
+                  <FormControl>
+                    <div className="relative">
+                        <Input 
+                            // Aici schimbăm tipul dinamic
+                            type={showPassword ? "text" : "password"} 
+                            placeholder="******" 
+                            {...field} 
+                            // Adaugăm padding-right (pr-10) ca să nu scriem peste iconiță
+                            className="bg-slate-950 border-slate-700 focus:border-blue-500 pr-10" 
+                        />
+                        <button
+                            type="button" // Important: type="button" ca să nu dea submit la form
+                            onClick={() => setShowPassword(!showPassword)}
+                            className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white transition-colors"
+                        >
+                            {showPassword ? (
+                                <EyeOff className="h-4 w-4" />
+                            ) : (
+                                <Eye className="h-4 w-4" />
+                            )}
+                        </button>
+                    </div>
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <Button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white" disabled={isLoading}>
+              {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <LogIn className="mr-2 h-4 w-4" />}
+              Sign In
+            </Button>
+          </form>
+        </Form>
+      </CardContent>
+      <CardFooter className="flex justify-center border-t border-slate-800 pt-4">
+          <p className="text-sm text-slate-400">
+              Don't have an account?{" "}
+              <Link href="/register" className="text-blue-500 hover:underline font-medium">
+                  Sign up
+              </Link>
+          </p>
+      </CardFooter>
+    </Card>
   );
 }

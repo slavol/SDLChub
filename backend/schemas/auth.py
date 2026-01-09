@@ -12,12 +12,21 @@ class UserLogin(BaseModel):
     email: EmailStr
     password: str
 
-# Ce returnăm (Token-ul)
+# Ce returnăm după Login (Token-ul)
 class Token(BaseModel):
     access_token: str
     token_type: str
+    has_pending_invites: bool = False # Flag pentru Frontend (Fluxul A)
 
-# Structura datelor din Token (payload)
+# Datele din Token decodat
 class TokenData(BaseModel):
     email: Optional[str] = None
-    user_id: Optional[int] = None
+    id: Optional[int] = None
+
+# --- SCHEME PENTRU RESET ---
+class PasswordResetRequest(BaseModel):
+    email: EmailStr
+
+class PasswordResetConfirm(BaseModel):
+    token: str
+    new_password: str

@@ -1,107 +1,165 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
 from sqlalchemy.orm import Session
 from typing import List
-import json
-from pydantic import BaseModel
+import secrets
 
 from database.session import get_db
-from models.project import Project, Methodology
-from models.workspace import Workspace, WorkspaceMember
 from models.user import User
-from schemas.project import ProjectCreate, AIRequest, ProjectOut
+from models.project import Project, Role, ProjectMember, Invitation
+from schemas.project import AIRequest, AIResponse, AIRoleRequest, ProjectCreateFull, ProjectOut
 from routers.auth import get_current_user
-from services.ai_advisor import get_methodology_recommendation, client
+from services.ai_advisor import get_methodology_recommendation, get_role_suggestions
+from pydantic import BaseModel
+from utils.email import send_project_invitation_email
 
 router = APIRouter(prefix="/projects", tags=["Projects"])
 
-class RolesRequest(BaseModel):
-    methodology: str
-    project_description: str
+class JoinRequest(BaseModel):
+    code: str
 
-# 1. AI Advisor (Metodologie)
-@router.post("/ai-recommend")
+@router.post("/join")
+def join_project(
+    data: JoinRequest, 
+    current_user: User = Depends(get_current_user), 
+    db: Session = Depends(get_db)
+):
+    # 1. Căutăm invitația
+    invite = db.query(Invitation).filter(
+        Invitation.code == data.code,
+        Invitation.status == "PENDING"
+    ).first()
+    
+    if not invite:
+        raise HTTPException(status_code=404, detail="Invalid or expired invitation code.")
+    
+    # Optional: Verificăm dacă email-ul curent corespunde cu cel din invitație
+    # (Putem comenta asta dacă vrem să permitem oricui are codul să intre, 
+    # dar pentru securitate e bine să fie userul corect)
+    if invite.email != current_user.email:
+        raise HTTPException(status_code=403, detail="This invitation was sent to another email address.")
+
+    # 2. Verificăm dacă e deja membru
+    existing_member = db.query(ProjectMember).filter(
+        ProjectMember.project_id == invite.project_id,
+        ProjectMember.user_id == current_user.id
+    ).first()
+    
+    if existing_member:
+         return {"message": "You are already a member of this project."}
+
+    # 3. Adăugăm userul în proiect
+    new_member = ProjectMember(
+        user_id=current_user.id,
+        project_id=invite.project_id,
+        role_id=invite.role_id
+    )
+    db.add(new_member)
+    
+    # 4. Marcăm invitația ca acceptată
+    invite.status = "ACCEPTED"
+    
+    db.commit()
+    
+    return {"message": f"Successfully joined project!"}
+
+# --- 1. AI ENDPOINTS ---
+
+@router.post("/ai-recommend", response_model=AIResponse)
 def ask_ai_methodology(request: AIRequest, current_user: User = Depends(get_current_user)):
-    return get_methodology_recommendation(request.dict())
+    return get_methodology_recommendation(request.model_dump())
 
-# 2. AI Roles (Sugestii Roluri)
 @router.post("/ai-roles")
-def ask_ai_roles(request: RolesRequest, current_user: User = Depends(get_current_user)):
-    if not client:
-        return {"roles": [{"name": "Member", "description": "Standard user"}]}
+def ask_ai_roles(request: AIRoleRequest, current_user: User = Depends(get_current_user)):
+    return get_role_suggestions(request.methodology, request.description)
 
-    prompt = f"""
-    Based on the methodology '{request.methodology}' and project description '{request.project_description}', 
-    suggest 3-4 key roles for the team.
+# --- 2. CREATE PROJECT (THE WIZARD FINAL SUBMIT) ---
+
+@router.post("/create_full", response_model=ProjectOut)
+def create_project_full(
+    data: ProjectCreateFull,
+    background_tasks: BackgroundTasks, # <--- Injectăm asta
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    # A. Creăm Proiectul
+    new_project = Project(
+        name=data.name,
+        key=data.key.upper(),
+        description=data.description,
+        methodology=data.methodology,
+        owner_id=current_user.id
+    )
+    db.add(new_project)
+    db.commit()
+    db.refresh(new_project)
     
-    Return ONLY a JSON object with this exact structure:
-    {{
-        "roles": [
-            {{ "name": "Role Name", "description": "Short description (max 10 words)" }}
-        ]
-    }}
-    """
+    # B. Procesăm Rolurile și Invitațiile
+    created_roles = []
     
-    try:
-        # FOLOSIM UN MODEL GENERIC MAI SIGUR
-        response = client.models.generate_content(
-            model='gemini-2.5-flash', 
-            contents=prompt
+    for role_in in data.roles:
+        # 1. Creăm Rolul în DB
+        db_role = Role(
+            project_id=new_project.id,
+            name=role_in.name,
+            description=role_in.description,
+            permissions="{}" 
         )
-        clean_text = response.text.replace("```json", "").replace("```", "").strip()
-        return json.loads(clean_text)
-    except Exception as e:
-        print(f"AI Error: {e}")
-        # Fallback silentios
-        return {"roles": [
-            {"name": "Manager", "description": "Leads the project"},
-            {"name": "Developer", "description": "Builds the software"}
-        ]}
+        db.add(db_role)
+        db.commit()
+        db.refresh(db_role)
+        created_roles.append(db_role)
+        
+        # 2. Creăm Invitațiile REALE
+        for email in role_in.emails:
+            # Generăm un cod unic sigur (8 bytes hex = 16 caractere)
+            # Ex: a1b2c3d4e5f67890
+            secure_code = secrets.token_hex(4).upper() 
+            final_code = f"{new_project.key}-{secure_code}" # Ex: APP-A1B2C3D4
+            
+            invite = Invitation(
+                email=email,
+                project_id=new_project.id,
+                role_id=db_role.id,
+                code=final_code,
+                status="PENDING"
+            )
+            db.add(invite)
+            
+            # TRIMITEM EMAIL-UL ÎN BACKGROUND (să nu blocheze răspunsul)
+            background_tasks.add_task(
+                send_project_invitation_email,
+                email=email,
+                project_name=new_project.name,
+                role_name=db_role.name,
+                code=final_code
+            )
+    
+    # C. Adăugăm Owner-ul ca membru (la primul rol sau unul default)
+    owner_role_id = created_roles[0].id if created_roles else None
+    
+    member = ProjectMember(
+        user_id=current_user.id,
+        project_id=new_project.id,
+        role_id=owner_role_id
+    )
+    db.add(member)
+    db.commit()
+    
+    return new_project
 
-# 3. Get My Projects
+# --- 3. GET MY PROJECTS (DASHBOARD) ---
+
 @router.get("/mine", response_model=List[ProjectOut])
 def get_my_projects(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    memberships = db.query(WorkspaceMember).filter(WorkspaceMember.user_id == current_user.id).all()
-    workspace_ids = [m.workspace_id for m in memberships]
+    # Căutăm proiectele unde userul este membru
+    # SQLAlchemy face join automat prin relația definită în modelul User (memberships)
+    # Dar trebuie să navigăm: User -> memberships -> project
     
-    if not workspace_ids:
-        return []
-    
-    projects = db.query(Project).filter(Project.workspace_id.in_(workspace_ids)).all()
-    return projects
-
-# 4. Create Project
-@router.post("/{workspace_id}")
-def create_project(
-    workspace_id: int,
-    project_data: ProjectCreate,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-):
-    workspace = db.query(Workspace).filter(Workspace.id == workspace_id).first()
-    if not workspace:
-        raise HTTPException(status_code=404, detail="Workspace not found")
-    
-    is_member = db.query(WorkspaceMember).filter(
-        WorkspaceMember.workspace_id == workspace_id,
-        WorkspaceMember.user_id == current_user.id
-    ).first()
-    
-    if not is_member:
-        raise HTTPException(status_code=403, detail="Permission denied")
+    projects = []
+    for membership in current_user.memberships:
+        projects.append(membership.project)
         
-    new_project = Project(
-        workspace_id=workspace.id,
-        name=project_data.name,
-        key=project_data.key.upper(),
-        description=project_data.description,
-        methodology=project_data.methodology
-    )
-    
-    db.add(new_project)
-    db.commit()
-    db.refresh(new_project)
-    
-    return new_project
+    return projects

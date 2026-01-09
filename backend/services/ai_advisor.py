@@ -55,6 +55,7 @@ def get_methodology_recommendation(answers: dict):
     """
     
     try:
+        # CORECTIE: Folosim gemini-1.5-flash (2.5 nu exista public)
         response = client.models.generate_content(
             model='gemini-2.5-flash',
             contents=prompt,
@@ -75,3 +76,34 @@ def get_methodology_recommendation(answers: dict):
             "pros": [],
             "cons": []
         }
+
+def get_role_suggestions(methodology: str, description: str):
+    """
+    Sugerează roluri bazate pe metodologie și descriere.
+    """
+    if not client:
+        return {"roles": []}
+
+    prompt = f"""
+    Suggest 3-4 key software team roles for a {methodology} project described as: "{description}".
+    Return ONLY a JSON object with this structure:
+    {{
+        "roles": [
+            {{ "name": "Role Name", "description": "Short description" }}
+        ]
+    }}
+    """
+    
+    try:
+        response = client.models.generate_content(
+            model='gemini-2.5-flash',
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                temperature=0.2,
+            )
+        )
+        clean_text = response.text.replace("```json", "").replace("```", "").strip()
+        return json.loads(clean_text)
+    except Exception as e:
+        print(f"AI Error (Roles): {e}")
+        return {"roles": []}

@@ -1,112 +1,153 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Users, Briefcase, ArrowRight, Loader2 } from "lucide-react";
+import { LogOut, Plus, Users, Sparkles, ArrowRight } from "lucide-react";
 import { toast } from "sonner";
-import { joinByCode } from "@/services/invitations";
 
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Label } from "@/components/ui/label";
+import { useAuthStore } from "@/store/use-auth-store";
+import api from "@/lib/axios";
 
 export default function OnboardingPage() {
   const router = useRouter();
+  const { logout, isAuthenticated } = useAuthStore();
   const [inviteCode, setInviteCode] = useState("");
   const [isJoining, setIsJoining] = useState(false);
 
-  const handleJoin = async () => {
-    if (!inviteCode) {
-      toast.error("Please enter a code");
-      return;
+  // Protecție simplă: Dacă nu e logat, îl trimitem la login
+  useEffect(() => {
+    if (!isAuthenticated) {
+      router.push("/login");
     }
+  }, [isAuthenticated, router]);
+
+  const handleLogout = () => {
+    logout();
+    router.push("/login");
+  };
+
+  const handleCreateProject = () => {
+    // Aici vom merge către Wizard-ul AI (pasul următor)
+    router.push("/project-wizard"); 
+  };
+
+  const handleJoinTeam = async () => {
+    if (!inviteCode.trim()) return;
+    
     setIsJoining(true);
     try {
-      await joinByCode(inviteCode);
-      toast.success("Successfully joined workspace!");
+      // Vom implementa acest endpoint imediat
+      await api.post("/projects/join", { code: inviteCode });
+      toast.success("Joined project successfully!");
       router.push("/dashboard");
     } catch (error: any) {
-        console.error(error);
-        toast.error(error.response?.data?.detail || "Invalid code");
+      toast.error(error.response?.data?.detail || "Invalid invitation code.");
     } finally {
       setIsJoining(false);
     }
   };
 
-  const handleCreate = () => {
-    // Aici vom merge la Wizard-ul AI în pasul următor
-    router.push("/onboarding/create");
-  };
-
   return (
-    <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-4">
-      <div className="text-center mb-10 space-y-4">
-        <h1 className="text-4xl font-bold text-white">Welcome to SDLC AI Hub</h1>
-        <p className="text-slate-400 max-w-lg mx-auto">
-          Let's set up your workspace. You can either join an existing team or create a new organization from scratch.
-        </p>
-      </div>
+    <div className="min-h-screen bg-slate-950 text-slate-50 flex flex-col">
+      {/* Header Simplu */}
+      <header className="border-b border-slate-800 p-4 flex justify-between items-center bg-slate-900/50 backdrop-blur-sm sticky top-0 z-10">
+        <div className="flex items-center gap-2 font-bold text-xl">
+            <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-blue-600 to-purple-600 flex items-center justify-center text-sm">SD</div>
+            SDLC Hub
+        </div>
+        <Button variant="ghost" onClick={handleLogout} className="text-slate-400 hover:text-white hover:bg-slate-800">
+            <LogOut className="mr-2 h-4 w-4" />
+            Sign out
+        </Button>
+      </header>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-4xl w-full">
-        
-        {/* OPTIUNEA A: JOIN TEAM */}
-        <Card className="bg-slate-900 border-slate-800 hover:border-blue-500/50 transition duration-300">
-          <CardHeader>
-            <div className="w-12 h-12 bg-blue-500/10 rounded-lg flex items-center justify-center mb-4">
-              <Users className="w-6 h-6 text-blue-500" />
+      {/* Main Content */}
+      <main className="flex-1 flex flex-col items-center justify-center p-6 animate-in fade-in duration-700">
+        <div className="max-w-4xl w-full space-y-8 text-center">
+            <div className="space-y-2">
+                <h1 className="text-4xl font-extrabold tracking-tight lg:text-5xl bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
+                    Welcome to your workspace
+                </h1>
+                <p className="text-xl text-slate-400 max-w-2xl mx-auto">
+                    You don't have any active projects yet. How would you like to get started?
+                </p>
             </div>
-            <CardTitle className="text-xl text-white">Join a Team</CardTitle>
-            <CardDescription className="text-slate-400">
-              Have an invitation code? Enter it below to join your colleagues.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <Input 
-              placeholder="Enter Invite Code (e.g., TEAM-X92)" 
-              className="bg-slate-950 border-slate-700 text-white"
-              value={inviteCode}
-              onChange={(e) => setInviteCode(e.target.value)}
-            />
-            <Button 
-              className="w-full bg-blue-600 hover:bg-blue-700" 
-              onClick={handleJoin}
-              disabled={isJoining}
-            >
-              {isJoining && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Join Workspace
-            </Button>
-          </CardContent>
-        </Card>
 
-        {/* OPTIUNEA B: CREATE WORKSPACE */}
-        <Card className="bg-slate-900 border-slate-800 hover:border-purple-500/50 transition duration-300">
-          <CardHeader>
-            <div className="w-12 h-12 bg-purple-500/10 rounded-lg flex items-center justify-center mb-4">
-              <Briefcase className="w-6 h-6 text-purple-500" />
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-12">
+                {/* OPTIUNEA 1: AI WIZARD */}
+                <Card className="bg-slate-900/50 border-slate-800 hover:border-blue-500/50 transition-all cursor-pointer group hover:shadow-2xl hover:shadow-blue-500/10" onClick={handleCreateProject}>
+                    <CardHeader>
+                        <div className="mx-auto h-16 w-16 bg-blue-500/10 rounded-full flex items-center justify-center mb-4 group-hover:scale-110 transition-transform duration-300 border border-blue-500/20">
+                            <Sparkles className="h-8 w-8 text-blue-500" />
+                        </div>
+                        <CardTitle className="text-2xl">Create with AI</CardTitle>
+                        <CardDescription className="text-slate-400">
+                            Launch a new project. Our AI will help you choose the best methodology (Scrum/Kanban) and define roles.
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                        <Button className="w-full bg-blue-600 hover:bg-blue-700 group-hover:translate-x-1 transition-transform">
+                            Start Wizard <ArrowRight className="ml-2 h-4 w-4" />
+                        </Button>
+                    </CardContent>
+                </Card>
+
+                {/* OPTIUNEA 2: JOIN TEAM */}
+                <Dialog>
+                    <DialogTrigger asChild>
+                        <Card className="bg-slate-900/50 border-slate-800 hover:border-purple-500/50 transition-all cursor-pointer group hover:shadow-2xl hover:shadow-purple-500/10">
+                            <CardHeader>
+                                <div className="mx-auto h-16 w-16 bg-purple-500/10 rounded-full flex items-center justify-center mb-4 group-hover:scale-110 transition-transform duration-300 border border-purple-500/20">
+                                    <Users className="h-8 w-8 text-purple-500" />
+                                </div>
+                                <CardTitle className="text-2xl">Join a Team</CardTitle>
+                                <CardDescription className="text-slate-400">
+                                    Have an invitation code? Enter it here to join an existing project and start collaborating.
+                                </CardDescription>
+                            </CardHeader>
+                            <CardContent>
+                                <Button variant="outline" className="w-full border-slate-700 hover:bg-slate-800 hover:text-white">
+                                    Enter Code <Plus className="ml-2 h-4 w-4" />
+                                </Button>
+                            </CardContent>
+                        </Card>
+                    </DialogTrigger>
+                    
+                    {/* MODALA PENTRU COD */}
+                    <DialogContent className="bg-slate-900 border-slate-800 text-slate-50">
+                        <DialogHeader>
+                            <DialogTitle>Join Project</DialogTitle>
+                            <DialogDescription>
+                                Enter the invitation code shared by your project manager.
+                            </DialogDescription>
+                        </DialogHeader>
+                        <div className="grid gap-4 py-4">
+                            <div className="grid gap-2">
+                                <Label htmlFor="code">Invitation Code</Label>
+                                <Input 
+                                    id="code" 
+                                    placeholder="e.g. prj_123_abc" 
+                                    className="bg-slate-950 border-slate-700"
+                                    value={inviteCode}
+                                    onChange={(e) => setInviteCode(e.target.value)}
+                                />
+                            </div>
+                        </div>
+                        <DialogFooter>
+                            <Button onClick={handleJoinTeam} disabled={isJoining} className="bg-purple-600 hover:bg-purple-700 text-white">
+                                {isJoining ? "Joining..." : "Join Project"}
+                            </Button>
+                        </DialogFooter>
+                    </DialogContent>
+                </Dialog>
             </div>
-            <CardTitle className="text-xl text-white">Create New Workspace</CardTitle>
-            <CardDescription className="text-slate-400">
-              Start a new organization and project. We'll help you pick the right methodology.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="flex flex-col justify-end h-full pt-8">
-            <Button 
-              variant="outline" 
-              className="w-full border-slate-700 text-slate-200 hover:bg-slate-800 hover:text-white"
-              onClick={handleCreate}
-            >
-              Start Setup Wizard <ArrowRight className="ml-2 w-4 h-4" />
-            </Button>
-          </CardContent>
-        </Card>
-
-      </div>
+        </div>
+      </main>
     </div>
   );
 }

@@ -1,43 +1,58 @@
 from logging.config import fileConfig
-import sys
-import os
+
 from sqlalchemy import engine_from_config
 from sqlalchemy import pool
+
 from alembic import context
-from dotenv import load_dotenv
 
-# 1. Adăugăm directorul curent în Path pentru a putea importa modulele
-sys.path.append(os.getcwd())
+# ---------------- MODIFICĂRI ÎNCEPUT ----------------
+import os
+import sys
 
-# 2. Încărcăm variabilele de mediu din .env
-load_dotenv()
+# Adăugăm folderul părinte ('backend') în calea sistemului pentru a putea importa modulele
+# env.py se află în backend/alembic/, deci urcăm 2 nivele
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
 
-# 3. Importăm Base și Modelele noastre
-# Este CRITIC să importăm toate modelele aici, altfel Alembic nu le va vedea!
 from database.session import Base
-from models.user import User
-from models.workspace import Workspace, WorkspaceMember, Role, Invitation
-from models.project import Project, Sprint, Task
-# (Vom adăuga Project/Task aici mai târziu)
 
-# this is the Alembic Config object
+# Importăm TOATE modelele pentru a fi înregistrate în metadata
+# Fără aceste importuri, Alembic nu va vedea tabelele noi!
+from models.user import User
+from models.project import Project, ProjectMember, Role, Invitation, Sprint, Task
+# ---------------- MODIFICĂRI SFÂRȘIT ----------------
+
+# this is the Alembic Config object, which provides
+# access to the values within the .ini file in use.
 config = context.config
 
-# 4. Suprascriem URL-ul bazei de date cu cel din .env
-# Asta asigură că nu hardcodăm parola în alembic.ini
-db_url = os.getenv("DATABASE_URL")
-if db_url:
-    config.set_main_option("sqlalchemy.url", db_url)
-
 # Interpret the config file for Python logging.
+# This line sets up loggers basically.
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# 5. Setăm target_metadata la Base.metadata
+# add your model's MetaData object here
+# for 'autogenerate' support
+# AICI LEGĂM METADATA DIN BAZA DE DATE
 target_metadata = Base.metadata
 
+# other values from the config, defined by the needs of env.py,
+# can be acquired:
+# my_important_option = config.get_main_option("my_important_option")
+# ... etc.
+
+
 def run_migrations_offline() -> None:
-    """Run migrations in 'offline' mode."""
+    """Run migrations in 'offline' mode.
+
+    This configures the context with just a URL
+    and not an Engine, though an Engine is acceptable
+    here as well.  By skipping the Engine creation
+    we don't even need a DBAPI to be available.
+
+    Calls to context.execute() here emit the given string to the
+    script output.
+
+    """
     url = config.get_main_option("sqlalchemy.url")
     context.configure(
         url=url,
@@ -49,8 +64,14 @@ def run_migrations_offline() -> None:
     with context.begin_transaction():
         context.run_migrations()
 
+
 def run_migrations_online() -> None:
-    """Run migrations in 'online' mode."""
+    """Run migrations in 'online' mode.
+
+    In this scenario we need to create an Engine
+    and associate a connection with the context.
+
+    """
     connectable = engine_from_config(
         config.get_section(config.config_ini_section, {}),
         prefix="sqlalchemy.",
@@ -64,6 +85,7 @@ def run_migrations_online() -> None:
 
         with context.begin_transaction():
             context.run_migrations()
+
 
 if context.is_offline_mode():
     run_migrations_offline()

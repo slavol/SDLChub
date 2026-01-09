@@ -3,8 +3,8 @@
 import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { 
-  Loader2, Sparkles, ArrowRight, CheckCircle2, ArrowLeft, 
-  Upload, Plus, Trash2, Users, X, Image as ImageIcon, Settings 
+  Loader2, Sparkles, ArrowRight, ArrowLeft, 
+  Plus, Trash2, Users, X, Image as ImageIcon, Settings, BrainCircuit, Rocket
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -17,8 +17,13 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Textarea } from "@/components/ui/textarea";
 
-import { analyzeProjectNeeds, createWorkspace, createProject, AIAnalysisResponse } from "@/services/project";
-import api from "@/lib/axios";
+// --- IMPORTURILE CORECTE DIN SERVICE (LOGICA V1) ---
+import { 
+    getAIRecommendation, 
+    getAIRoles, 
+    createProjectFull, 
+    AIRecommendationResponse 
+} from "@/services/project";
 
 // --- TIPURI ---
 interface RoleDefinition {
@@ -42,7 +47,7 @@ const initialAiAnswers = {
   metrics: ""
 };
 
-export default function CreateWorkspaceWizard() {
+export default function ProjectWizard() {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
   
@@ -52,18 +57,17 @@ export default function CreateWorkspaceWizard() {
 
   // --- STATE ---
   const [basicInfo, setBasicInfo] = useState({
-    workspaceName: "",
     projectName: "",
     projectKey: "",
     description: ""
   });
   
-  // Logo State
+  // Logo State (Doar vizual momentan)
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
 
   const [aiAnswers, setAiAnswers] = useState(initialAiAnswers);
-  const [aiResult, setAiResult] = useState<AIAnalysisResponse | null>(null);
+  const [aiResult, setAiResult] = useState<AIRecommendationResponse | null>(null);
   const [selectedMethodology, setSelectedMethodology] = useState<string>(""); 
 
   // Roles State
@@ -71,7 +75,7 @@ export default function CreateWorkspaceWizard() {
   const [inviteEmail, setInviteEmail] = useState("");
   const [selectedRoleIndex, setSelectedRoleIndex] = useState(0);
 
-  // --- CONFIG ÎNTREBĂRI (Pentru Pasul 2) ---
+  // --- CONFIG ÎNTREBĂRI (Pasul 2) ---
   const questions: QuestionConfig[] = [
     {
       key: "team_size",
@@ -105,7 +109,7 @@ export default function CreateWorkspaceWizard() {
     }
   ];
 
-  // --- HANDLERS PAS 1 (LOGO) ---
+  // --- HANDLERS PAS 1 (LOGO & IDENTITY) ---
   const handleLogoClick = () => fileInputRef.current?.click();
   
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -125,29 +129,37 @@ export default function CreateWorkspaceWizard() {
   };
 
   const handleStep1Submit = () => {
-    if (!basicInfo.workspaceName || !basicInfo.projectName || !basicInfo.projectKey) {
-      toast.error("Please fill in required fields");
+    if (!basicInfo.projectName || !basicInfo.projectKey) {
+      toast.error("Please fill in Project Name and Key");
       return;
     }
     setStep(2);
   };
 
-  // --- HANDLERS PAS 2 (AI) ---
+  // --- HANDLERS PAS 2 (AI ANALYSIS) ---
   const handleAnalyze = async () => {
-    if (Object.values(aiAnswers).some(val => val === "")) {
+    if (Object.values(aiAnswers).some(val => val.trim() === "")) {
       toast.error("Please answer all questions so AI can help.");
       return;
     }
     setIsLoading(true);
     try {
-      const result = await analyzeProjectNeeds(aiAnswers);
+      // APEL CORECT CĂTRE SERVICE V1
+      const result = await getAIRecommendation(aiAnswers);
       setAiResult(result);
       setSelectedMethodology(result.recommended); 
       setStep(3);
     } catch (error) {
-      toast.error("AI Service unavailable.");
+      console.error(error);
+      toast.error("AI Service unavailable. Using manual mode.");
       // Fallback manual
-      setAiResult({ recommended: "SCRUM", confidence_score: 0, reasoning: "Manual selection required.", pros: [], cons: [] });
+      setAiResult({ 
+          recommended: "SCRUM", 
+          confidence_score: 0, 
+          reasoning: "Manual selection required due to AI timeout.", 
+          pros: [], 
+          cons: [] 
+      });
       setSelectedMethodology("SCRUM");
       setStep(3);
     } finally {
@@ -155,11 +167,10 @@ export default function CreateWorkspaceWizard() {
     }
   };
 
-  // --- HANDLERS PAS 3 (SELECTION) ---
+  // --- HANDLERS PAS 3 (METHODOLOGY SELECTION) ---
   const handleConfirmMethodology = () => {
       let defaultRoles: RoleDefinition[] = [];
       
-      // LOGICA ACTUALIZATĂ PENTRU ROLURI CORECTE
       if (selectedMethodology === "SCRUM") {
           defaultRoles = [
               { name: "Product Owner", description: "Manages the Backlog & Vision", emails: [] },
@@ -172,7 +183,7 @@ export default function CreateWorkspaceWizard() {
               { name: "Service Delivery Manager", description: "Manages flow & removes blockers", emails: [] },
               { name: "Team Member", description: "Executes work items", emails: [] }
           ];
-      } else if (selectedMethodology === "SCRUMBAN") {
+      } else {
            defaultRoles = [
               { name: "Product Owner", description: "Prioritizes high-level items", emails: [] },
               { name: "Flow Master", description: "Ensures continuous flow & limits WIP", emails: [] },
@@ -185,16 +196,18 @@ export default function CreateWorkspaceWizard() {
       setStep(4);
   };
 
-  // --- HANDLERS PAS 4 (ROLES) ---
-  const getAiRoles = async () => {
+  // --- HANDLERS PAS 4 (ROLES & TEAM) ---
+  const handleGetAiRoles = async () => {
       setIsAiLoading(true);
       try {
-          const res = await api.post("/projects/ai-roles", {
+          // APEL CORECT CĂTRE SERVICE V1
+          const res = await getAIRoles({
               methodology: selectedMethodology,
-              project_description: basicInfo.description || basicInfo.projectName
+              description: basicInfo.description || basicInfo.projectName
           });
-          if (res.data.roles && res.data.roles.length > 0) {
-              const aiRoles = res.data.roles.map((r: any) => ({
+          
+          if (res.roles && res.roles.length > 0) {
+              const aiRoles = res.roles.map((r: any) => ({
                   name: r.name,
                   description: r.description,
                   emails: []
@@ -219,7 +232,7 @@ export default function CreateWorkspaceWizard() {
       emails: []
     };
     setRoles([...roles, newRole]);
-    setSelectedRoleIndex(roles.length); // Selectează noul rol imediat
+    setSelectedRoleIndex(roles.length);
   };
 
   const handleDeleteRole = (index: number) => {
@@ -229,7 +242,11 @@ export default function CreateWorkspaceWizard() {
     }
     const newRoles = roles.filter((_, i) => i !== index);
     setRoles(newRoles);
-    setSelectedRoleIndex(0);
+    if (index === selectedRoleIndex) {
+        setSelectedRoleIndex(0);
+    } else if (index < selectedRoleIndex) {
+        setSelectedRoleIndex(selectedRoleIndex - 1);
+    }
   };
 
   const handleUpdateRole = (field: 'name' | 'description', value: string) => {
@@ -248,6 +265,11 @@ export default function CreateWorkspaceWizard() {
       }
       if (!roles[selectedRoleIndex]) return;
 
+      if (roles[selectedRoleIndex].emails.includes(inviteEmail)) {
+          toast.warning("Email already added to this role");
+          return;
+      }
+
       const newRoles = [...roles];
       newRoles[selectedRoleIndex].emails.push(inviteEmail);
       setRoles(newRoles);
@@ -265,58 +287,61 @@ export default function CreateWorkspaceWizard() {
   const handleFinalSubmit = async () => {
     setIsLoading(true);
     try {
-      // 1. Create Workspace (TODO: Trimite și Logo-ul la backend în viitor)
-      const ws = await createWorkspace(basicInfo.workspaceName);
-      
-      // 2. Create Project
-      await createProject(ws.id, {
+      // LOGICA CORECTĂ: Apelăm direct createProjectFull cu toate datele
+      await createProjectFull({
         name: basicInfo.projectName,
         key: basicInfo.projectKey,
-        methodology: selectedMethodology, 
-        description: basicInfo.description
+        description: basicInfo.description,
+        methodology: selectedMethodology,
+        roles: roles // Trimitem structura completă
       });
-
-      console.log("Final Invite List:", roles);
       
-      toast.success("Workspace & Team setup complete!");
+      toast.success("Project launched successfully! 🚀");
       router.push("/dashboard");
 
     } catch (error) {
       console.error(error);
-      toast.error("Failed setup.");
+      toast.error("Failed to create project. Please try again.");
     } finally {
       setIsLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-4 text-slate-50">
+    <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-4 text-slate-50 relative">
       
-      <div className="w-full max-w-5xl mb-8">
-        <div className="flex justify-between text-sm text-slate-400 mb-2">
-            <span>Identity</span>
-            <span>AI Interview</span>
-            <span>Decision</span>
-            <span>Team & Roles</span>
-        </div>
-        <Progress value={(step / 4) * 100} className="h-2" />
+      {/* CANCEL BUTTON */}
+      <div className="absolute top-6 right-6">
+          <Button variant="ghost" className="text-slate-400 hover:text-white hover:bg-slate-800 rounded-full h-10 w-10 p-0" onClick={() => router.push('/onboarding')}>
+              <X className="w-5 h-5" />
+          </Button>
       </div>
 
-      <Card className="w-full max-w-5xl bg-slate-900 border-slate-800 shadow-2xl overflow-hidden min-h-[600px] flex flex-col">
+      <div className="w-full max-w-5xl mb-8">
+        <div className="flex justify-between text-sm text-slate-400 mb-2 font-medium tracking-wide">
+            <span className={step >= 1 ? "text-blue-400 transition-colors" : ""}>Identity</span>
+            <span className={step >= 2 ? "text-blue-400 transition-colors" : ""}>AI Interview</span>
+            <span className={step >= 3 ? "text-blue-400 transition-colors" : ""}>Decision</span>
+            <span className={step >= 4 ? "text-blue-400 transition-colors" : ""}>Team & Roles</span>
+        </div>
+        <Progress value={(step / 4) * 100} className="h-1 bg-slate-800" />
+      </div>
+
+      <Card className="w-full max-w-5xl bg-slate-900 border-slate-800 shadow-2xl overflow-hidden min-h-[600px] flex flex-col backdrop-blur-sm bg-slate-900/80">
         
         {/* --- STEP 1: BASICS --- */}
         {step === 1 && (
           <>
-            <CardHeader>
-              <CardTitle>Project Basics</CardTitle>
-              <CardDescription>Establish your workspace identity.</CardDescription>
+            <CardHeader className="border-b border-slate-800/50 pb-8 pt-8 px-8">
+              <CardTitle className="text-3xl">Project Basics</CardTitle>
+              <CardDescription className="text-lg">Establish your project identity.</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-8 flex-1">
-              <div className="flex flex-col md:flex-row gap-10">
+            <CardContent className="space-y-8 flex-1 p-8">
+              <div className="flex flex-col md:flex-row gap-12">
                   
-                  {/* LOGO UPLOAD FUNCȚIONAL */}
-                  <div className="shrink-0 flex flex-col gap-2">
-                      <Label>Logo</Label>
+                  {/* LOGO UPLOAD (Cosmetic) */}
+                  <div className="shrink-0 flex flex-col gap-3">
+                      <Label className="text-base">Project Logo</Label>
                       <input 
                         type="file" 
                         ref={fileInputRef} 
@@ -327,8 +352,8 @@ export default function CreateWorkspaceWizard() {
                       <div 
                         onClick={handleLogoClick}
                         className={cn(
-                            "w-40 h-40 rounded-xl border-2 border-dashed border-slate-700 flex flex-col items-center justify-center cursor-pointer transition relative overflow-hidden group",
-                            logoPreview ? "border-blue-500 bg-slate-950" : "hover:border-blue-500 hover:bg-slate-800/50"
+                            "w-48 h-48 rounded-2xl border-2 border-dashed border-slate-700 flex flex-col items-center justify-center cursor-pointer transition-all duration-300 relative overflow-hidden group bg-slate-950",
+                            logoPreview ? "border-blue-500 shadow-[0_0_20px_rgba(59,130,246,0.2)]" : "hover:border-blue-500 hover:bg-slate-900"
                         )}
                       >
                           {logoPreview ? (
@@ -340,49 +365,43 @@ export default function CreateWorkspaceWizard() {
                               </>
                           ) : (
                               <>
-                                <ImageIcon className="w-10 h-10 text-slate-500 mb-2 group-hover:text-blue-400 transition" />
-                                <span className="text-xs text-slate-400">Click to Upload</span>
+                                <div className="bg-slate-800 p-3 rounded-full mb-3 group-hover:scale-110 transition-transform">
+                                    <ImageIcon className="w-8 h-8 text-slate-400 group-hover:text-blue-400" />
+                                </div>
+                                <span className="text-sm font-medium text-slate-400 group-hover:text-white">Click to Upload</span>
                               </>
                           )}
                       </div>
                   </div>
                   
-                  <div className="flex-1 space-y-6">
-                    <div className="space-y-2">
-                        <Label>Workspace Name</Label>
-                        <Input 
-                            placeholder="e.g. Acme Innovations"
-                            value={basicInfo.workspaceName}
-                            onChange={(e) => setBasicInfo({...basicInfo, workspaceName: e.target.value})}
-                            className="bg-slate-950 border-slate-700 h-11 text-lg"
-                        />
-                    </div>
-                    <div className="grid grid-cols-3 gap-6">
-                        <div className="col-span-2 space-y-2">
-                            <Label>Project Name</Label>
+                  {/* FORMULAR PROIECT */}
+                  <div className="flex-1 space-y-8">
+                    <div className="grid grid-cols-3 gap-8">
+                        <div className="col-span-2 space-y-3">
+                            <Label className="text-base">Project Name</Label>
                             <Input 
                                 placeholder="e.g. SuperApp Rewrite"
                                 value={basicInfo.projectName}
                                 onChange={(e) => setBasicInfo({...basicInfo, projectName: e.target.value})}
-                                className="bg-slate-950 border-slate-700 h-11"
+                                className="bg-slate-950 border-slate-700 h-12 text-lg focus:border-blue-500 transition-colors"
                             />
                         </div>
-                        <div className="space-y-2">
-                            <Label>Key</Label>
+                        <div className="space-y-3">
+                            <Label className="text-base">Key</Label>
                             <Input 
                                 placeholder="APP"
                                 value={basicInfo.projectKey}
                                 onChange={(e) => setBasicInfo({...basicInfo, projectKey: e.target.value.toUpperCase()})}
-                                maxLength={4}
-                                className="bg-slate-950 border-slate-700 font-mono uppercase h-11"
+                                maxLength={5}
+                                className="bg-slate-950 border-slate-700 font-mono uppercase h-12 text-lg tracking-wider text-center focus:border-blue-500 transition-colors"
                             />
                         </div>
                     </div>
-                    <div className="space-y-2">
-                        <Label>Short Description</Label>
+                    <div className="space-y-3">
+                        <Label className="text-base">Short Description</Label>
                         <Textarea 
                             placeholder="Briefly describe the goal..."
-                            className="bg-slate-950 border-slate-700 resize-none h-20"
+                            className="bg-slate-950 border-slate-700 resize-none h-32 text-base focus:border-blue-500 transition-colors"
                             value={basicInfo.description}
                             onChange={(e) => setBasicInfo({...basicInfo, description: e.target.value})}
                         />
@@ -391,7 +410,7 @@ export default function CreateWorkspaceWizard() {
               </div>
 
               <div className="flex justify-end mt-auto pt-4">
-                <Button onClick={handleStep1Submit} className="bg-blue-600 hover:bg-blue-700 px-8 py-6 text-md">
+                <Button onClick={handleStep1Submit} className="bg-blue-600 hover:bg-blue-700 px-8 py-6 text-lg font-medium shadow-lg hover:shadow-blue-500/20 transition-all duration-300">
                     Next Step <ArrowRight className="ml-2 w-5 h-5"/>
                 </Button>
               </div>
@@ -399,38 +418,35 @@ export default function CreateWorkspaceWizard() {
           </>
         )}
 
-        {/* --- STEP 2: AI INTERVIEW (DESIGN NOU & INPUT LIBER) --- */}
+        {/* --- STEP 2: AI INTERVIEW --- */}
         {step === 2 && (
              <>
-             <CardHeader>
-               <CardTitle className="flex items-center gap-2">
-                 <Sparkles className="text-purple-500 w-6 h-6" /> Methodology Advisor
+             <CardHeader className="border-b border-slate-800/50 pb-8 pt-8 px-8">
+               <CardTitle className="flex items-center gap-3 text-3xl">
+                 <Sparkles className="text-purple-500 w-8 h-8" /> Methodology Advisor
                </CardTitle>
-               <CardDescription>Tell us about your team. You can use the hints or type your own specifics.</CardDescription>
+               <CardDescription className="text-lg">Tell us about your team. Our AI will analyze your context.</CardDescription>
              </CardHeader>
-             <CardContent className="space-y-8 pb-10">
+             <CardContent className="space-y-8 pb-10 p-8 overflow-y-auto max-h-[600px] scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-transparent">
                 
-                {/* LISTA DE ÎNTREBĂRI UNA SUB ALTA */}
-                <div className="space-y-8">
+                <div className="space-y-10">
                     {questions.map((q, idx) => (
-                        <div key={idx} className="space-y-3 animate-in fade-in slide-in-from-bottom-4 duration-500" style={{ animationDelay: `${idx * 100}ms` }}>
-                            <Label className="text-base font-medium text-slate-200">{q.question}</Label>
+                        <div key={idx} className="space-y-4 animate-in fade-in slide-in-from-bottom-8 duration-700 fill-mode-both" style={{ animationDelay: `${idx * 150}ms` }}>
+                            <Label className="text-lg font-medium text-slate-200">{q.question}</Label>
                             
-                            {/* Input Liber */}
                             <Input 
                                 placeholder={q.placeholder}
                                 value={(aiAnswers as any)[q.key]}
                                 onChange={(e) => setAiAnswers({...aiAnswers, [q.key]: e.target.value})}
-                                className="bg-slate-950 border-slate-700 h-12"
+                                className="bg-slate-950 border-slate-700 h-14 text-lg focus:border-purple-500 transition-colors"
                             />
 
-                            {/* Hints / Sugestii */}
                             <div className="flex flex-wrap gap-2">
                                 {q.hints.map((hint) => (
                                     <Badge 
                                         key={hint} 
                                         variant="outline" 
-                                        className="cursor-pointer hover:bg-blue-500/20 hover:text-blue-300 hover:border-blue-500/50 transition py-1.5 px-3"
+                                        className="cursor-pointer hover:bg-purple-500/20 hover:text-purple-300 hover:border-purple-500/50 transition py-1.5 px-3 text-slate-400 text-sm font-normal"
                                         onClick={() => setAiAnswers({...aiAnswers, [q.key]: hint})}
                                     >
                                         {hint}
@@ -441,10 +457,10 @@ export default function CreateWorkspaceWizard() {
                     ))}
                 </div>
 
-                <div className="flex justify-between pt-8 border-t border-slate-800">
-                    <Button variant="ghost" onClick={() => setStep(1)} size="lg"><ArrowLeft className="mr-2 w-4 h-4"/> Back</Button>
-                    <Button onClick={handleAnalyze} disabled={isLoading} className="bg-purple-600 hover:bg-purple-700 text-white px-8 py-6 text-md shadow-[0_0_20px_rgba(147,51,234,0.3)]">
-                        {isLoading ? <><Loader2 className="mr-2 h-5 w-5 animate-spin"/> Processing...</> : <><Sparkles className="mr-2 h-5 w-5"/> Analyze & Recommend</>}
+                <div className="flex justify-between pt-8 border-t border-slate-800/50 mt-8">
+                    <Button variant="ghost" onClick={() => setStep(1)} size="lg" className="text-slate-400 hover:text-white"><ArrowLeft className="mr-2 w-5 h-5"/> Back</Button>
+                    <Button onClick={handleAnalyze} disabled={isLoading} className="bg-purple-600 hover:bg-purple-700 text-white px-8 py-6 text-lg shadow-[0_0_20px_rgba(147,51,234,0.4)] hover:shadow-[0_0_30px_rgba(147,51,234,0.6)] transition-all duration-300">
+                        {isLoading ? <><Loader2 className="mr-2 h-5 w-5 animate-spin"/> Processing...</> : <><BrainCircuit className="mr-2 h-5 w-5"/> Analyze & Recommend</>}
                     </Button>
                 </div>
              </CardContent>
@@ -454,24 +470,34 @@ export default function CreateWorkspaceWizard() {
         {/* --- STEP 3: SELECTION --- */}
         {step === 3 && aiResult && (
              <>
-             <CardHeader>
-              <CardTitle className="text-center text-3xl">
-                We recommend: <span className="text-blue-400 underline decoration-blue-500/30 underline-offset-4">{aiResult.recommended}</span>
-              </CardTitle>
-              <CardDescription className="text-center flex justify-center items-center gap-2 mt-2">
-                Confidence: <Badge variant="secondary" className={aiResult.confidence_score > 80 ? "bg-green-500/20 text-green-400" : "bg-yellow-500/20 text-yellow-400"}>{aiResult.confidence_score}%</Badge>
-              </CardDescription>
+             <CardHeader className="pb-2 pt-10">
+              <div className="text-center space-y-4">
+                  <div className="inline-flex items-center justify-center p-3 bg-blue-500/10 rounded-full mb-2">
+                     <BrainCircuit className="w-10 h-10 text-blue-400" />
+                  </div>
+                  <CardTitle className="text-4xl">
+                    We recommend: <span className="text-blue-400 underline decoration-blue-500/30 underline-offset-8 decoration-4">{aiResult.recommended}</span>
+                  </CardTitle>
+                  <CardDescription className="flex justify-center items-center gap-3 mt-2 text-lg">
+                    AI Confidence: 
+                    <Badge className={cn("text-base px-3 py-1", aiResult.confidence_score > 80 ? "bg-green-500/20 text-green-400 hover:bg-green-500/30" : "bg-yellow-500/20 text-yellow-400")}>
+                        {aiResult.confidence_score}%
+                    </Badge>
+                  </CardDescription>
+              </div>
               
-              <div className="bg-slate-950/80 p-6 rounded-xl border border-slate-800 mt-6 mx-auto max-w-3xl text-center shadow-inner">
-                <p className="text-slate-300 italic text-lg leading-relaxed">"{aiResult.reasoning}"</p>
+              <div className="bg-gradient-to-br from-slate-900 to-slate-950 p-6 rounded-2xl border border-slate-800 mt-8 mx-auto max-w-3xl text-center shadow-lg relative overflow-hidden group">
+                <div className="absolute top-0 left-0 w-1 h-full bg-blue-500"></div>
+                <p className="text-slate-300 italic text-xl leading-relaxed relative z-10">"{aiResult.reasoning}"</p>
+                <Sparkles className="absolute -bottom-4 -right-4 w-24 h-24 text-blue-500/5 z-0 group-hover:text-blue-500/10 transition-colors duration-500" />
               </div>
             </CardHeader>
 
-            <CardContent className="space-y-8 flex-1 flex flex-col">
+            <CardContent className="space-y-8 flex-1 flex flex-col p-8">
               
-              <div className="flex-1">
-                  <h4 className="text-xs font-bold text-slate-500 mb-6 uppercase tracking-widest text-center">
-                      Select Methodology
+              <div className="flex-1 mt-6">
+                  <h4 className="text-xs font-bold text-slate-500 mb-6 uppercase tracking-[0.2em] text-center">
+                      Select Methodology to Proceed
                   </h4>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                       {["SCRUM", "KANBAN", "SCRUMBAN"].map((method) => (
@@ -479,22 +505,22 @@ export default function CreateWorkspaceWizard() {
                             key={method}
                             onClick={() => setSelectedMethodology(method)}
                             className={cn(
-                                "cursor-pointer p-6 rounded-2xl border-2 transition-all duration-300 relative flex flex-col items-center justify-center min-h-[160px] group",
+                                "cursor-pointer p-8 rounded-2xl border-2 transition-all duration-300 relative flex flex-col items-center justify-center min-h-[200px] group",
                                 selectedMethodology === method 
-                                    ? "border-blue-500 bg-blue-500/10 shadow-[0_0_30px_rgba(59,130,246,0.3)] scale-105 z-10" 
-                                    : "border-slate-800 bg-slate-900/50 hover:border-slate-600 hover:bg-slate-800 opacity-70 hover:opacity-100"
+                                    ? "border-blue-500 bg-blue-900/10 shadow-[0_0_40px_rgba(59,130,246,0.2)] scale-105 z-10" 
+                                    : "border-slate-800 bg-slate-900/50 hover:border-slate-600 hover:bg-slate-800 opacity-60 hover:opacity-100 hover:-translate-y-1"
                             )}
                           >
                               {aiResult.recommended === method && (
-                                  <div className="absolute -top-3">
-                                      <Badge className="bg-purple-600 hover:bg-purple-700 border-none shadow-lg px-3 py-1">Best Fit</Badge>
+                                  <div className="absolute -top-4">
+                                      <Badge className="bg-purple-600 hover:bg-purple-700 border-none shadow-lg px-4 py-1.5 text-sm uppercase tracking-wider font-bold">Best Fit</Badge>
                                   </div>
                               )}
                               
-                              <h5 className={cn("font-bold text-xl mb-2 group-hover:text-blue-300", selectedMethodology === method ? "text-white" : "text-slate-400")}>
+                              <h5 className={cn("font-bold text-2xl mb-3 group-hover:text-blue-300 transition-colors", selectedMethodology === method ? "text-white" : "text-slate-400")}>
                                   {method}
                               </h5>
-                              <p className="text-xs text-slate-500 text-center leading-relaxed px-2">
+                              <p className="text-sm text-slate-500 text-center leading-relaxed px-2 group-hover:text-slate-400">
                                   {method === "SCRUM" && "Fixed sprints. Clear roles. Predictable velocity."}
                                   {method === "KANBAN" && "Continuous flow. No sprints. WIP limits."}
                                   {method === "SCRUMBAN" && "Hybrid. Planning buckets with continuous execution."}
@@ -504,11 +530,11 @@ export default function CreateWorkspaceWizard() {
                   </div>
               </div>
 
-              <div className="flex justify-between pt-6 border-t border-slate-800">
-                 <Button variant="ghost" onClick={() => setStep(2)} size="lg">
-                    <ArrowLeft className="mr-2 w-4 h-4"/> Back to Questions
+              <div className="flex justify-between pt-8 border-t border-slate-800">
+                 <Button variant="ghost" onClick={() => setStep(2)} size="lg" className="text-slate-400 hover:text-white">
+                    <ArrowLeft className="mr-2 w-5 h-5"/> Back to Questions
                 </Button>
-                <Button onClick={handleConfirmMethodology} className="bg-blue-600 hover:bg-blue-700 text-white min-w-[200px] py-6 text-md">
+                <Button onClick={handleConfirmMethodology} className="bg-blue-600 hover:bg-blue-700 text-white min-w-[200px] py-6 text-lg font-medium shadow-lg hover:shadow-blue-500/20 transition-all">
                     Configure Team & Roles <ArrowRight className="ml-2 w-5 h-5"/>
                 </Button>
               </div>
@@ -516,38 +542,40 @@ export default function CreateWorkspaceWizard() {
           </>
         )}
 
-        {/* --- STEP 4: TEAM & ROLES (COMPLET EDITABIL) --- */}
+        {/* --- STEP 4: TEAM & ROLES --- */}
         {step === 4 && (
           <>
-            <CardHeader className="pb-4">
+            <CardHeader className="pb-4 border-b border-slate-800/50 pt-8 px-8">
                 <div className="flex justify-between items-center">
                     <div>
-                        <CardTitle>Team Structure</CardTitle>
-                        <CardDescription>Customize roles for <strong>{selectedMethodology}</strong>. You are in control.</CardDescription>
+                        <CardTitle className="text-2xl">Team Structure</CardTitle>
+                        <CardDescription className="text-base mt-1">
+                            Customize roles for <strong className="text-blue-400">{selectedMethodology}</strong>.
+                        </CardDescription>
                     </div>
-                    <Button variant="outline" onClick={getAiRoles} disabled={isAiLoading} className="border-purple-500 text-purple-400 hover:bg-purple-500/10">
+                    <Button variant="outline" onClick={handleGetAiRoles} disabled={isAiLoading} className="border-purple-500/50 text-purple-400 hover:bg-purple-500/10 hover:border-purple-500">
                         {isAiLoading ? <Loader2 className="animate-spin mr-2 w-4 h-4"/> : <Sparkles className="mr-2 w-4 h-4"/>}
                         Suggest AI Roles
                     </Button>
                 </div>
             </CardHeader>
-            <CardContent className="space-y-6 flex-1 flex flex-col">
+            <CardContent className="space-y-6 flex-1 flex flex-col p-8">
                 
-                <div className="flex flex-col md:flex-row gap-6 flex-1 min-h-[400px]">
+                <div className="flex flex-col md:flex-row gap-8 flex-1 min-h-[400px]">
                     
                     {/* Lista de Roluri (Stânga) */}
-                    <div className="w-full md:w-1/3 flex flex-col border-r border-slate-800 pr-4">
-                        <Label className="text-xs text-slate-500 uppercase tracking-widest mb-3">Roles List</Label>
+                    <div className="w-full md:w-1/3 flex flex-col border-r border-slate-800 pr-8">
+                        <Label className="text-xs text-slate-500 uppercase tracking-widest mb-4 font-bold">Roles List</Label>
                         
-                        <div className="space-y-2 flex-1 overflow-y-auto max-h-[400px]">
+                        <div className="space-y-3 flex-1 overflow-y-auto max-h-[400px] pr-2 scrollbar-thin scrollbar-thumb-slate-800">
                             {roles.map((role, idx) => (
                                 <div 
                                     key={idx}
                                     onClick={() => setSelectedRoleIndex(idx)}
                                     className={cn(
-                                        "p-4 rounded-lg cursor-pointer border transition flex flex-col gap-1 relative group",
+                                        "p-4 rounded-xl cursor-pointer border transition-all duration-200 flex flex-col gap-1 relative group",
                                         selectedRoleIndex === idx 
-                                            ? "bg-blue-600/10 border-blue-500 shadow-md" 
+                                            ? "bg-blue-600/10 border-blue-500 shadow-[inset_4px_0_0_0_#3b82f6]" 
                                             : "bg-slate-950 border-slate-800 hover:bg-slate-900 hover:border-slate-700"
                                     )}
                                 >
@@ -556,7 +584,7 @@ export default function CreateWorkspaceWizard() {
                                             {role.name}
                                         </span>
                                         <div className="flex items-center gap-2">
-                                            <Badge variant="secondary" className="text-[10px] h-5 px-1.5">{role.emails.length}</Badge>
+                                            {role.emails.length > 0 && <Badge variant="secondary" className="text-[10px] h-5 px-1.5 bg-green-500/20 text-green-400">{role.emails.length}</Badge>}
                                             {roles.length > 1 && (
                                                 <Trash2 
                                                     className="w-4 h-4 text-slate-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition"
@@ -570,72 +598,71 @@ export default function CreateWorkspaceWizard() {
                             ))}
                         </div>
 
-                        {/* Buton Adaugare Rol Manual */}
-                        <Button variant="outline" className="mt-4 border-dashed border-slate-700 text-slate-400 hover:text-white w-full" onClick={handleAddCustomRole}>
+                        <Button variant="outline" className="mt-4 border-dashed border-slate-700 text-slate-400 hover:text-white w-full hover:bg-slate-800" onClick={handleAddCustomRole}>
                             <Plus className="w-4 h-4 mr-2"/> Create Custom Role
                         </Button>
                     </div>
 
-                    {/* Detalii Rol & Membri (Dreapta) */}
-                    <div className="flex-1 flex flex-col bg-slate-950/50 p-6 rounded-xl border border-slate-800">
+                    {/* Detalii Rol (Dreapta) */}
+                    <div className="flex-1 flex flex-col bg-slate-950/30 p-8 rounded-2xl border border-slate-800 shadow-inner">
                         {roles[selectedRoleIndex] ? (
                             <>
                                 {/* HEADER EDITABIL PENTRU ROL */}
-                                <div className="mb-8 space-y-4 border-b border-slate-800 pb-6">
+                                <div className="mb-8 space-y-6 border-b border-slate-800 pb-8">
                                     <div className="flex items-center gap-2 text-blue-400 mb-2">
-                                        <Settings className="w-4 h-4"/> <span className="text-xs font-bold uppercase tracking-wider">Role Settings</span>
+                                        <Settings className="w-4 h-4"/> <span className="text-xs font-bold uppercase tracking-wider">Role Configuration</span>
                                     </div>
-                                    <div className="space-y-1">
-                                        <Label className="text-xs text-slate-500">Role Name</Label>
+                                    <div className="space-y-2">
+                                        <Label className="text-xs text-slate-500 uppercase font-bold">Role Name</Label>
                                         <Input 
                                             value={roles[selectedRoleIndex].name}
                                             onChange={(e) => handleUpdateRole('name', e.target.value)}
-                                            className="bg-slate-900 border-slate-700 font-bold text-lg h-10"
+                                            className="bg-slate-900 border-slate-700 font-bold text-xl h-12 focus:border-blue-500 transition-colors"
                                         />
                                     </div>
-                                    <div className="space-y-1">
-                                        <Label className="text-xs text-slate-500">Description</Label>
+                                    <div className="space-y-2">
+                                        <Label className="text-xs text-slate-500 uppercase font-bold">Description</Label>
                                         <Textarea 
                                             value={roles[selectedRoleIndex].description}
                                             onChange={(e) => handleUpdateRole('description', e.target.value)}
-                                            className="bg-slate-900 border-slate-700 resize-none h-16 text-sm text-slate-300"
+                                            className="bg-slate-900 border-slate-700 resize-none h-24 text-base text-slate-300 focus:border-blue-500 transition-colors"
                                         />
                                     </div>
                                 </div>
                                 
                                 {/* ADĂUGARE MEMBRI */}
                                 <div className="flex-1 flex flex-col">
-                                    <Label className="mb-3 flex items-center gap-2">
-                                        <Users className="w-4 h-4 text-slate-500"/> Assign Members
+                                    <Label className="mb-4 flex items-center gap-2 text-slate-300">
+                                        <Users className="w-4 h-4 text-slate-500"/> Assign Members <span className="text-xs text-slate-500 font-normal ml-auto">(Invite by email)</span>
                                     </Label>
                                     
-                                    <div className="flex gap-2 mb-4">
+                                    <div className="flex gap-3 mb-6">
                                         <Input 
                                             placeholder="colleague@company.com" 
                                             value={inviteEmail}
                                             onChange={(e) => setInviteEmail(e.target.value)}
-                                            className="bg-slate-900 border-slate-700"
+                                            className="bg-slate-900 border-slate-700 h-11"
                                             onKeyDown={(e) => e.key === "Enter" && addEmailToRole()}
                                         />
-                                        <Button onClick={addEmailToRole} className="bg-blue-600 hover:bg-blue-700 shrink-0">
-                                            <Plus className="w-4 h-4"/>
+                                        <Button onClick={addEmailToRole} className="bg-blue-600 hover:bg-blue-700 shrink-0 w-12 h-11 p-0">
+                                            <Plus className="w-5 h-5"/>
                                         </Button>
                                     </div>
 
                                     <div className="space-y-2 flex-1 overflow-y-auto max-h-[200px] pr-2">
                                         {roles[selectedRoleIndex].emails.length === 0 && (
-                                            <div className="flex flex-col items-center justify-center h-full text-slate-600 border border-dashed border-slate-800 rounded-lg bg-slate-900/30">
-                                                <Users className="w-8 h-8 mb-2 opacity-20"/>
+                                            <div className="flex flex-col items-center justify-center h-24 text-slate-600 border border-dashed border-slate-800 rounded-xl bg-slate-900/20">
+                                                <Users className="w-6 h-6 mb-2 opacity-30"/>
                                                 <p className="text-sm italic">No members assigned yet.</p>
                                             </div>
                                         )}
                                         {roles[selectedRoleIndex].emails.map((email, eIdx) => (
-                                            <div key={eIdx} className="flex justify-between items-center bg-slate-900 p-3 rounded-lg text-sm border border-slate-800 group hover:border-slate-600 transition">
-                                                <span className="flex items-center gap-2">
-                                                    <div className="w-2 h-2 rounded-full bg-green-500"></div>
-                                                    {email}
+                                            <div key={eIdx} className="flex justify-between items-center bg-slate-900 p-3 pl-4 rounded-lg text-sm border border-slate-800 group hover:border-slate-600 transition animate-in fade-in slide-in-from-left-2">
+                                                <span className="flex items-center gap-3">
+                                                    <div className="w-2 h-2 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]"></div>
+                                                    <span className="text-slate-200">{email}</span>
                                                 </span>
-                                                <button onClick={() => removeEmail(selectedRoleIndex, eIdx)} className="text-slate-500 hover:text-red-400 p-1 opacity-0 group-hover:opacity-100 transition">
+                                                <button onClick={() => removeEmail(selectedRoleIndex, eIdx)} className="text-slate-500 hover:text-red-400 p-1.5 hover:bg-red-500/10 rounded-md transition-all opacity-0 group-hover:opacity-100">
                                                     <Trash2 className="w-4 h-4"/>
                                                 </button>
                                             </div>
@@ -651,10 +678,10 @@ export default function CreateWorkspaceWizard() {
                     </div>
                 </div>
 
-                <div className="flex justify-between pt-6 border-t border-slate-800">
-                    <Button variant="ghost" onClick={() => setStep(3)} size="lg"><ArrowLeft className="mr-2 w-4 h-4"/> Change Methodology</Button>
-                    <Button onClick={handleFinalSubmit} disabled={isLoading} className="bg-green-600 hover:bg-green-700 text-white w-1/3 py-6 text-lg shadow-[0_0_25px_rgba(22,163,74,0.3)]">
-                        {isLoading ? <Loader2 className="animate-spin mr-2"/> : "Launch Project 🚀"}
+                <div className="flex justify-between pt-8 border-t border-slate-800 mt-4">
+                    <Button variant="ghost" onClick={() => setStep(3)} size="lg" className="text-slate-400 hover:text-white"><ArrowLeft className="mr-2 w-5 h-5"/> Change Methodology</Button>
+                    <Button onClick={handleFinalSubmit} disabled={isLoading} className="bg-green-600 hover:bg-green-700 text-white w-1/3 py-6 text-xl font-bold shadow-[0_0_30px_rgba(22,163,74,0.4)] hover:shadow-[0_0_40px_rgba(22,163,74,0.6)] transition-all duration-500">
+                        {isLoading ? <Loader2 className="animate-spin mr-2"/> : <span className="flex items-center">Launch Project <Rocket className="ml-2 w-6 h-6 animate-pulse"/></span>}
                     </Button>
                 </div>
 

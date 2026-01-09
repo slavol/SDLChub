@@ -1,14 +1,13 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
-// Importăm Toaster din componenta UI 'sonner' pe care tocmai ai instalat-o
-import { Toaster } from "@/components/ui/sonner"; 
+import { Toaster } from "@/components/ui/sonner"; // <--- Import
 
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
   title: "SDLC AI Hub",
-  description: "AI-Powered Project Management",
+  description: "Project Management powered by Gemini",
 };
 
 export default function RootLayout({
@@ -17,11 +16,10 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    // Am scos comentariul de aici pentru a evita eroarea de Hydration
-    <html lang="en" className="dark">
+    <html lang="en" className="dark"> 
       <body className={`${inter.className} bg-slate-950 text-slate-50`}>
         {children}
-        <Toaster />
+        <Toaster position="top-center" richColors />
       </body>
     </html>
   );
