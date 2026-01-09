@@ -24,3 +24,5 @@ dist/
 .vscode/
 .idea/
 *.swp
+
+backup/
