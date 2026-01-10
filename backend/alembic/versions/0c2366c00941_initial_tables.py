@@ -1,8 +1,8 @@
-"""Initial schema
+"""Initial tables
 
-Revision ID: 6e5082a03928
+Revision ID: 0c2366c00941
 Revises: 
-Create Date: 2026-01-09 18:37:38.272353
+Create Date: 2026-01-09 21:26:16.277889
 
 """
 from typing import Sequence, Union
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision: str = '6e5082a03928'
+revision: str = '0c2366c00941'
 down_revision: Union[str, Sequence[str], None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -33,10 +33,9 @@ def upgrade() -> None:
     op.create_index(op.f('ix_users_id'), 'users', ['id'], unique=False)
     op.create_table('projects',
     sa.Column('id', sa.Integer(), nullable=False),
-    sa.Column('name', sa.String(), nullable=False),
-    sa.Column('key', sa.String(), nullable=False),
-    sa.Column('description', sa.Text(), nullable=True),
-    sa.Column('logo_url', sa.String(), nullable=True),
+    sa.Column('name', sa.String(), nullable=True),
+    sa.Column('key', sa.String(), nullable=True),
+    sa.Column('description', sa.String(), nullable=True),
     sa.Column('methodology', sa.String(), nullable=True),
     sa.Column('owner_id', sa.Integer(), nullable=True),
     sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=True),
@@ -44,10 +43,12 @@ def upgrade() -> None:
     sa.PrimaryKeyConstraint('id')
     )
     op.create_index(op.f('ix_projects_id'), 'projects', ['id'], unique=False)
+    op.create_index(op.f('ix_projects_key'), 'projects', ['key'], unique=True)
+    op.create_index(op.f('ix_projects_name'), 'projects', ['name'], unique=False)
     op.create_table('roles',
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('project_id', sa.Integer(), nullable=True),
-    sa.Column('name', sa.String(), nullable=False),
+    sa.Column('name', sa.String(), nullable=True),
     sa.Column('description', sa.String(), nullable=True),
     sa.Column('permissions', sa.String(), nullable=True),
     sa.ForeignKeyConstraint(['project_id'], ['projects.id'], ),
@@ -57,11 +58,11 @@ def upgrade() -> None:
     op.create_table('sprints',
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('project_id', sa.Integer(), nullable=True),
-    sa.Column('name', sa.String(), nullable=False),
-    sa.Column('goal', sa.Text(), nullable=True),
+    sa.Column('name', sa.String(), nullable=True),
+    sa.Column('goal', sa.String(), nullable=True),
     sa.Column('start_date', sa.DateTime(), nullable=True),
     sa.Column('end_date', sa.DateTime(), nullable=True),
-    sa.Column('status', sa.String(), nullable=True),
+    sa.Column('is_active', sa.Boolean(), nullable=True),
     sa.ForeignKeyConstraint(['project_id'], ['projects.id'], ),
     sa.PrimaryKeyConstraint('id')
     )
@@ -73,6 +74,7 @@ def upgrade() -> None:
     sa.Column('role_id', sa.Integer(), nullable=True),
     sa.Column('code', sa.String(), nullable=True),
     sa.Column('status', sa.String(), nullable=True),
+    sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=True),
     sa.ForeignKeyConstraint(['project_id'], ['projects.id'], ),
     sa.ForeignKeyConstraint(['role_id'], ['roles.id'], ),
     sa.PrimaryKeyConstraint('id')
@@ -81,40 +83,47 @@ def upgrade() -> None:
     op.create_index(op.f('ix_invitations_email'), 'invitations', ['email'], unique=False)
     op.create_index(op.f('ix_invitations_id'), 'invitations', ['id'], unique=False)
     op.create_table('project_members',
-    sa.Column('user_id', sa.Integer(), nullable=False),
-    sa.Column('project_id', sa.Integer(), nullable=False),
+    sa.Column('id', sa.Integer(), nullable=False),
+    sa.Column('user_id', sa.Integer(), nullable=True),
+    sa.Column('project_id', sa.Integer(), nullable=True),
     sa.Column('role_id', sa.Integer(), nullable=True),
     sa.Column('joined_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=True),
     sa.ForeignKeyConstraint(['project_id'], ['projects.id'], ),
     sa.ForeignKeyConstraint(['role_id'], ['roles.id'], ),
     sa.ForeignKeyConstraint(['user_id'], ['users.id'], ),
-    sa.PrimaryKeyConstraint('user_id', 'project_id')
+    sa.PrimaryKeyConstraint('id')
     )
+    op.create_index(op.f('ix_project_members_id'), 'project_members', ['id'], unique=False)
     op.create_table('tasks',
     sa.Column('id', sa.Integer(), nullable=False),
-    sa.Column('project_id', sa.Integer(), nullable=True),
-    sa.Column('sprint_id', sa.Integer(), nullable=True),
-    sa.Column('assignee_id', sa.Integer(), nullable=True),
-    sa.Column('title', sa.String(), nullable=False),
+    sa.Column('key', sa.String(), nullable=True),
+    sa.Column('title', sa.String(), nullable=True),
     sa.Column('description', sa.Text(), nullable=True),
-    sa.Column('status', sa.String(), nullable=True),
-    sa.Column('priority', sa.String(), nullable=True),
+    sa.Column('status', sa.Enum('TODO', 'IN_PROGRESS', 'REVIEW', 'DONE', name='taskstatus'), nullable=True),
+    sa.Column('priority', sa.Enum('LOW', 'MEDIUM', 'HIGH', 'CRITICAL', name='taskpriority'), nullable=True),
     sa.Column('story_points', sa.Integer(), nullable=True),
-    sa.Column('risk_level', sa.String(), nullable=True),
+    sa.Column('project_id', sa.Integer(), nullable=True),
+    sa.Column('assignee_id', sa.Integer(), nullable=True),
+    sa.Column('sprint_id', sa.Integer(), nullable=True),
+    sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=True),
+    sa.Column('updated_at', sa.DateTime(timezone=True), nullable=True),
     sa.ForeignKeyConstraint(['assignee_id'], ['users.id'], ),
     sa.ForeignKeyConstraint(['project_id'], ['projects.id'], ),
     sa.ForeignKeyConstraint(['sprint_id'], ['sprints.id'], ),
     sa.PrimaryKeyConstraint('id')
     )
     op.create_index(op.f('ix_tasks_id'), 'tasks', ['id'], unique=False)
+    op.create_index(op.f('ix_tasks_key'), 'tasks', ['key'], unique=True)
     # ### end Alembic commands ###
 
 
 def downgrade() -> None:
     """Downgrade schema."""
     # ### commands auto generated by Alembic - please adjust! ###
+    op.drop_index(op.f('ix_tasks_key'), table_name='tasks')
     op.drop_index(op.f('ix_tasks_id'), table_name='tasks')
     op.drop_table('tasks')
+    op.drop_index(op.f('ix_project_members_id'), table_name='project_members')
     op.drop_table('project_members')
     op.drop_index(op.f('ix_invitations_id'), table_name='invitations')
     op.drop_index(op.f('ix_invitations_email'), table_name='invitations')
@@ -124,6 +133,8 @@ def downgrade() -> None:
     op.drop_table('sprints')
     op.drop_index(op.f('ix_roles_id'), table_name='roles')
     op.drop_table('roles')
+    op.drop_index(op.f('ix_projects_name'), table_name='projects')
+    op.drop_index(op.f('ix_projects_key'), table_name='projects')
     op.drop_index(op.f('ix_projects_id'), table_name='projects')
     op.drop_table('projects')
     op.drop_index(op.f('ix_users_id'), table_name='users')

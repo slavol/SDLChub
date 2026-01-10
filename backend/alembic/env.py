@@ -1,62 +1,39 @@
 from logging.config import fileConfig
-
-from sqlalchemy import engine_from_config
-from sqlalchemy import pool
-
-from alembic import context
-
-# ---------------- MODIFICĂRI ÎNCEPUT ----------------
 import os
 import sys
 
-# Adăugăm folderul părinte ('backend') în calea sistemului pentru a putea importa modulele
-# env.py se află în backend/alembic/, deci urcăm 2 nivele
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
+from sqlalchemy import engine_from_config
+from sqlalchemy import pool
+from alembic import context
 
+# --- CONFIGURARE PATH PENTRU IMPORTURI ---
+# Adaugă folderul 'backend' în path pentru a găsi 'models' și 'database'
+sys.path.insert(0, os.path.realpath(os.path.join(os.path.dirname(__file__), '..')))
+
+# --- IMPORTURI MODELE ---
 from database.session import Base
-
-# Importăm TOATE modelele pentru a fi înregistrate în metadata
-# Fără aceste importuri, Alembic nu va vedea tabelele noi!
+# Importăm TOATE modelele pentru a popula Base.metadata
 from models.user import User
-from models.project import Project, ProjectMember, Role, Invitation, Sprint, Task
-# ---------------- MODIFICĂRI SFÂRȘIT ----------------
+from models.project import Project, ProjectMember, Role, Invitation, Task, Sprint
 
-# this is the Alembic Config object, which provides
-# access to the values within the .ini file in use.
+# Debug: Verificăm dacă tabelele sunt văzute de Alembic
+print("DEBUG: Tabele detectate în metadata:", Base.metadata.tables.keys())
+
+# --- CONFIGURARE ALEMBIC ---
 config = context.config
 
-# Interpret the config file for Python logging.
-# This line sets up loggers basically.
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# add your model's MetaData object here
-# for 'autogenerate' support
-# AICI LEGĂM METADATA DIN BAZA DE DATE
+# AICI ESTE CHEIA: Setăm target_metadata cu metadata-ul din aplicație
 target_metadata = Base.metadata
 
-# other values from the config, defined by the needs of env.py,
-# can be acquired:
-# my_important_option = config.get_main_option("my_important_option")
-# ... etc.
-
-
 def run_migrations_offline() -> None:
-    """Run migrations in 'offline' mode.
-
-    This configures the context with just a URL
-    and not an Engine, though an Engine is acceptable
-    here as well.  By skipping the Engine creation
-    we don't even need a DBAPI to be available.
-
-    Calls to context.execute() here emit the given string to the
-    script output.
-
-    """
+    """Run migrations in 'offline' mode."""
     url = config.get_main_option("sqlalchemy.url")
     context.configure(
         url=url,
-        target_metadata=target_metadata,
+        target_metadata=target_metadata, # <--- Se asigură că metadata este trimisă
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
     )
@@ -66,12 +43,7 @@ def run_migrations_offline() -> None:
 
 
 def run_migrations_online() -> None:
-    """Run migrations in 'online' mode.
-
-    In this scenario we need to create an Engine
-    and associate a connection with the context.
-
-    """
+    """Run migrations in 'online' mode."""
     connectable = engine_from_config(
         config.get_section(config.config_ini_section, {}),
         prefix="sqlalchemy.",
@@ -80,7 +52,8 @@ def run_migrations_online() -> None:
 
     with connectable.connect() as connection:
         context.configure(
-            connection=connection, target_metadata=target_metadata
+            connection=connection, 
+            target_metadata=target_metadata # <--- Se asigură că metadata este trimisă
         )
 
         with context.begin_transaction():

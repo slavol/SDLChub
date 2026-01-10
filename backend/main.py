@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from routers import auth, projects
+from routers import auth, projects, tasks, sprints
 
 app = FastAPI(title="SDLC AI Hub API", version="2.0")
 
@@ -21,6 +21,8 @@ app.add_middleware(
 # --- Includem Routerele ---
 app.include_router(auth.router)
 app.include_router(projects.router)
+app.include_router(tasks.router)
+app.include_router(sprints.router)
 
 @app.get("/")
 def read_root():

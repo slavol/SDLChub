@@ -6,7 +6,6 @@ import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-// Am adăugat Eye și EyeOff pentru toggle
 import { Loader2, LogIn, Eye, EyeOff } from "lucide-react";
 import { toast } from "sonner";
 
@@ -103,22 +102,17 @@ export default function LoginPage() {
               name="password"
               render={({ field }) => (
                 <FormItem>
-                  <div className="flex items-center justify-between">
-                     <FormLabel>Password</FormLabel>
-                     <Link href="/forgot-password" className="text-xs text-blue-500 hover:underline">Forgot password?</Link>
-                  </div>
+                  <FormLabel>Password</FormLabel>
                   <FormControl>
                     <div className="relative">
                         <Input 
-                            // Aici schimbăm tipul dinamic
                             type={showPassword ? "text" : "password"} 
                             placeholder="******" 
                             {...field} 
-                            // Adaugăm padding-right (pr-10) ca să nu scriem peste iconiță
                             className="bg-slate-950 border-slate-700 focus:border-blue-500 pr-10" 
                         />
                         <button
-                            type="button" // Important: type="button" ca să nu dea submit la form
+                            type="button"
                             onClick={() => setShowPassword(!showPassword)}
                             className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white transition-colors"
                         >
@@ -131,6 +125,12 @@ export default function LoginPage() {
                     </div>
                   </FormControl>
                   <FormMessage />
+                  {/* MODIFICARE AICI: Am mutat link-ul sub input, aliniat la dreapta */}
+                  <div className="flex justify-end">
+                    <Link href="/forgot-password" className="text-xs text-blue-500 hover:underline">
+                        Forgot password?
+                    </Link>
+                  </div>
                 </FormItem>
               )}
             />

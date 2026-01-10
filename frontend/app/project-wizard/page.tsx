@@ -179,9 +179,9 @@ export default function ProjectWizard() {
           ];
       } else if (selectedMethodology === "KANBAN") {
           defaultRoles = [
-              { name: "Service Request Manager", description: "Manages incoming work & prioritization", emails: [] },
-              { name: "Service Delivery Manager", description: "Manages flow & removes blockers", emails: [] },
-              { name: "Team Member", description: "Executes work items", emails: [] }
+              { name: "Project Manager", description: "Manages incoming work & prioritization", emails: [] },
+              { name: "Flow Manager", description: "Manages flow & removes blockers", emails: [] },
+              { name: "Developer", description: "Executes work items", emails: [] }
           ];
       } else {
            defaultRoles = [

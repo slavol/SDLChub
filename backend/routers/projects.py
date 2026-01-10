@@ -11,6 +11,7 @@ from routers.auth import get_current_user
 from services.ai_advisor import get_methodology_recommendation, get_role_suggestions
 from pydantic import BaseModel
 from utils.email import send_project_invitation_email
+from schemas.user import UserOut
 
 router = APIRouter(prefix="/projects", tags=["Projects"])
 
@@ -163,3 +164,24 @@ def get_my_projects(
         projects.append(membership.project)
         
     return projects
+
+@router.get("/{project_id}/members", response_model=List[UserOut])
+def get_project_members(
+    project_id: int, 
+    db: Session = Depends(get_db), 
+    current_user: User = Depends(get_current_user)
+):
+    # Verificăm dacă userul curent are acces la proiect
+    member_check = db.query(ProjectMember).filter(
+        ProjectMember.project_id == project_id,
+        ProjectMember.user_id == current_user.id
+    ).first()
+    
+    if not member_check:
+        raise HTTPException(status_code=403, detail="Not authorized to view members of this project")
+
+    # Luăm membrii
+    members = db.query(ProjectMember).filter(ProjectMember.project_id == project_id).all()
+    
+    # Returnăm lista de Useri asociați
+    return [m.user for m in members]

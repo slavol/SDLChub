@@ -78,3 +78,14 @@ export const createProjectFull = async (data: CreateProjectRequest) => {
     const response = await api.post("/projects/create_full", data);
     return response.data;
 };
+
+export interface ProjectMember {
+    id: number;
+    email: string;
+    full_name: string;
+}
+
+export const getProjectMembers = async (projectId: number): Promise<ProjectMember[]> => {
+    const response = await api.get(`/projects/${projectId}/members`);
+    return response.data;
+};

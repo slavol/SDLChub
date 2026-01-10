@@ -14,3 +14,4 @@ class User(Base):
     # Relații
     owned_projects = relationship("models.project.Project", back_populates="owner")
     memberships = relationship("models.project.ProjectMember", back_populates="user")
+    assigned_tasks = relationship("Task", back_populates="assignee")
