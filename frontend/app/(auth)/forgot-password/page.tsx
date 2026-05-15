@@ -14,6 +14,11 @@ import { Input } from "@/components/ui/input";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import api from "@/lib/axios";
 
+interface ForgotPasswordResponse {
+  message: string;
+  dev_reset_url?: string;
+}
+
 const formSchema = z.object({
   email: z.string().email({ message: "Invalid email address" }),
 });
@@ -21,6 +26,7 @@ const formSchema = z.object({
 export default function ForgotPasswordPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
+  const [devResetUrl, setDevResetUrl] = useState<string | null>(null);
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -30,7 +36,8 @@ export default function ForgotPasswordPage() {
   async function onSubmit(values: z.infer<typeof formSchema>) {
     setIsLoading(true);
     try {
-      await api.post("/auth/forgot-password", values);
+      const response = await api.post<ForgotPasswordResponse>("/auth/forgot-password", values);
+      setDevResetUrl(response.data.dev_reset_url || null);
       setIsSuccess(true);
       toast.success("Reset link sent!");
     } catch (error) {
@@ -54,6 +61,13 @@ export default function ForgotPasswordPage() {
             <p className="text-slate-400 mb-6">
                 We sent a password reset link to <strong>{form.getValues("email")}</strong>.
             </p>
+            {devResetUrl && (
+                <Link href={devResetUrl}>
+                    <Button className="w-full bg-green-600 hover:bg-green-700 mb-3">
+                        Reset password now
+                    </Button>
+                </Link>
+            )}
             <Link href="/login">
                 <Button variant="outline" className="w-full border-slate-700 hover:bg-slate-800 hover:text-white">
                     Back to Login
@@ -68,7 +82,7 @@ export default function ForgotPasswordPage() {
       <CardHeader>
         <CardTitle className="text-2xl font-bold text-center">Forgot Password?</CardTitle>
         <CardDescription className="text-center text-slate-400">
-          Enter your email and we'll send you a reset link
+          Enter your email and we&apos;ll send you a reset link
         </CardDescription>
       </CardHeader>
       <CardContent>

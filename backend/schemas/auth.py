@@ -1,32 +1,49 @@
-from pydantic import BaseModel, EmailStr
 from typing import Optional
 
-# Ce primim la Înregistrare
+from pydantic import BaseModel, EmailStr
+
+
 class UserRegister(BaseModel):
     email: EmailStr
     password: str
     full_name: str
 
-# Ce primim la Login
+
 class UserLogin(BaseModel):
     email: EmailStr
     password: str
 
-# Ce returnăm după Login (Token-ul)
+
+class AuthUser(BaseModel):
+    id: int
+    email: EmailStr
+    full_name: Optional[str] = None
+    is_active: bool
+
+    class Config:
+        from_attributes = True
+
+
 class Token(BaseModel):
     access_token: str
     token_type: str
-    has_pending_invites: bool = False # Flag pentru Frontend (Fluxul A)
+    has_pending_invites: bool = False
+    user: AuthUser
 
-# Datele din Token decodat
+
 class TokenData(BaseModel):
     email: Optional[str] = None
     id: Optional[int] = None
 
-# --- SCHEME PENTRU RESET ---
+
 class PasswordResetRequest(BaseModel):
     email: EmailStr
+
 
 class PasswordResetConfirm(BaseModel):
     token: str
     new_password: str
+
+
+class ResendVerificationRequest(BaseModel):
+    email: EmailStr

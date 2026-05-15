@@ -123,6 +123,8 @@ def downgrade() -> None:
     op.drop_index(op.f('ix_tasks_key'), table_name='tasks')
     op.drop_index(op.f('ix_tasks_id'), table_name='tasks')
     op.drop_table('tasks')
+    op.execute("DROP TYPE IF EXISTS taskstatus")
+    op.execute("DROP TYPE IF EXISTS taskpriority")
     op.drop_index(op.f('ix_project_members_id'), table_name='project_members')
     op.drop_table('project_members')
     op.drop_index(op.f('ix_invitations_id'), table_name='invitations')

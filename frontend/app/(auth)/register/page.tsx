@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -13,7 +12,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
-import api from "@/lib/axios";
+import { getApiErrorMessage } from "@/lib/api-error";
+import { registerUser } from "@/services/auth";
 
 const formSchema = z.object({
   full_name: z.string().min(2, { message: "Name must be at least 2 characters" }),
@@ -26,9 +26,9 @@ const formSchema = z.object({
 });
 
 export default function RegisterPage() {
-  const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false); // Stare nouă pentru succes
+  const [devVerificationUrl, setDevVerificationUrl] = useState<string | null>(null);
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -39,19 +39,20 @@ export default function RegisterPage() {
     setIsLoading(true);
     try {
       // Apelăm endpoint-ul de register
-      await api.post("/auth/register", {
+      const response = await registerUser({
           email: values.email,
           password: values.password,
           full_name: values.full_name
       });
       
       // NU mai facem login automat. Afișăm ecranul de succes.
+      setDevVerificationUrl(response.dev_verification_url || null);
       setIsSuccess(true);
       toast.success("Account created! Check your email.");
 
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error(error);
-      toast.error(error.response?.data?.detail || "Registration failed.");
+      toast.error(getApiErrorMessage(error, "Registration failed."));
     } finally {
       setIsLoading(false);
     }
@@ -71,6 +72,13 @@ export default function RegisterPage() {
                 We sent a verification link to <strong>{form.getValues("email")}</strong>. 
                 Please click the link to activate your account.
             </p>
+            {devVerificationUrl && (
+                <Link href={devVerificationUrl}>
+                    <Button className="w-full bg-green-600 hover:bg-green-700 mb-3">
+                        Verify account now
+                    </Button>
+                </Link>
+            )}
             <Link href="/login">
                 <Button variant="outline" className="w-full border-slate-700 hover:bg-slate-800 hover:text-white">
                     Back to Login

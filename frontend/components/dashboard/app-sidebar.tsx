@@ -1,102 +1,347 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { 
-  LayoutDashboard, 
-  KanbanSquare, 
-  Settings, 
-  Users, 
-  FileText, 
-  LogOut, 
+import { useEffect, useMemo, useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import {
+  Activity,
+  BriefcaseBusiness,
   CalendarDays,
-  ShieldAlert,
-  GitPullRequest
+  Check,
+  ChevronDown,
+  FileText,
+  KanbanSquare,
+  LayoutDashboard,
+  LogOut,
+  PlusCircle,
+  Settings,
+  Users,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
-import { useAuthStore } from "@/store/use-auth-store";
-import { Button } from "@/components/ui/button";
+
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { cn } from "@/lib/utils";
+import { getMyProjects, Project } from "@/services/project";
+import { useAuthStore } from "@/store/use-auth-store";
+import { useProjectStore } from "@/store/use-project-store";
 
 interface SidebarProps {
-    methodology: string;
-    role: string;
-    projectName?: string;
+  methodology: string;
+  role: string;
+  projectName?: string;
+}
+
+function getInitials(value?: string | null, fallback = "PR") {
+  if (!value) return fallback;
+
+  const parts = value
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2);
+
+  if (parts.length === 0) return fallback;
+
+  return parts.map((part) => part[0]?.toUpperCase()).join("");
+}
+
+function getProjectMark(project?: Project | null) {
+  if (!project) return "PR";
+
+  return (
+    project.key?.slice(0, 2).toUpperCase() ||
+    getInitials(project.name, "PR")
+  );
 }
 
 export function AppSidebar({ methodology, role, projectName }: SidebarProps) {
   const pathname = usePathname();
-  const { logout, user } = useAuthStore();
+  const router = useRouter();
 
-  // --- POLYMORPHIC LOGIC ---
-  const isScrum = methodology === "SCRUM" || methodology === "SCRUMBAN";
-  const isAdmin = role === "Owner" || role === "Admin"; 
+  const { logout, user } = useAuthStore();
+  const { currentProject, setCurrentProject, clearCurrentProject } =
+    useProjectStore();
+
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [loadingProjects, setLoadingProjects] = useState(true);
+
+  useEffect(() => {
+    const loadProjects = async () => {
+      setLoadingProjects(true);
+
+      try {
+        const remoteProjects = await getMyProjects();
+        setProjects(remoteProjects);
+
+        if (remoteProjects.length === 0) {
+          clearCurrentProject();
+          return;
+        }
+
+        const stillAvailable = currentProject
+          ? remoteProjects.some((project) => project.id === currentProject.id)
+          : false;
+
+        if (!currentProject || !stillAvailable) {
+          setCurrentProject(remoteProjects[0]);
+        }
+      } catch {
+        setProjects([]);
+      } finally {
+        setLoadingProjects(false);
+      }
+    };
+
+    loadProjects();
+  }, [clearCurrentProject, currentProject, setCurrentProject]);
+
+  const activeProject = useMemo(() => {
+    if (!currentProject) return null;
+
+    return (
+      projects.find((project) => project.id === currentProject.id) ||
+      currentProject
+    );
+  }, [currentProject, projects]);
+
+  const activeMethodology = activeProject?.methodology || methodology;
+  const activeProjectName =
+    activeProject?.name || projectName || "Select workspace";
+  const activeProjectKey = activeProject?.key || "NO-KEY";
+
+  const displayName = user?.full_name || "User";
+  const userInitials = getInitials(displayName, "U");
+  const projectInitials = getProjectMark(activeProject);
+
+  const isScrum =
+    activeMethodology === "SCRUM" || activeMethodology === "SCRUMBAN";
+  const isAdmin = ["Owner", "Admin", "Project Admin"].includes(role);
 
   const links = [
     { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
-    { name: "Board", href: "/dashboard/board", icon: KanbanSquare },
-    // Only show Backlog for Scrum/Scrumban
-    ...(isScrum ? [{ name: "Backlog", href: "/dashboard/backlog", icon: FileText }] : []),
-    { name: "Team", href: "/dashboard/team", icon: Users },
+    { name: "Activity", href: "/dashboard/activity", icon: Activity },
     { name: "Calendar", href: "/dashboard/calendar", icon: CalendarDays },
-    { name: "Risks & PRs", href: "/dashboard/risks", icon: ShieldAlert },
-    ...(isAdmin ? [{ name: "Settings", href: "/dashboard/settings", icon: Settings }] : []),
+    { name: "Board", href: "/dashboard/board", icon: KanbanSquare },
+    ...(isScrum
+      ? [{ name: "Backlog", href: "/dashboard/backlog", icon: FileText }]
+      : []),
+    { name: "Team", href: "/dashboard/team", icon: Users },
+    ...(isAdmin
+      ? [{ name: "Settings", href: "/dashboard/settings", icon: Settings }]
+      : []),
   ];
 
+  const handleProjectChange = (project: Project) => {
+    setCurrentProject(project);
+    router.push("/dashboard");
+    router.refresh();
+  };
+
+  const handleCreateProject = () => {
+    router.push("/project-wizard");
+  };
+
+  const handleSignOut = () => {
+    clearCurrentProject();
+    logout();
+    router.push("/");
+  };
+
   return (
-    <div className="flex flex-col h-screen w-64 bg-slate-950 border-r border-slate-800 text-slate-200 shrink-0">
-      {/* Identity Area */}
-      <div className="p-6 border-b border-slate-900">
+    <aside className="flex h-screen w-[272px] shrink-0 flex-col border-r border-slate-800 bg-slate-950 text-slate-200">
+      <div className="border-b border-slate-800 px-4 py-4">
         <div className="flex items-center gap-3">
-            <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-blue-600 to-purple-600 flex items-center justify-center font-bold text-white shadow-lg shadow-blue-900/20">
-                SD
-            </div>
-            <div className="overflow-hidden">
-                <h2 className="font-bold text-lg tracking-tight leading-none text-white">SDLC Hub</h2>
-                <p className="text-[10px] text-slate-500 uppercase tracking-wider mt-1 truncate">{projectName || "Workspace"}</p>
-            </div>
+          <div className="flex h-10 w-10 items-center justify-center rounded-2xl border border-blue-500/25 bg-blue-500/10 text-sm font-bold text-blue-200 shadow-lg shadow-blue-950/20">
+            SD
+          </div>
+
+          <div className="min-w-0">
+            <h2 className="truncate text-lg font-semibold leading-tight text-white">
+              SDLC Hub
+            </h2>
+            <p className="truncate text-xs text-slate-500">
+              Adaptive project workspace
+            </p>
+          </div>
         </div>
+
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              className="mt-4 w-full rounded-2xl border border-slate-800 bg-slate-900/70 p-3 text-left transition hover:border-blue-500/35 hover:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+            >
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-blue-500/25 bg-blue-500/10 text-xs font-bold text-blue-200">
+                  {projectInitials}
+                </div>
+
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <p className="truncate text-sm font-semibold text-white">
+                      {loadingProjects ? "Loading workspace..." : activeProjectName}
+                    </p>
+                  </div>
+                  <div className="mt-1 flex min-w-0 items-center gap-1.5 text-xs text-slate-500">
+                    <span className="truncate">{activeProjectKey}</span>
+                    <span>·</span>
+                    <span className="truncate">{activeMethodology}</span>
+                  </div>
+                </div>
+
+                <ChevronDown className="h-4 w-4 shrink-0 text-slate-500" />
+              </div>
+            </button>
+          </DropdownMenuTrigger>
+
+          <DropdownMenuContent
+            align="start"
+            sideOffset={8}
+            className="w-[240px] border-slate-800 bg-slate-950 p-2 text-slate-100 shadow-2xl shadow-slate-950/40"
+          >
+            <DropdownMenuLabel className="px-2 text-xs uppercase tracking-wide text-slate-500">
+              Workspaces
+            </DropdownMenuLabel>
+
+            <div className="max-h-64 overflow-y-auto py-1">
+              {projects.map((project) => {
+                const selected = activeProject?.id === project.id;
+
+                return (
+                  <DropdownMenuItem
+                    key={project.id}
+                    onSelect={() => handleProjectChange(project)}
+                    className="cursor-pointer rounded-xl px-2 py-2 text-slate-200 focus:bg-slate-900 focus:text-white"
+                  >
+                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-slate-700 bg-slate-900 text-[10px] font-bold text-slate-300">
+                      {getProjectMark(project)}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium">
+                        {project.name}
+                      </p>
+                      <p className="truncate text-xs text-slate-500">
+                        {project.key} · {project.methodology}
+                      </p>
+                    </div>
+                    {selected && <Check className="h-4 w-4 text-blue-300" />}
+                  </DropdownMenuItem>
+                );
+              })}
+
+              {!loadingProjects && projects.length === 0 && (
+                <div className="rounded-xl border border-dashed border-slate-800 bg-slate-900/50 p-3 text-sm text-slate-500">
+                  No project workspace yet.
+                </div>
+              )}
+            </div>
+
+            <DropdownMenuSeparator className="bg-slate-800" />
+
+            <DropdownMenuItem
+              onSelect={handleCreateProject}
+              className="cursor-pointer rounded-xl px-2 py-2 text-blue-300 focus:bg-blue-500/10 focus:text-blue-200"
+            >
+              <PlusCircle className="h-4 w-4" />
+              Create new project
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
 
-      {/* Navigation */}
-      <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
-        {links.map((link) => {
+      <nav className="flex-1 overflow-y-auto px-3 py-4">
+        <div className="mb-3 px-3 text-[11px] font-medium uppercase tracking-[0.18em] text-slate-600">
+          Navigation
+        </div>
+
+        <div className="space-y-1">
+          {links.map((link) => {
             const Icon = link.icon;
-            const isActive = pathname === link.href;
+            const isActive =
+              link.href === "/dashboard"
+                ? pathname === link.href
+                : pathname.startsWith(link.href);
+
             return (
-                <Link key={link.href} href={link.href}>
-                    <div className={cn(
-                        "flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200 group relative",
-                        isActive 
-                            ? "bg-blue-600/10 text-blue-400" 
-                            : "hover:bg-slate-900 hover:text-white text-slate-400"
-                    )}>
-                        {isActive && <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-blue-500 rounded-r-full" />}
-                        <Icon className={cn("w-5 h-5 transition-colors", isActive ? "text-blue-400" : "text-slate-500 group-hover:text-slate-300")} />
-                        <span className="font-medium">{link.name}</span>
-                    </div>
-                </Link>
+              <Link key={link.href} href={link.href}>
+                <div
+                  className={cn(
+                    "group flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition",
+                    isActive
+                      ? "bg-blue-600 text-white shadow-lg shadow-blue-950/25"
+                      : "text-slate-400 hover:bg-slate-900 hover:text-white"
+                  )}
+                >
+                  <Icon
+                    className={cn(
+                      "h-4 w-4 transition",
+                      isActive
+                        ? "text-white"
+                        : "text-slate-500 group-hover:text-slate-300"
+                    )}
+                  />
+                  <span className="font-medium">{link.name}</span>
+                </div>
+              </Link>
             );
-        })}
+          })}
+        </div>
       </nav>
 
-      {/* User Footer */}
-      <div className="p-4 border-t border-slate-900 bg-slate-950/50">
-        <div className="flex items-center gap-3 mb-4 px-2">
-            <Avatar className="h-9 w-9 border border-slate-700">
-                <AvatarFallback className="bg-gradient-to-tr from-slate-800 to-slate-700 text-slate-200">
-                    {user?.full_name?.charAt(0) || "U"}
+      <div className="border-t border-slate-800 p-4">
+        <div className="mb-3 rounded-2xl border border-slate-800 bg-slate-900/60 p-3">
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <div className="flex min-w-0 items-center gap-3">
+              <Avatar className="h-9 w-9 border border-slate-700">
+                <AvatarFallback className="bg-slate-800 text-slate-200">
+                  {userInitials}
                 </AvatarFallback>
-            </Avatar>
-            <div className="flex-1 overflow-hidden">
-                <p className="text-sm font-medium truncate text-white">{user?.full_name}</p>
-                <p className="text-xs text-slate-500 truncate">{user?.email}</p>
+              </Avatar>
+
+              <div className="min-w-0">
+                <p className="truncate text-sm font-medium text-white">
+                  {displayName}
+                </p>
+                <p className="truncate text-xs text-slate-500">{user?.email}</p>
+              </div>
             </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge
+              variant="outline"
+              className="border-slate-700 bg-slate-950/70 text-slate-300"
+            >
+              <BriefcaseBusiness className="mr-1 h-3 w-3" />
+              {role}
+            </Badge>
+            <Badge
+              variant="outline"
+              className="border-slate-700 bg-slate-950/70 text-slate-300"
+            >
+              {activeMethodology}
+            </Badge>
+          </div>
         </div>
-        <Button variant="ghost" className="w-full justify-start text-slate-400 hover:text-red-400 hover:bg-red-950/10 h-9" onClick={logout}>
-            <LogOut className="mr-2 h-4 w-4" /> Sign Out
+
+        <Button
+          variant="ghost"
+          className="h-10 w-full justify-start rounded-xl text-slate-400 hover:bg-red-950/20 hover:text-red-400"
+          onClick={handleSignOut}
+        >
+          <LogOut className="mr-2 h-4 w-4" />
+          Sign Out
         </Button>
       </div>
-    </div>
+    </aside>
   );
 }

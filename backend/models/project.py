@@ -2,7 +2,7 @@ import enum
 from sqlalchemy import Column, Integer, String, ForeignKey, Boolean, Text, DateTime, Enum
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
-from database.session import Base
+from backend.database.session import Base
 
 # --- MODELS EXISTENTE ---
 
@@ -20,13 +20,14 @@ class Project(Base):
 
     # --- RELAȚII ---
     # Adaugă linia asta pentru a lega owner_id de modelul User
-    owner = relationship("User", foreign_keys=[owner_id]) 
+    owner = relationship("User", foreign_keys=[owner_id], back_populates="owned_projects") 
 
     members = relationship("ProjectMember", back_populates="project")
     invitations = relationship("Invitation", back_populates="project")
     roles = relationship("Role", back_populates="project")
     tasks = relationship("Task", back_populates="project")
     sprints = relationship("Sprint", back_populates="project")
+    calendar_events = relationship("CalendarEvent", back_populates="project", cascade="all, delete-orphan")
 
 class ProjectMember(Base):
     __tablename__ = "project_members"
@@ -67,6 +68,7 @@ class Invitation(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     project = relationship("Project", back_populates="invitations")
+    role = relationship("Role", foreign_keys=[role_id])
 
 # --- MODELE NOI (TASK & SPRINT) ---
 
@@ -109,6 +111,7 @@ class Task(Base):
     status = Column(Enum(TaskStatus), default=TaskStatus.TODO)
     priority = Column(Enum(TaskPriority), default=TaskPriority.MEDIUM)
     story_points = Column(Integer, nullable=True)
+    due_date = Column(DateTime, nullable=True)
     
     project_id = Column(Integer, ForeignKey("projects.id"))
     assignee_id = Column(Integer, ForeignKey("users.id"), nullable=True)
@@ -120,3 +123,93 @@ class Task(Base):
     project = relationship("Project", back_populates="tasks")
     assignee = relationship("User", back_populates="assigned_tasks")
     sprint = relationship("Sprint", back_populates="tasks")
+    subtasks = relationship("Subtask", back_populates="task", cascade="all, delete-orphan", order_by="Subtask.id")
+    comments = relationship("TaskComment", back_populates="task", cascade="all, delete-orphan", order_by="TaskComment.created_at")
+    audit_logs = relationship("TaskAuditLog", back_populates="task", cascade="all, delete-orphan", order_by="TaskAuditLog.created_at")
+
+    @property
+    def assignee_name(self):
+        return self.assignee.full_name if self.assignee else None
+
+class Subtask(Base):
+    __tablename__ = "subtasks"
+    __table_args__ = {'extend_existing': True}
+
+    id = Column(Integer, primary_key=True, index=True)
+    task_id = Column(Integer, ForeignKey("tasks.id"))
+    title = Column(String)
+    is_done = Column(Boolean, default=False)
+    created_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    task = relationship("Task", back_populates="subtasks")
+    created_by = relationship("User", foreign_keys=[created_by_id])
+
+    @property
+    def created_by_name(self):
+        return self.created_by.full_name if self.created_by else None
+
+class TaskComment(Base):
+    __tablename__ = "task_comments"
+    __table_args__ = {'extend_existing': True}
+
+    id = Column(Integer, primary_key=True, index=True)
+    task_id = Column(Integer, ForeignKey("tasks.id"))
+    author_id = Column(Integer, ForeignKey("users.id"))
+    body = Column(Text)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    task = relationship("Task", back_populates="comments")
+    author = relationship("User", foreign_keys=[author_id])
+
+    @property
+    def author_name(self):
+        return self.author.full_name if self.author else None
+
+class TaskAuditLog(Base):
+    __tablename__ = "task_audit_logs"
+    __table_args__ = {'extend_existing': True}
+
+    id = Column(Integer, primary_key=True, index=True)
+    task_id = Column(Integer, ForeignKey("tasks.id"))
+    actor_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    action = Column(String)
+    field = Column(String, nullable=True)
+    old_value = Column(Text, nullable=True)
+    new_value = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    task = relationship("Task", back_populates="audit_logs")
+    actor = relationship("User", foreign_keys=[actor_id])
+
+    @property
+    def actor_name(self):
+        return self.actor.full_name if self.actor else None
+
+
+class CalendarEvent(Base):
+    __tablename__ = "calendar_events"
+    __table_args__ = {'extend_existing': True}
+
+    id = Column(Integer, primary_key=True, index=True)
+    project_id = Column(Integer, ForeignKey("projects.id"))
+    title = Column(String, nullable=False)
+    description = Column(Text, nullable=True)
+    event_type = Column(String, default="MEETING")
+    starts_at = Column(DateTime, nullable=False)
+    ends_at = Column(DateTime, nullable=False)
+    location = Column(String, nullable=True)
+    meeting_url = Column(String, nullable=True)
+    attendee_ids = Column(Text, default="[]")
+    created_by_id = Column(Integer, ForeignKey("users.id"))
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    project = relationship("Project", back_populates="calendar_events")
+    created_by = relationship("User", foreign_keys=[created_by_id])
+
+    @property
+    def created_by_name(self):
+        return self.created_by.full_name if self.created_by else None

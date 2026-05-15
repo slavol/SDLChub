@@ -1,12 +1,13 @@
 "use client";
 
 import { useEffect, useState, Suspense } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Loader2, CheckCircle2, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import api from "@/lib/axios";
+import { getApiErrorMessage } from "@/lib/api-error";
 
 function VerifyContent() {
     const searchParams = useSearchParams();
@@ -15,20 +16,20 @@ function VerifyContent() {
     const [message, setMessage] = useState("Verifying your email...");
 
     useEffect(() => {
-        if (!token) {
-            setStatus("error");
-            setMessage("Invalid verification link.");
-            return;
-        }
-
         const verify = async () => {
+            if (!token) {
+                setStatus("error");
+                setMessage("Invalid verification link.");
+                return;
+            }
+
             try {
                 await api.get(`/auth/verify-email?token=${token}`);
                 setStatus("success");
                 setMessage("Your email has been successfully verified! You can now login.");
-            } catch (error: any) {
+            } catch (error: unknown) {
                 setStatus("error");
-                setMessage(error.response?.data?.detail || "Verification failed. The link might be expired.");
+                setMessage(getApiErrorMessage(error, "Verification failed. The link might be expired."));
             }
         };
 

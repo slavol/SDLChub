@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { Loader2, LogIn, Eye, EyeOff } from "lucide-react";
+import { Loader2, LogIn, Eye, EyeOff, MailCheck } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -14,9 +14,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { Input } from "@/components/ui/input";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 
-import { loginUser } from "@/services/auth";
+import { loginUser, resendVerificationEmail } from "@/services/auth";
 import { getMyProjects } from "@/services/project";
 import { useAuthStore } from "@/store/use-auth-store";
+import { getApiErrorMessage } from "@/lib/api-error";
 
 // Schema de validare
 const formSchema = z.object({
@@ -28,6 +29,9 @@ export default function LoginPage() {
   const router = useRouter();
   const setToken = useAuthStore((state) => state.setToken);
   const [isLoading, setIsLoading] = useState(false);
+  const [inactiveEmail, setInactiveEmail] = useState<string | null>(null);
+  const [devVerificationUrl, setDevVerificationUrl] = useState<string | null>(null);
+  const [isResending, setIsResending] = useState(false);
   
   // Stare pentru vizibilitatea parolei
   const [showPassword, setShowPassword] = useState(false);
@@ -39,9 +43,13 @@ export default function LoginPage() {
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
     setIsLoading(true);
+    setInactiveEmail(null);
+    setDevVerificationUrl(null);
     try {
       // 1. Login
       const data = await loginUser(values);
+      const response = await loginUser(values);
+      useAuthStore.getState().setAuth(response.access_token, response.user);
       setToken(data.access_token);
       toast.success("Welcome back!");
 
@@ -58,15 +66,38 @@ export default function LoginPage() {
           } else {
               router.push("/onboarding"); // "The Fork"
           }
-      } catch (e) {
+      } catch {
           router.push("/onboarding");
       }
 
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error(error);
-      toast.error(error.response?.data?.detail || "Invalid credentials. Please try again.");
+      const message = getApiErrorMessage(error, "Invalid credentials. Please try again.");
+      if (message.toLowerCase().includes("not active")) {
+        setInactiveEmail(values.email);
+        toast.warning("Your account is not verified yet.");
+      } else {
+        toast.error(message);
+      }
     } finally {
       setIsLoading(false);
+    }
+  }
+
+  async function handleResendVerification() {
+    if (!inactiveEmail) return;
+
+    setIsResending(true);
+    setDevVerificationUrl(null);
+    try {
+      const response = await resendVerificationEmail(inactiveEmail);
+      setDevVerificationUrl(response.dev_verification_url || null);
+      toast.success(response.message);
+    } catch (error: unknown) {
+      console.error(error);
+      toast.error(getApiErrorMessage(error, "Could not resend verification email."));
+    } finally {
+      setIsResending(false);
     }
   }
 
@@ -138,12 +169,43 @@ export default function LoginPage() {
               {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <LogIn className="mr-2 h-4 w-4" />}
               Sign In
             </Button>
+
+            {inactiveEmail && (
+              <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-100">
+                <div className="flex items-start gap-3">
+                  <MailCheck className="mt-0.5 h-5 w-5 shrink-0 text-amber-300" />
+                  <div className="space-y-3">
+                    <p>
+                      Accountul exista, dar email-ul nu este confirmat. Retrimite link-ul de activare pentru{" "}
+                      <span className="font-medium text-white">{inactiveEmail}</span>.
+                    </p>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="w-full border-amber-500/40 bg-transparent text-amber-100 hover:bg-amber-500/20 hover:text-white"
+                      onClick={handleResendVerification}
+                      disabled={isResending}
+                    >
+                      {isResending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <MailCheck className="mr-2 h-4 w-4" />}
+                      Resend verification email
+                    </Button>
+                    {devVerificationUrl && (
+                      <Link href={devVerificationUrl}>
+                        <Button type="button" className="w-full bg-green-600 hover:bg-green-700">
+                          Verify account now
+                        </Button>
+                      </Link>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
           </form>
         </Form>
       </CardContent>
       <CardFooter className="flex justify-center border-t border-slate-800 pt-4">
           <p className="text-sm text-slate-400">
-              Don't have an account?{" "}
+              Don&apos;t have an account?{" "}
               <Link href="/register" className="text-blue-500 hover:underline font-medium">
                   Sign up
               </Link>

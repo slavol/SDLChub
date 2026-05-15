@@ -1,18 +1,21 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import { jwtDecode } from "jwt-decode"; // Asigură-te că ai instalat asta
 
-interface User {
+export interface User {
   id: number;
   email: string;
-  full_name?: string; // Optional, il vom popula mai tarziu din backend sau token
+  full_name?: string;
+  is_active?: boolean;
   role?: string;
 }
 
 interface AuthState {
   token: string | null;
   isAuthenticated: boolean;
-  user: User | null; // <--- Am adăugat asta pentru a repara eroarea
+  user: User | null;
+
+  setAuth: (token: string, user: User) => void;
+  setUser: (user: User) => void;
   setToken: (token: string) => void;
   logout: () => void;
 }
@@ -24,29 +27,33 @@ export const useAuthStore = create<AuthState>()(
       isAuthenticated: false,
       user: null,
 
-      setToken: (token: string) => {
-        try {
-          // Decodăm token-ul pentru a extrage ID-ul și Email-ul
-          const decoded: any = jwtDecode(token);
-          
-          set({ 
-            token, 
-            isAuthenticated: true,
-            user: {
-                id: decoded.id,
-                email: decoded.sub,
-                // Momentan backend-ul nu pune full_name in token, 
-                // deci punem email-ul ca fallback sau un string generic
-                full_name: decoded.sub?.split('@')[0] || "User" 
-            }
-          });
-        } catch (error) {
-          console.error("Invalid token:", error);
-          set({ token: null, isAuthenticated: false, user: null });
-        }
+      setAuth: (token: string, user: User) => {
+        set({
+          token,
+          user,
+          isAuthenticated: true,
+        });
       },
 
-      logout: () => set({ token: null, isAuthenticated: false, user: null }),
+      setUser: (user: User) => {
+        set({ user });
+      },
+
+      // păstrăm setToken temporar pentru compatibilitate cu codul existent
+      setToken: (token: string) => {
+        set({
+          token,
+          isAuthenticated: true,
+        });
+      },
+
+      logout: () => {
+        set({
+          token: null,
+          isAuthenticated: false,
+          user: null,
+        });
+      },
     }),
     {
       name: "auth-storage",

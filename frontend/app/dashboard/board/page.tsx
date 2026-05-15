@@ -1,7 +1,10 @@
 "use client";
 
-import { CreateTaskDialog } from "@/components/dashboard/create-task-dialog";
+// 1. React & Next Imports
 import { useState, useEffect } from "react";
+import Link from "next/link";
+
+// 2. Third-Party Libraries (DnD Kit, Icons, etc.)
 import {
   DndContext,
   DragOverlay,
@@ -12,43 +15,82 @@ import {
   useSensors,
   DragStartEvent,
   DragOverEvent,
-  DragEndEvent
+  DragEndEvent,
 } from "@dnd-kit/core";
 import {
   arrayMove,
   SortableContext,
   sortableKeyboardCoordinates,
   verticalListSortingStrategy,
-  useSortable
+  useSortable,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Plus, Loader2, CheckCircle } from "lucide-react";
+import {
+  ExternalLink,
+  Loader2,
+  CalendarClock,
+  CheckCircle,
+  CircleDot,
+  GripVertical,
+  UserRound,
+} from "lucide-react";
+import { toast } from "sonner";
+
+// 3. UI Components
+import { CreateTaskDialog } from "@/components/dashboard/create-task-dialog";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { toast } from "sonner";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { cn } from "@/lib/utils";
 
-// Importam serviciile
+// 4. Services, Store & Types
 import { getMyProjects } from "@/services/project";
 import { getProjectTasks, updateTask, Task, TaskStatus, TaskPriority } from "@/services/task";
-import { completeSprint } from "@/services/sprint"; // <--- Import nou
+import { completeSprint, getProjectSprints } from "@/services/sprint";
+import { getApiErrorMessage } from "@/lib/api-error";
+import { useProjectStore } from "@/store/use-project-store";
 
-// --- COMPONENTA: TASK CARD ---
+// ==========================================
+// CONSTANTS & HELPERS
+// ==========================================
+
+const COLUMNS_CONFIG = [
+  { id: TaskStatus.TODO, title: "To Do", color: "bg-slate-500" },
+  { id: TaskStatus.IN_PROGRESS, title: "In Progress", color: "bg-blue-500" },
+  { id: TaskStatus.REVIEW, title: "Code Review", color: "bg-purple-500" },
+  { id: TaskStatus.DONE, title: "Done", color: "bg-green-500" },
+];
+
+const priorityColor = {
+  [TaskPriority.CRITICAL]: "text-rose-300 bg-rose-500/10 border-rose-500/30",
+  [TaskPriority.HIGH]: "text-orange-300 bg-orange-500/10 border-orange-500/25",
+  [TaskPriority.MEDIUM]: "text-blue-300 bg-blue-500/10 border-blue-500/25",
+  [TaskPriority.LOW]: "text-slate-300 bg-slate-800/80 border-slate-700",
+};
+
+const priorityStripe = {
+  [TaskPriority.CRITICAL]: "bg-rose-500",
+  [TaskPriority.HIGH]: "bg-orange-500",
+  [TaskPriority.MEDIUM]: "bg-blue-500",
+  [TaskPriority.LOW]: "bg-slate-500",
+};
+
+function formatTaskDate(value?: string | null) {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return date.toLocaleDateString([], { month: "short", day: "numeric" });
+}
+
+// ==========================================
+// COMPONENT: TASK CARD
+// ==========================================
+
 function TaskCard({ task, isOverlay }: { task: Task; isOverlay?: boolean }) {
-  const {
-    setNodeRef,
-    attributes,
-    listeners,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({
+  const { setNodeRef, attributes, listeners, transform, transition, isDragging } = useSortable({
     id: task.id,
-    data: {
-      type: "Task",
-      task,
-    },
+    data: { type: "Task", task },
   });
 
   const style = {
@@ -56,19 +98,22 @@ function TaskCard({ task, isOverlay }: { task: Task; isOverlay?: boolean }) {
     transition,
   };
 
-  const priorityColor = {
-    [TaskPriority.CRITICAL]: "text-red-500 bg-red-500/20 border-red-500/40",
-    [TaskPriority.HIGH]: "text-orange-400 bg-orange-400/10 border-orange-400/20",
-    [TaskPriority.MEDIUM]: "text-blue-400 bg-blue-400/10 border-blue-400/20",
-    [TaskPriority.LOW]: "text-slate-400 bg-slate-400/10 border-slate-400/20"
-  };
+  const assigneeInitials = (task.assignee_name || "Unassigned")
+    .split(" ")
+    .filter(Boolean)
+    .map((part) => part[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
+
+  const dueDate = formatTaskDate(task.due_date);
 
   if (isDragging) {
     return (
       <div
         ref={setNodeRef}
         style={style}
-        className="opacity-30 bg-slate-800 h-[120px] rounded-lg border-2 border-dashed border-slate-600"
+        className="h-[154px] rounded-2xl border-2 border-dashed border-slate-700 bg-slate-900/40 opacity-40"
       />
     );
   }
@@ -80,36 +125,84 @@ function TaskCard({ task, isOverlay }: { task: Task; isOverlay?: boolean }) {
       {...attributes}
       {...listeners}
       className={cn(
-        "bg-slate-900 border border-slate-800 p-4 rounded-lg shadow-sm hover:border-slate-600 group transition-all cursor-grab active:cursor-grabbing",
-        isOverlay ? "rotate-2 scale-105 shadow-xl border-blue-500 cursor-grabbing z-50" : ""
+        "group relative overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/85 p-4 shadow-sm transition-all cursor-grab active:cursor-grabbing",
+        "hover:-translate-y-0.5 hover:border-blue-500/35 hover:bg-slate-900 hover:shadow-xl hover:shadow-slate-950/25",
+        isOverlay && "rotate-2 scale-105 border-blue-500 shadow-2xl shadow-blue-950/30 cursor-grabbing z-50"
       )}
     >
-      <div className="flex justify-between items-start mb-2">
-        <Badge variant="outline" className={cn("text-[10px] px-1.5 py-0 border", priorityColor[task.priority])}>
-          {task.priority}
-        </Badge>
-        <span className="text-[10px] text-slate-500 font-mono">{task.key}</span>
+      {/* Indicator prioritate (Linie laterală) */}
+      <div className={cn("absolute left-0 top-0 h-full w-1", priorityStripe[task.priority])} />
+
+      {/* Header Task (Key, Priority, Actions) */}
+      <div className="mb-3 flex items-start justify-between gap-3 pl-1">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <Badge variant="outline" className="border-slate-700 bg-slate-950 font-mono text-[10px] text-slate-300">
+            {task.key}
+          </Badge>
+          <Badge variant="outline" className={cn("border text-[10px]", priorityColor[task.priority])}>
+            {task.priority}
+          </Badge>
+        </div>
+
+        <div className="flex shrink-0 items-center gap-2">
+          <GripVertical className="h-4 w-4 text-slate-700 transition group-hover:text-slate-500" />
+          <Link
+            href={`/dashboard/tasks/${task.id}`}
+            onPointerDown={(event) => event.stopPropagation()}
+            className="rounded-lg p-1 text-slate-500 opacity-0 transition hover:bg-slate-800 hover:text-blue-300 group-hover:opacity-100"
+            aria-label={`Open ${task.key}`}
+          >
+            <ExternalLink className="h-4 w-4" />
+          </Link>
+        </div>
       </div>
 
-      <h4 className="text-sm font-medium text-slate-200 mb-3 leading-snug">{task.title}</h4>
+      {/* Titlu Task */}
+      <h4 className="mb-4 line-clamp-3 pl-1 text-sm font-semibold leading-6 text-slate-100">
+        {task.title}
+      </h4>
 
-      <div className="flex justify-between items-center mt-auto">
-        <div className="flex items-center gap-2 text-xs text-slate-500">
-          {task.story_points && <Badge variant="secondary" className="bg-slate-800 text-slate-400 hover:bg-slate-700 h-5 px-1.5">{task.story_points} pts</Badge>}
+      {/* Footer Task (Estimări, Assignee, Dată) */}
+      <div className="mt-auto flex items-center justify-between gap-3 pl-1">
+        <div className="flex min-w-0 items-center gap-2 text-xs text-slate-500">
+          <Badge variant="secondary" className="h-6 rounded-lg bg-slate-800 px-2 text-xs text-slate-300 hover:bg-slate-800">
+            {task.story_points ? `${task.story_points} pts` : "No est."}
+          </Badge>
+
+          {!task.assignee_id && (
+            <span className="hidden items-center gap-1 text-slate-600 sm:flex">
+              <UserRound className="h-3.5 w-3.5" />
+              Unassigned
+            </span>
+          )}
+
+          {dueDate && (
+            <span className="hidden items-center gap-1 text-slate-500 sm:flex">
+              <CalendarClock className="h-3.5 w-3.5" />
+              {dueDate}
+            </span>
+          )}
         </div>
-        {task.assignee_id && (
-          <Avatar className="h-6 w-6 border border-slate-700">
-            <AvatarFallback className="text-[10px] bg-blue-900 text-blue-200">
-              U
-            </AvatarFallback>
-          </Avatar>
-        )}
+
+        <Avatar className="h-7 w-7 border border-slate-700">
+          <AvatarFallback
+            className={cn(
+              "text-[10px] font-bold",
+              task.assignee_id ? "bg-blue-500/15 text-blue-200" : "bg-slate-800 text-slate-500"
+            )}
+          >
+            {task.assignee_id ? assigneeInitials || "U" : "NA"}
+          </AvatarFallback>
+        </Avatar>
       </div>
     </div>
   );
 }
 
-// --- COMPONENTA: COLUMN ---
+// ==========================================
+// COMPONENT: BOARD COLUMN
+// ==========================================
+
 function BoardColumn({ id, title, tasks, color }: { id: TaskStatus; title: string; tasks: Task[]; color: string }) {
   const { setNodeRef } = useSortable({
     id: id,
@@ -117,24 +210,34 @@ function BoardColumn({ id, title, tasks, color }: { id: TaskStatus; title: strin
   });
 
   return (
-    <div ref={setNodeRef} className="flex flex-col h-full min-w-[300px] w-[300px] bg-slate-950/50 rounded-xl border border-slate-800/50">
-      <div className="p-4 flex items-center justify-between border-b border-slate-800">
+    <div
+      ref={setNodeRef}
+      className="flex h-full min-w-[340px] w-[340px] flex-col rounded-2xl border border-slate-800 bg-slate-950/55 shadow-xl shadow-slate-950/20"
+    >
+      <div className="flex items-center justify-between border-b border-slate-800 p-4">
         <div className="flex items-center gap-2">
-          <div className={cn("w-3 h-3 rounded-full", color)}></div>
-          <h3 className="font-bold text-sm text-slate-300 uppercase tracking-wide">{title}</h3>
-          <Badge variant="secondary" className="ml-1 bg-slate-800 text-slate-400">{tasks.length}</Badge>
+          <div className={cn("h-2.5 w-2.5 rounded-full", color)} />
+          <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-300">{title}</h3>
+          <Badge variant="secondary" className="ml-1 rounded-lg bg-slate-800 text-slate-400 hover:bg-slate-800">
+            {tasks.length}
+          </Badge>
         </div>
-        <Button variant="ghost" size="icon" className="h-6 w-6 text-slate-500 hover:text-white">
-          <Plus className="h-4 w-4" />
-        </Button>
       </div>
 
-      <div className="flex-1 p-3 overflow-y-auto min-h-[150px]">
-        <SortableContext items={tasks.map(t => t.id)} strategy={verticalListSortingStrategy}>
+      <div className="min-h-[180px] flex-1 overflow-y-auto p-3">
+        <SortableContext items={tasks.map((t) => t.id)} strategy={verticalListSortingStrategy}>
           <div className="space-y-3">
             {tasks.map((task) => (
               <TaskCard key={task.id} task={task} />
             ))}
+
+            {tasks.length === 0 && (
+              <div className="rounded-2xl border border-dashed border-slate-800 bg-slate-900/35 p-6 text-center">
+                <CircleDot className="mx-auto mb-3 h-6 w-6 text-slate-700" />
+                <p className="text-sm font-medium text-slate-500">No tasks here</p>
+                <p className="mt-1 text-xs text-slate-600">Drop work into this lane.</p>
+              </div>
+            )}
           </div>
         </SortableContext>
       </div>
@@ -142,85 +245,91 @@ function BoardColumn({ id, title, tasks, color }: { id: TaskStatus; title: strin
   );
 }
 
-// --- COLUMNS CONFIG ---
-const COLUMNS_CONFIG = [
-  { id: TaskStatus.TODO, title: "To Do", color: "bg-slate-500" },
-  { id: TaskStatus.IN_PROGRESS, title: "In Progress", color: "bg-blue-500" },
-  { id: TaskStatus.REVIEW, title: "Code Review", color: "bg-purple-500" },
-  { id: TaskStatus.DONE, title: "Done", color: "bg-green-500" },
-];
+// ==========================================
+// MAIN PAGE COMPONENT
+// ==========================================
 
-// --- MAIN PAGE ---
 export default function BoardPage() {
+  const { currentProject, setCurrentProject } = useProjectStore();
+
+  // State-uri
   const [tasks, setTasks] = useState<Task[]>([]);
   const [projectId, setProjectId] = useState<number | null>(null);
-  
-  // State pentru ID-ul sprintului activ (daca exista)
+  const [methodology, setMethodology] = useState<string>("SCRUM");
   const [activeSprintId, setActiveSprintId] = useState<number | null>(null);
-  
   const [activeTask, setActiveTask] = useState<Task | null>(null);
   const [loading, setLoading] = useState(true);
   const [isMounted, setIsMounted] = useState(false);
 
-  useEffect(() => {
-    setIsMounted(true);
+  // State-uri pentru Modal-ul "Complete Sprint"
+  const [completeSprintOpen, setCompleteSprintOpen] = useState(false);
+  const [completingSprint, setCompletingSprint] = useState(false);
 
-    const init = async () => {
-      try {
-        const projects = await getMyProjects();
-        if (projects.length > 0) {
-          const pid = projects[0].id;
-          setProjectId(pid);
-
-          // Încărcăm Task-urile
-          // Backend-ul filtreaza deja: daca e Scrum, aduce doar active sprint
-          const remoteTasks = await getProjectTasks(pid);
-          setTasks(remoteTasks);
-
-          // Detectăm dacă suntem într-un sprint activ bazat pe task-uri
-          // (Backend-ul trimite task-urile cu sprint_id populat daca e Scrum Active Sprint)
-          const taskInSprint = remoteTasks.find(t => t.sprint_id);
-          if (taskInSprint && taskInSprint.sprint_id) {
-             setActiveSprintId(taskInSprint.sprint_id);
-          }
-        }
-      } catch (e) {
-        toast.error("Failed to load board data");
-      } finally {
-        setLoading(false);
-      }
-    };
-    init();
-  }, []);
-
+  // Senzori DnD
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   );
 
-  // --- LOGICA COMPLETE SPRINT ---
+  // Initializare Date
+  useEffect(() => {
+    setIsMounted(true);
+
+    const init = async () => {
+      try {
+        let project = currentProject;
+
+        if (!project) {
+          const projects = await getMyProjects();
+          project = projects[0] ?? null;
+          if (project) setCurrentProject(project);
+        }
+
+        if (project) {
+          const pid = project.id;
+          setProjectId(pid);
+          setMethodology(project.methodology);
+
+          const [remoteTasks, remoteSprints] = await Promise.all([
+            getProjectTasks(pid, "board"),
+            getProjectSprints(pid),
+          ]);
+
+          setTasks(remoteTasks);
+          const activeSprint = remoteSprints.find((sprint) => sprint.is_active);
+          setActiveSprintId(activeSprint?.id ?? null);
+        }
+      } catch {
+        toast.error("Failed to load board data");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    init();
+  }, [currentProject, setCurrentProject]);
+
+  // Handler: Complete Sprint
   const handleCompleteSprint = async () => {
     if (!activeSprintId) return;
 
-    // Confirmare simpla
-    if (!window.confirm("Are you sure you want to complete this sprint? Unfinished tasks will move to Backlog.")) {
-        return;
-    }
-
+    setCompletingSprint(true);
     try {
-        await completeSprint(activeSprintId);
-        toast.success("Sprint Completed Successfully!");
-        
-        // Golim board-ul si resetam sprint ID (pentru ca sprintul s-a inchis)
-        setTasks([]);
-        setActiveSprintId(null);
-    } catch (error: any) {
-        console.error(error);
-        toast.error(error.response?.data?.detail || "Failed to complete sprint");
+      await completeSprint(activeSprintId);
+      toast.success("Sprint Completed Successfully!");
+
+      setTasks([]);
+      setActiveSprintId(null);
+      setCompleteSprintOpen(false);
+    } catch (error: unknown) {
+      console.error(error);
+      toast.error(getApiErrorMessage(error, "Failed to complete sprint"));
+    } finally {
+      setCompletingSprint(false);
     }
   };
 
-  // --- LOGICA DRAG & DROP ---
+  // Handler: Drag Start
   const handleDragStart = (event: DragStartEvent) => {
     const { active } = event;
     if (active.data.current?.type === "Task") {
@@ -228,9 +337,11 @@ export default function BoardPage() {
     }
   };
 
+  // Handler: Drag Over
   const handleDragOver = (event: DragOverEvent) => {
     const { active, over } = event;
     if (!over) return;
+
     const activeId = active.id;
     const overId = over.id;
     if (activeId === overId) return;
@@ -241,31 +352,43 @@ export default function BoardPage() {
 
     if (!isActiveTask) return;
 
+    // Mutare Task peste alt Task
     if (isActiveTask && isOverTask) {
-      setTasks((tasks) => {
-        const activeIndex = tasks.findIndex((t) => t.id === activeId);
-        const overIndex = tasks.findIndex((t) => t.id === overId);
-        if (tasks[activeIndex].status !== tasks[overIndex].status) {
-          tasks[activeIndex].status = tasks[overIndex].status;
+      setTasks((currentTasks) => {
+        const activeIndex = currentTasks.findIndex((task) => task.id === activeId);
+        const overIndex = currentTasks.findIndex((task) => task.id === overId);
+
+        if (activeIndex === -1 || overIndex === -1) return currentTasks;
+
+        const nextTasks = [...currentTasks];
+        const overStatus = nextTasks[overIndex].status;
+
+        if (nextTasks[activeIndex].status !== overStatus) {
+          nextTasks[activeIndex] = { ...nextTasks[activeIndex], status: overStatus };
         }
-        return arrayMove(tasks, activeIndex, overIndex);
+
+        return arrayMove(nextTasks, activeIndex, overIndex);
       });
     }
 
+    // Mutare Task într-o Coloană nouă (goală)
     if (isActiveTask && isOverColumn) {
-      setTasks((tasks) => {
-        const activeIndex = tasks.findIndex((t) => t.id === activeId);
+      setTasks((currentTasks) => {
+        const activeIndex = currentTasks.findIndex((task) => task.id === activeId);
+        if (activeIndex === -1) return currentTasks;
+
         const newStatus = overId as TaskStatus;
-        if (tasks[activeIndex].status !== newStatus) {
-          const newTasks = [...tasks];
-          newTasks[activeIndex] = { ...newTasks[activeIndex], status: newStatus };
-          return arrayMove(newTasks, activeIndex, activeIndex);
-        }
-        return tasks;
+        if (currentTasks[activeIndex].status === newStatus) return currentTasks;
+
+        const nextTasks = [...currentTasks];
+        nextTasks[activeIndex] = { ...nextTasks[activeIndex], status: newStatus };
+
+        return nextTasks;
       });
     }
   };
 
+  // Handler: Drag End
   const handleDragEnd = async (event: DragEndEvent) => {
     const { active, over } = event;
     setActiveTask(null);
@@ -286,7 +409,7 @@ export default function BoardPage() {
     if (newStatus) {
       try {
         await updateTask(activeId, { status: newStatus });
-      } catch (e) {
+      } catch {
         toast.error("Failed to save move");
       }
     }
@@ -294,50 +417,95 @@ export default function BoardPage() {
 
   if (!isMounted) return null;
 
+  // Calculare Statistici
+  const isScrumLike = methodology === "SCRUM" || methodology === "SCRUMBAN";
+  const activeTasks = tasks.filter((task) => task.status !== TaskStatus.DONE).length;
+  const doneTasks = tasks.filter((task) => task.status === TaskStatus.DONE).length;
+  const reviewTasks = tasks.filter((task) => task.status === TaskStatus.REVIEW).length;
+
   return (
-    <div className="flex flex-col h-full bg-slate-950 text-slate-50">
-
-      {/* Header */}
-      <div className="p-6 border-b border-slate-800 flex justify-between items-center bg-slate-950/80 backdrop-blur-sm sticky top-0 z-10">
-        <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2">
-            Active Sprint
-            {activeSprintId && (
-                <Badge className="bg-green-500/10 text-green-400 border-green-500/20 ml-2">
-                    Running
+    <div className="flex h-full flex-col bg-slate-950 text-slate-50">
+      
+      {/* --- HEADER --- */}
+      <div className="sticky top-0 z-10 border-b border-slate-800 bg-slate-950/90 p-6 backdrop-blur">
+        <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+          
+          {/* Titlu și Info */}
+          <div>
+            <div className="mb-3 flex flex-wrap items-center gap-2">
+              <Badge className="bg-blue-600 text-white">
+                {isScrumLike ? "Sprint board" : "Kanban board"}
+              </Badge>
+              {isScrumLike && activeSprintId && (
+                <Badge className="border-green-500/20 bg-green-500/10 text-green-400">
+                  Running
                 </Badge>
-            )}
-          </h1>
+              )}
+              {isScrumLike && !activeSprintId && (
+                <Badge className="border-slate-700 bg-slate-800 text-slate-400">
+                  No active sprint
+                </Badge>
+              )}
+            </div>
+
+            <h1 className="text-3xl font-semibold tracking-tight text-white">
+              {isScrumLike ? "Active Sprint" : "Kanban Board"}
+            </h1>
+            <p className="mt-2 text-sm text-slate-400">
+              Drag tasks between lanes and open details without losing board context.
+            </p>
+          </div>
+
+          {/* Statistici Board */}
+          <div className="grid grid-cols-3 gap-3 rounded-2xl border border-slate-800 bg-slate-900/60 p-3">
+            <div className="px-3">
+              <p className="text-xs text-slate-500">Active</p>
+              <p className="mt-1 text-lg font-semibold text-white">{activeTasks}</p>
+            </div>
+            <div className="border-x border-slate-800 px-3">
+              <p className="text-xs text-slate-500">Review</p>
+              <p className="mt-1 text-lg font-semibold text-white">{reviewTasks}</p>
+            </div>
+            <div className="px-3">
+              <p className="text-xs text-slate-500">Done</p>
+              <p className="mt-1 text-lg font-semibold text-white">{doneTasks}</p>
+            </div>
+          </div>
         </div>
-        <div className="flex gap-3">
-            {/* BUTON COMPLETE SPRINT - Apare doar daca avem Sprint Activ */}
-            {activeSprintId && (
-                <Button 
-                    variant="destructive" 
-                    className="bg-red-900/20 text-red-400 hover:bg-red-900/40 border border-red-900/50"
-                    onClick={handleCompleteSprint}
-                >
-                    <CheckCircle className="w-4 h-4 mr-2" />
-                    Complete Sprint
-                </Button>
-            )}
 
-          <Button variant="outline" className="border-slate-700 text-slate-300">Filters</Button>
+        {/* Acțiuni (Butoane) */}
+        <div className="mt-5 flex flex-wrap gap-3">
+          {activeSprintId && (
+            <Button
+              variant="destructive"
+              className="border border-red-900/50 bg-red-900/20 text-red-400 hover:bg-red-900/40"
+              onClick={() => setCompleteSprintOpen(true)}
+            >
+              <CheckCircle className="mr-2 h-4 w-4" />
+              Complete Sprint
+            </Button>
+          )}
 
-          {projectId && (
+          <Button variant="outline" className="border-slate-700 bg-slate-950/60 text-slate-300 hover:bg-slate-900">
+            Filters
+          </Button>
+
+          {projectId && (!isScrumLike || activeSprintId) && (
             <CreateTaskDialog
               projectId={projectId}
+              sprintId={activeSprintId ?? undefined}
+              methodology={methodology}
               onTaskCreated={(newTask) => setTasks([...tasks, newTask])}
             />
           )}
         </div>
       </div>
 
-      {/* Board Content */}
+      {/* --- BOARD CONTENT --- */}
       <div className="flex-1 overflow-x-auto overflow-y-hidden p-6">
         {loading ? (
           <div className="flex h-full items-center justify-center">
-            <Loader2 className="w-10 h-10 animate-spin text-blue-500" />
+            <Loader2 className="h-10 w-10 animate-spin text-blue-500" />
           </div>
         ) : (
           <DndContext
@@ -354,7 +522,7 @@ export default function BoardPage() {
                   id={col.id}
                   title={col.title}
                   color={col.color}
-                  tasks={tasks.filter(t => t.status === col.id)}
+                  tasks={tasks.filter((t) => t.status === col.id)}
                 />
               ))}
             </div>
@@ -365,6 +533,18 @@ export default function BoardPage() {
           </DndContext>
         )}
       </div>
+
+      {/* --- DIALOGS --- */}
+      <ConfirmDialog
+        open={completeSprintOpen}
+        onOpenChange={setCompleteSprintOpen}
+        title="Complete sprint?"
+        description="Unfinished tasks will be moved back to the backlog. Completed tasks will remain in this sprint history."
+        confirmLabel="Complete Sprint"
+        destructive
+        loading={completingSprint}
+        onConfirm={handleCompleteSprint}
+      />
     </div>
   );
 }

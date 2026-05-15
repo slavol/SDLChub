@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { useProjectStore } from "@/store/use-project-store";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -49,6 +50,7 @@ const initialAiAnswers = {
 
 export default function ProjectWizard() {
   const router = useRouter();
+  const { setCurrentProject } = useProjectStore();
   const fileInputRef = useRef<HTMLInputElement>(null);
   
   const [step, setStep] = useState(1);
@@ -63,7 +65,6 @@ export default function ProjectWizard() {
   });
   
   // Logo State (Doar vizual momentan)
-  const [logoFile, setLogoFile] = useState<File | null>(null);
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
 
   const [aiAnswers, setAiAnswers] = useState(initialAiAnswers);
@@ -115,7 +116,6 @@ export default function ProjectWizard() {
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      setLogoFile(file);
       const objectUrl = URL.createObjectURL(file);
       setLogoPreview(objectUrl);
     }
@@ -123,7 +123,6 @@ export default function ProjectWizard() {
 
   const removeLogo = (e: React.MouseEvent) => {
     e.stopPropagation();
-    setLogoFile(null);
     setLogoPreview(null);
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
@@ -207,7 +206,7 @@ export default function ProjectWizard() {
           });
           
           if (res.roles && res.roles.length > 0) {
-              const aiRoles = res.roles.map((r: any) => ({
+              const aiRoles = res.roles.map((r) => ({
                   name: r.name,
                   description: r.description,
                   emails: []
@@ -218,7 +217,7 @@ export default function ProjectWizard() {
           } else {
              toast.info("AI couldn't suggest roles, keeping defaults.");
           }
-      } catch (e) {
+      } catch {
           toast.error("AI Role suggestion failed");
       } finally {
           setIsAiLoading(false);
@@ -287,14 +286,15 @@ export default function ProjectWizard() {
   const handleFinalSubmit = async () => {
     setIsLoading(true);
     try {
-      // LOGICA CORECTĂ: Apelăm direct createProjectFull cu toate datele
-      await createProjectFull({
+      const project = await createProjectFull({
         name: basicInfo.projectName,
         key: basicInfo.projectKey,
         description: basicInfo.description,
         methodology: selectedMethodology,
-        roles: roles // Trimitem structura completă
+        roles,
       });
+
+      setCurrentProject(project);
       
       toast.success("Project launched successfully! 🚀");
       router.push("/dashboard");
@@ -436,7 +436,7 @@ export default function ProjectWizard() {
                             
                             <Input 
                                 placeholder={q.placeholder}
-                                value={(aiAnswers as any)[q.key]}
+                                value={aiAnswers[q.key]}
                                 onChange={(e) => setAiAnswers({...aiAnswers, [q.key]: e.target.value})}
                                 className="bg-slate-950 border-slate-700 h-14 text-lg focus:border-purple-500 transition-colors"
                             />
@@ -488,7 +488,7 @@ export default function ProjectWizard() {
               
               <div className="bg-gradient-to-br from-slate-900 to-slate-950 p-6 rounded-2xl border border-slate-800 mt-8 mx-auto max-w-3xl text-center shadow-lg relative overflow-hidden group">
                 <div className="absolute top-0 left-0 w-1 h-full bg-blue-500"></div>
-                <p className="text-slate-300 italic text-xl leading-relaxed relative z-10">"{aiResult.reasoning}"</p>
+                <p className="text-slate-300 italic text-xl leading-relaxed relative z-10">{aiResult.reasoning}</p>
                 <Sparkles className="absolute -bottom-4 -right-4 w-24 h-24 text-blue-500/5 z-0 group-hover:text-blue-500/10 transition-colors duration-500" />
               </div>
             </CardHeader>

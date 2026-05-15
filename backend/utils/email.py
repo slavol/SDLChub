@@ -1,33 +1,46 @@
 from fastapi_mail import FastMail, MessageSchema, ConnectionConfig, MessageType
 from pydantic import EmailStr
-from typing import List
 import os
-from dotenv import load_dotenv
 from jose import jwt
 from datetime import datetime, timedelta
+from backend.config import get_settings
 
-load_dotenv()
+settings = get_settings()
 
 # Configurare conexiune SMTP
-conf = ConnectionConfig(
-    MAIL_USERNAME=os.getenv("MAIL_USERNAME"),
-    MAIL_PASSWORD=os.getenv("MAIL_PASSWORD"),
-    MAIL_FROM=os.getenv("MAIL_FROM"),
-    MAIL_PORT=int(os.getenv("MAIL_PORT", 587)),
-    MAIL_SERVER=os.getenv("MAIL_SERVER"),
-    
-    # Setări de securitate pentru Gmail
-    MAIL_STARTTLS=True,
-    MAIL_SSL_TLS=False,
-    USE_CREDENTIALS=True,
-    
-    # MODIFICARE CRITICĂ PENTRU MACOS:
-    # Setăm False pentru a ignora eroarea de certificat local
-    VALIDATE_CERTS=False 
-)
+MAIL_USERNAME = settings.mail_username
+MAIL_PASSWORD = settings.mail_password
+MAIL_FROM = settings.mail_from
+MAIL_SERVER = settings.mail_server
+MAIL_PORT = settings.mail_port
+DOMAIN = settings.frontend_url.rstrip("/")
 
-SECRET_KEY = os.getenv("SECRET_KEY")
-ALGORITHM = os.getenv("ALGORITHM")
+smtp_enabled = bool(MAIL_USERNAME and MAIL_PASSWORD and MAIL_FROM and MAIL_SERVER)
+if not smtp_enabled:
+    print("⚠️ SMTP nu este configurat complet. Trimiterea de email-uri este dezactivată în modul de dezvoltare.")
+    conf = None
+else:
+    conf = ConnectionConfig(
+        MAIL_USERNAME=MAIL_USERNAME,
+        MAIL_PASSWORD=MAIL_PASSWORD,
+        MAIL_FROM=MAIL_FROM,
+        MAIL_PORT=MAIL_PORT,
+        MAIL_SERVER=MAIL_SERVER,
+        
+        MAIL_STARTTLS=settings.mail_starttls,
+        MAIL_SSL_TLS=settings.mail_ssl_tls,
+        USE_CREDENTIALS=settings.use_credentials,
+        VALIDATE_CERTS=settings.validate_certs,
+    )
+
+SECRET_KEY = os.getenv("SECRET_KEY", "secret_cheie_default")
+ALGORITHM = os.getenv("ALGORITHM", "HS256")
+
+def build_frontend_link(path: str, token: str):
+    return f"{DOMAIN}{path}?token={token}"
+
+def is_email_enabled():
+    return smtp_enabled
 
 def create_verification_token(email: str):
     """Generează un token JWT special doar pentru verificare email, expiră în 24h"""
@@ -37,10 +50,11 @@ def create_verification_token(email: str):
 
 async def send_verification_email(email: EmailStr, token: str):
     """Trimite email-ul HTML cu link-ul de activare"""
-    
-    domain = os.getenv("DOMAIN", "http://localhost:3000")
-    # Link-ul către pagina de frontend care va procesa validarea
-    link = f"{domain}/verify-email?token={token}"
+    if not smtp_enabled:
+        print(f"⚠️ SMTP disabled, skipping verification email to {email}.")
+        return
+
+    link = build_frontend_link("/verify-email", token)
 
     html = f"""
     <!DOCTYPE html>
@@ -106,8 +120,11 @@ def create_reset_token(email: str):
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
 async def send_reset_password_email(email: EmailStr, token: str):
-    domain = os.getenv("DOMAIN", "http://localhost:3000")
-    link = f"{domain}/reset-password?token={token}"
+    if not smtp_enabled:
+        print(f"⚠️ SMTP disabled, skipping reset password email to {email}.")
+        return
+
+    link = build_frontend_link("/reset-password", token)
 
     html = f"""
     <!DOCTYPE html>
@@ -165,9 +182,12 @@ async def send_reset_password_email(email: EmailStr, token: str):
 # --- ADAUGĂ ASTA LA FINAL ÎN backend/utils/email.py ---
 
 async def send_project_invitation_email(email: EmailStr, project_name: str, role_name: str, code: str):
-    domain = os.getenv("DOMAIN", "http://localhost:3000")
-    register_link = f"{domain}/register"
-    login_link = f"{domain}/login"
+    if not smtp_enabled:
+        print(f"⚠️ SMTP disabled, skipping project invitation email to {email}.")
+        return
+
+    register_link = f"{DOMAIN}/register"
+    login_link = f"{DOMAIN}/login"
 
     html = f"""
     <!DOCTYPE html>

@@ -1,18 +1,30 @@
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
-from pydantic import BaseModel
-from typing import Optional
 from datetime import datetime
+from typing import Optional
 
-from database.session import get_db
-from models.project import Sprint, Project, Task, TaskStatus
-from models.user import User
-from routers.auth import get_current_user
-from utils.permissions import check_project_permission
+from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel
+from sqlalchemy.orm import Session
+
+from backend.database.session import get_db
+from backend.models.project import Project, Sprint, Task, TaskStatus
+from backend.models.user import User
+from backend.routers.auth import get_current_user
+from backend.schemas.sprint import SprintOut
+from backend.utils.permissions import check_project_permission
+
 
 router = APIRouter(prefix="/sprints", tags=["Sprints"])
 
-# Schema de intrare (Input DTO)
+
+SPRINT_MANAGEMENT_ROLES = [
+    "Project Admin",
+    "Scrum Master",
+    "Project Manager",
+    "Product Owner",
+    "Tech Lead",
+]
+
+
 class SprintCreate(BaseModel):
     name: str
     project_id: int
@@ -20,91 +32,156 @@ class SprintCreate(BaseModel):
     start_date: Optional[datetime] = None
     end_date: Optional[datetime] = None
 
-@router.post("/", response_model=dict) # Returnam simplu un dict sau poti face o schema SprintOut
-def create_sprint(sprint_in: SprintCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    # Doar SM, PM sau Owner pot crea sprinturi
-    check_project_permission(db, current_user.id, sprint_in.project_id, ["Scrum Master", "Project Manager", "Product Owner"])
-    
+
+def get_project_or_404(db: Session, project_id: int) -> Project:
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+    return project
+
+
+def ensure_project_uses_sprints(project: Project) -> None:
+    if project.methodology == "KANBAN":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Kanban projects do not use sprints.",
+        )
+
+
+@router.post("/", response_model=SprintOut)
+def create_sprint(
+    sprint_in: SprintCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    project = get_project_or_404(db, sprint_in.project_id)
+    ensure_project_uses_sprints(project)
+
+    check_project_permission(
+        db,
+        current_user.id,
+        sprint_in.project_id,
+        SPRINT_MANAGEMENT_ROLES,
+    )
+
     new_sprint = Sprint(
-        name=sprint_in.name,
+        name=sprint_in.name.strip(),
         project_id=sprint_in.project_id,
         goal=sprint_in.goal,
         start_date=sprint_in.start_date,
         end_date=sprint_in.end_date,
-        is_active=False
+        is_active=False,
     )
+
     db.add(new_sprint)
     db.commit()
     db.refresh(new_sprint)
-    return {"message": "Sprint created", "id": new_sprint.id, "name": new_sprint.name}
+    return new_sprint
+
+
+@router.get("/project/{project_id}", response_model=list[SprintOut])
+def get_project_sprints(
+    project_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    get_project_or_404(db, project_id)
+    check_project_permission(db, current_user.id, project_id)
+
+    return (
+        db.query(Sprint)
+        .filter(Sprint.project_id == project_id)
+        .order_by(Sprint.is_active.desc(), Sprint.id.desc())
+        .all()
+    )
+
 
 @router.post("/{sprint_id}/start")
-def start_sprint(sprint_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+def start_sprint(
+    sprint_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     sprint = db.query(Sprint).filter(Sprint.id == sprint_id).first()
     if not sprint:
-        raise HTTPException(status_code=404, detail="Sprint not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Sprint not found")
 
-    # Verificam permisiuni
-    check_project_permission(db, current_user.id, sprint.project_id, ["Scrum Master", "Project Manager"])
+    project = get_project_or_404(db, sprint.project_id)
+    ensure_project_uses_sprints(project)
 
-    # Verificam daca exista DEJA un sprint activ (Regula Scrum)
+    check_project_permission(
+        db,
+        current_user.id,
+        sprint.project_id,
+        SPRINT_MANAGEMENT_ROLES,
+    )
+
+    if sprint.is_active:
+        return {"message": "Sprint is already active.", "sprint": sprint.name}
+
     active_sprint = db.query(Sprint).filter(
-        Sprint.project_id == sprint.project_id, 
-        Sprint.is_active == True
+        Sprint.project_id == sprint.project_id,
+        Sprint.is_active == True,  # noqa: E712
     ).first()
-    
+
     if active_sprint:
-        raise HTTPException(status_code=400, detail=f"Sprint '{active_sprint.name}' is already active. Complete it first.")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Sprint '{active_sprint.name}' is already active. Complete it first.",
+        )
 
     sprint.is_active = True
+    if sprint.start_date is None:
+        sprint.start_date = datetime.utcnow()
+
     db.commit()
+
     return {"message": "Sprint started successfully", "sprint": sprint.name}
 
-# ... importurile existente
-
-@router.get("/project/{project_id}")
-def get_project_sprints(project_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    """
-    Returnează toate sprint-urile unui proiect (Active, Future, Closed).
-    """
-    # Verificăm că ești membru
-    check_project_permission(db, current_user.id, project_id)
-    
-    return db.query(Sprint).filter(Sprint.project_id == project_id).order_by(Sprint.id.desc()).all()
 
 @router.post("/{sprint_id}/complete")
-def complete_sprint(sprint_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+def complete_sprint(
+    sprint_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     sprint = db.query(Sprint).filter(Sprint.id == sprint_id).first()
     if not sprint:
-        raise HTTPException(status_code=404, detail="Sprint not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Sprint not found")
 
-    # 1. Permisiuni (Doar SM/PO/Manager)
-    check_project_permission(db, current_user.id, sprint.project_id, ["Scrum Master", "Project Manager", "Product Owner"])
+    project = get_project_or_404(db, sprint.project_id)
+    ensure_project_uses_sprints(project)
+
+    check_project_permission(
+        db,
+        current_user.id,
+        sprint.project_id,
+        SPRINT_MANAGEMENT_ROLES,
+    )
 
     if not sprint.is_active:
-        raise HTTPException(status_code=400, detail="Sprint is not active.")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Sprint is not active.",
+        )
 
-    # 2. Logica de "Cleanup": Mutăm task-urile neterminate înapoi în Backlog
-    # Task-urile DONE rămân legate de acest sprint pentru istoric/rapoarte.
     unfinished_tasks = db.query(Task).filter(
         Task.sprint_id == sprint_id,
-        Task.status != TaskStatus.DONE
+        Task.status != TaskStatus.DONE,
     ).all()
 
     moved_count = 0
     for task in unfinished_tasks:
-        task.sprint_id = None # Îl trimitem în Backlog
+        task.sprint_id = None
         moved_count += 1
 
-    # 3. Dezactivăm Sprintul
     sprint.is_active = False
-    
-    # Opțional: Poți seta un field 'completed_at' dacă ai adăugat coloana în model
-    # sprint.end_date = datetime.now() 
+    if sprint.end_date is None:
+        sprint.end_date = datetime.utcnow()
 
     db.commit()
-    
+
     return {
         "message": f"Sprint completed. {moved_count} unfinished tasks moved to backlog.",
-        "sprint": sprint.name
+        "sprint": sprint.name,
     }

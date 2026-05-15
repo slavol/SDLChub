@@ -1,30 +1,85 @@
 import api from "@/lib/axios";
 
-// Tipuri de date (Exact ce așteaptă Pydantic în backend)
 export interface LoginData {
-    email: string;
-    password: string;
+  email: string;
+  password: string;
 }
 
 export interface RegisterData {
-    email: string;
-    password: string;
-    full_name: string;
+  email: string;
+  password: string;
+  full_name: string;
+}
+
+export interface AuthUser {
+  id: number;
+  email: string;
+  full_name?: string;
+  is_active: boolean;
 }
 
 export interface AuthResponse {
-    access_token: string;
-    token_type: string;
-    has_pending_invites: boolean;
+  access_token: string;
+  token_type: string;
+  has_pending_invites: boolean;
+  user: AuthUser;
 }
 
-// Apelurile către API
+export interface RegisterResponse {
+  message: string;
+  dev_verification_url?: string;
+}
+
+export interface ResendVerificationResponse {
+  message: string;
+  dev_verification_url?: string;
+}
+
+export interface PasswordResetRequestResponse {
+  message: string;
+  dev_reset_url?: string;
+}
+
+export interface GenericMessageResponse {
+  message: string;
+}
+
 export const loginUser = async (data: LoginData): Promise<AuthResponse> => {
-    const response = await api.post("/auth/login", data);
-    return response.data;
+  const response = await api.post("/auth/login", data);
+  return response.data;
 };
 
-export const registerUser = async (data: RegisterData): Promise<AuthResponse> => {
-    const response = await api.post("/auth/register", data);
-    return response.data;
+export const registerUser = async (data: RegisterData): Promise<RegisterResponse> => {
+  const response = await api.post("/auth/register", data);
+  return response.data;
+};
+
+export const resendVerificationEmail = async (
+  email: string
+): Promise<ResendVerificationResponse> => {
+  const response = await api.post("/auth/resend-verification", { email });
+  return response.data;
+};
+
+export const getCurrentUser = async (): Promise<AuthUser> => {
+  const response = await api.get("/auth/me");
+  return response.data;
+};
+
+export const requestPasswordReset = async (
+  email: string
+): Promise<PasswordResetRequestResponse> => {
+  const response = await api.post("/auth/forgot-password", { email });
+  return response.data;
+};
+
+export const resetPassword = async (
+  token: string,
+  new_password: string
+): Promise<GenericMessageResponse> => {
+  const response = await api.post("/auth/reset-password", {
+    token,
+    new_password,
+  });
+  return response.data;
 };

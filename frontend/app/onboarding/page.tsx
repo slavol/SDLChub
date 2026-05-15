@@ -11,11 +11,14 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAuthStore } from "@/store/use-auth-store";
-import api from "@/lib/axios";
+import { getApiErrorMessage } from "@/lib/api-error";
+import { joinProject } from "@/services/project";
+import { useProjectStore } from "@/store/use-project-store";
 
 export default function OnboardingPage() {
   const router = useRouter();
   const { logout, isAuthenticated } = useAuthStore();
+  const { setCurrentProject } = useProjectStore();
   const [inviteCode, setInviteCode] = useState("");
   const [isJoining, setIsJoining] = useState(false);
 
@@ -28,7 +31,7 @@ export default function OnboardingPage() {
 
   const handleLogout = () => {
     logout();
-    router.push("/login");
+    router.push("/");
   };
 
   const handleCreateProject = () => {
@@ -41,12 +44,14 @@ export default function OnboardingPage() {
     
     setIsJoining(true);
     try {
-      // Vom implementa acest endpoint imediat
-      await api.post("/projects/join", { code: inviteCode });
-      toast.success("Joined project successfully!");
+      const response = await joinProject(inviteCode);
+      if (response.project) {
+        setCurrentProject(response.project);
+      }
+      toast.success(response.message || "Joined project successfully!");
       router.push("/dashboard");
-    } catch (error: any) {
-      toast.error(error.response?.data?.detail || "Invalid invitation code.");
+    } catch (error: unknown) {
+      toast.error(getApiErrorMessage(error, "Invalid invitation code."));
     } finally {
       setIsJoining(false);
     }
@@ -74,7 +79,7 @@ export default function OnboardingPage() {
                     Welcome to your workspace
                 </h1>
                 <p className="text-xl text-slate-400 max-w-2xl mx-auto">
-                    You don't have any active projects yet. How would you like to get started?
+                    You don&apos;t have any active projects yet. How would you like to get started?
                 </p>
             </div>
 

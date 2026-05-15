@@ -13,6 +13,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import api from "@/lib/axios";
+import { getApiErrorMessage } from "@/lib/api-error";
 
 const formSchema = z.object({
   password: z.string().min(6, { message: "Password must be at least 6 characters" }),
@@ -50,9 +51,9 @@ function ResetPasswordForm() {
       toast.success("Password reset successfully!");
       router.push("/login");
 
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error(error);
-      toast.error(error.response?.data?.detail || "Failed to reset password.");
+      toast.error(getApiErrorMessage(error, "Failed to reset password."));
     } finally {
       setIsLoading(false);
     }

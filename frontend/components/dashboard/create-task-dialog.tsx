@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { Loader2, Plus, Sparkles, User, Users } from "lucide-react";
+import { Gauge, Loader2, Plus, Sparkles, Users } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -45,15 +45,19 @@ const formSchema = z.object({
   title: z.string().min(1, "Title is required"),
   description: z.string().optional(),
   priority: z.nativeEnum(TaskPriority),
+  story_points: z.string().optional(),
+  due_date: z.string().optional(),
   assignee_id: z.string().optional(),
 });
 
 interface CreateTaskDialogProps {
   projectId: number;
+  sprintId?: number | null;
+  methodology?: string;
   onTaskCreated: (task: Task) => void;
 }
 
-export function CreateTaskDialog({ projectId, onTaskCreated }: CreateTaskDialogProps) {
+export function CreateTaskDialog({ projectId, sprintId, methodology, onTaskCreated }: CreateTaskDialogProps) {
   const [open, setOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   
@@ -63,6 +67,7 @@ export function CreateTaskDialog({ projectId, onTaskCreated }: CreateTaskDialogP
   // State pentru membrii echipei
   const [members, setMembers] = useState<ProjectMember[]>([]);
   const [loadingMembers, setLoadingMembers] = useState(false);
+  const supportsStoryPoints = methodology !== "KANBAN";
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -70,6 +75,8 @@ export function CreateTaskDialog({ projectId, onTaskCreated }: CreateTaskDialogP
       title: "",
       description: "",
       priority: TaskPriority.MEDIUM,
+      story_points: "",
+      due_date: "",
       assignee_id: "unassigned",
     },
   });
@@ -128,13 +135,20 @@ export function CreateTaskDialog({ projectId, onTaskCreated }: CreateTaskDialogP
       const assigneeId = values.assignee_id && values.assignee_id !== "unassigned" 
         ? parseInt(values.assignee_id) 
         : undefined;
+      const storyPoints = supportsStoryPoints && values.story_points
+        ? Number(values.story_points)
+        : undefined;
+      const dueDate = values.due_date ? `${values.due_date}T23:59:00` : undefined;
 
       const newTask = await createTask({
         title: values.title,
         description: values.description,
         priority: values.priority,
+        story_points: storyPoints,
+        due_date: dueDate,
         project_id: projectId,
         assignee_id: assigneeId, 
+        sprint_id: sprintId,
       });
       
       onTaskCreated(newTask);
@@ -160,7 +174,7 @@ export function CreateTaskDialog({ projectId, onTaskCreated }: CreateTaskDialogP
         <DialogHeader>
           <DialogTitle>Create New Issue</DialogTitle>
           <DialogDescription className="text-slate-400">
-            Define the task and assign it to a team member.
+            Define the task, assign it to a team member and estimate it when the methodology supports it.
           </DialogDescription>
         </DialogHeader>
 
@@ -182,8 +196,8 @@ export function CreateTaskDialog({ projectId, onTaskCreated }: CreateTaskDialogP
               )}
             />
 
-            {/* ROW 2: Priority & Assignee */}
-            <div className="grid grid-cols-2 gap-4">
+            {/* ROW 2: Priority, Estimation & Assignee */}
+            <div className={supportsStoryPoints ? "grid grid-cols-1 gap-4 md:grid-cols-3" : "grid grid-cols-1 gap-4 md:grid-cols-2"}>
                 <FormField
                   control={form.control}
                   name="priority"
@@ -208,6 +222,32 @@ export function CreateTaskDialog({ projectId, onTaskCreated }: CreateTaskDialogP
                   )}
                 />
 
+                {supportsStoryPoints && (
+                  <FormField
+                    control={form.control}
+                    name="story_points"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Story Points</FormLabel>
+                        <FormControl>
+                          <div className="relative">
+                            <Gauge className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+                            <Input
+                              type="number"
+                              min="0"
+                              max="100"
+                              placeholder="0"
+                              {...field}
+                              className="h-11 border-slate-700 bg-slate-900 pl-9"
+                            />
+                          </div>
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                )}
+
                 <FormField
                   control={form.control}
                   name="assignee_id"
@@ -226,14 +266,14 @@ export function CreateTaskDialog({ projectId, onTaskCreated }: CreateTaskDialogP
                         <SelectContent className="bg-slate-900 border-slate-800 text-slate-200">
                           <SelectItem value="unassigned" className="text-slate-400 italic">Unassigned</SelectItem>
                           {members.map((member) => (
-                              <SelectItem key={member.id} value={member.id.toString()}>
+                              <SelectItem key={member.membership_id} value={member.user.id.toString()}>
                                   <div className="flex items-center gap-2">
                                       <Avatar className="h-5 w-5">
                                           <AvatarFallback className="text-[9px] bg-blue-900 text-blue-100">
-                                              {member.full_name?.charAt(0) || "U"}
+                                              {member.user.full_name?.charAt(0) || "U"}
                                           </AvatarFallback>
                                       </Avatar>
-                                      {member.full_name || member.email}
+                                      {member.user.full_name || member.user.email}
                                   </div>
                               </SelectItem>
                           ))}
@@ -244,6 +284,24 @@ export function CreateTaskDialog({ projectId, onTaskCreated }: CreateTaskDialogP
                   )}
                 />
             </div>
+
+            <FormField
+              control={form.control}
+              name="due_date"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Target Date</FormLabel>
+                  <FormControl>
+                    <Input
+                      type="date"
+                      {...field}
+                      className="h-11 border-slate-700 bg-slate-900"
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
 
             {/* ROW 3: Description cu buton AI funcțional */}
             <FormField

@@ -1,22 +1,28 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { getMyProjects } from "@/services/project";
 import { getProjectTasks, updateTask, Task } from "@/services/task";
 import { getProjectSprints, createSprint, startSprint, Sprint } from "@/services/sprint";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { CreateTaskDialog } from "@/components/dashboard/create-task-dialog";
 import {
     Loader2,
-    Plus,
     ChevronRight,
     MoreHorizontal,
     ArrowRightCircle,
-    Archive
+    Archive,
+    CalendarClock,
+    CircleDot,
+    Flag,
+    PlayCircle,
+    UserRound
 } from "lucide-react";
 import {
     DropdownMenu,
@@ -28,6 +34,56 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { getApiErrorMessage } from "@/lib/api-error";
+import { useProjectStore } from "@/store/use-project-store";
+
+const priorityStyles: Record<string, string> = {
+    LOW: "border-slate-700 bg-slate-800/70 text-slate-300",
+    MEDIUM: "border-blue-500/25 bg-blue-500/10 text-blue-300",
+    HIGH: "border-orange-500/25 bg-orange-500/10 text-orange-300",
+    CRITICAL: "border-rose-500/25 bg-rose-500/10 text-rose-300",
+};
+
+const statusStyles: Record<string, string> = {
+    TODO: "border-slate-700 bg-slate-800/70 text-slate-300",
+    IN_PROGRESS: "border-blue-500/25 bg-blue-500/10 text-blue-300",
+    REVIEW: "border-violet-500/25 bg-violet-500/10 text-violet-300",
+    DONE: "border-emerald-500/25 bg-emerald-500/10 text-emerald-300",
+};
+
+const statusLabels: Record<string, string> = {
+    TODO: "To Do",
+    IN_PROGRESS: "In Progress",
+    REVIEW: "Review",
+    DONE: "Done",
+};
+
+function getInitials(value?: string | null) {
+    if (!value) return "NA";
+
+    const parts = value
+        .trim()
+        .split(/\s+/)
+        .filter(Boolean)
+        .slice(0, 2);
+
+    if (parts.length === 0) return "NA";
+
+    return parts.map((part) => part[0]?.toUpperCase()).join("");
+}
+
+function formatDate(value?: string | null) {
+    if (!value) return "No date";
+
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return "No date";
+
+    return date.toLocaleDateString([], {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+    });
+}
 
 // --- COMPONENTA RAND TASK ---
 // Acum accepta lista de sprinturi pentru a popula meniul
@@ -40,32 +96,82 @@ function BacklogTaskRow({
     sprints: Sprint[],
     onMoveTask: (taskId: number, sprintId: number | null) => void
 }) {
-    const activeOrFutureSprints = sprints.filter(s => s.status !== 'closed');
+    const activeOrFutureSprints = sprints;
+    const assigneeName = task.assignee_name || "Unassigned";
+    const dueDate = formatDate(task.due_date);
 
     return (
-        <div className="flex items-center justify-between p-3 bg-slate-900 border border-slate-800 rounded-md mb-2 hover:border-slate-600 transition group">
-            <div className="flex items-center gap-3">
-                <Badge variant="outline" className={cn(
-                    "text-[10px] w-16 justify-center",
-                    task.priority === "CRITICAL" ? "border-red-500 text-red-500" : "border-slate-700 text-slate-400"
-                )}>
-                    {task.key}
-                </Badge>
-                <span className="text-sm font-medium text-slate-200">{task.title}</span>
+        <div className="group mb-2 grid gap-4 rounded-2xl border border-slate-800 bg-slate-900/75 p-4 transition hover:border-blue-500/35 hover:bg-slate-900 md:grid-cols-[1fr_auto] md:items-center">
+            <div className="min-w-0">
+                <div className="mb-2 flex flex-wrap items-center gap-2">
+                    <Badge
+                        variant="outline"
+                        className="border-slate-700 bg-slate-950 font-mono text-[10px] text-slate-300"
+                    >
+                        {task.key}
+                    </Badge>
+                    <Badge
+                        variant="outline"
+                        className={cn("border text-[10px]", priorityStyles[task.priority] || priorityStyles.MEDIUM)}
+                    >
+                        <Flag className="mr-1 h-3 w-3" />
+                        {task.priority}
+                    </Badge>
+                    <Badge
+                        variant="outline"
+                        className={cn("border text-[10px]", statusStyles[task.status] || statusStyles.TODO)}
+                    >
+                        {statusLabels[task.status] || task.status}
+                    </Badge>
+                </div>
+
+                <Link
+                    href={`/dashboard/tasks/${task.id}`}
+                    className="block truncate text-sm font-semibold text-slate-100 hover:text-blue-300"
+                >
+                    {task.title}
+                </Link>
+
+                <div className="mt-3 flex flex-wrap items-center gap-3 text-xs text-slate-500">
+                    <span className="flex items-center gap-1">
+                        <CircleDot className="h-3.5 w-3.5" />
+                        {task.story_points ? `${task.story_points} pts` : "No estimate"}
+                    </span>
+                    <span className="flex items-center gap-1">
+                        <UserRound className="h-3.5 w-3.5" />
+                        {assigneeName}
+                    </span>
+                    {task.due_date && (
+                        <span className="flex items-center gap-1">
+                            <CalendarClock className="h-3.5 w-3.5" />
+                            {dueDate}
+                        </span>
+                    )}
+                </div>
             </div>
-            <div className="flex items-center gap-4">
-                <Badge variant="secondary" className="bg-slate-800 text-slate-400">
-                    {task.story_points ? `${task.story_points} pts` : "-"}
-                </Badge>
+
+            <div className="flex items-center justify-between gap-3 md:justify-end">
+                <Avatar className="h-8 w-8 border border-slate-700">
+                    <AvatarFallback
+                        className={cn(
+                            "text-[10px] font-bold",
+                            task.assignee_id
+                                ? "bg-blue-500/15 text-blue-200"
+                                : "bg-slate-800 text-slate-500"
+                        )}
+                    >
+                        {task.assignee_id ? getInitials(assigneeName) : "NA"}
+                    </AvatarFallback>
+                </Avatar>
 
                 {/* DROPDOWN PENTRU MUTARE */}
                 <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" className="h-8 w-8 p-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <Button variant="ghost" className="h-9 w-9 rounded-xl p-0 text-slate-500 opacity-100 transition hover:bg-slate-800 hover:text-white md:opacity-0 md:group-hover:opacity-100">
                             <MoreHorizontal className="h-4 w-4" />
                         </Button>
                     </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="bg-slate-950 border-slate-800 text-slate-200">
+                    <DropdownMenuContent align="end" className="border-slate-800 bg-slate-950 text-slate-200">
                         <DropdownMenuLabel>Move to</DropdownMenuLabel>
                         <DropdownMenuSeparator className="bg-slate-800" />
 
@@ -88,28 +194,42 @@ function BacklogTaskRow({
                 </DropdownMenu>
             </div>
         </div>
-    )
+    );
 }
 
 export default function BacklogPage() {
+    const { currentProject, setCurrentProject } = useProjectStore();
     const [projectId, setProjectId] = useState<number | null>(null);
     const [tasks, setTasks] = useState<Task[]>([]);
     const [sprints, setSprints] = useState<Sprint[]>([]);
     const [loading, setLoading] = useState(true);
 
     const [newSprintName, setNewSprintName] = useState("");
+    const [newSprintGoal, setNewSprintGoal] = useState("");
+    const [newSprintStartDate, setNewSprintStartDate] = useState("");
+    const [newSprintEndDate, setNewSprintEndDate] = useState("");
     const [isCreatingSprint, setIsCreatingSprint] = useState(false);
 
     useEffect(() => {
         const init = async () => {
             try {
-                const projects = await getMyProjects();
-                if (projects.length > 0) {
-                    const pid = projects[0].id;
+                let project = currentProject;
+
+                if (!project) {
+                    const projects = await getMyProjects();
+                    project = projects[0] ?? null;
+
+                    if (project) {
+                        setCurrentProject(project);
+                    }
+                }
+
+                if (project) {
+                    const pid = project.id;
                     setProjectId(pid);
 
                     const [remoteTasks, remoteSprints] = await Promise.all([
-                        getProjectTasks(pid),
+                        getProjectTasks(pid, "backlog"),
                         getProjectSprints(pid)
                     ]);
 
@@ -123,18 +243,27 @@ export default function BacklogPage() {
                 setLoading(false);
             }
         };
+
         init();
-    }, []);
+    }, [currentProject, setCurrentProject]);
 
     const handleCreateSprint = async () => {
         if (!projectId || !newSprintName) return;
         setIsCreatingSprint(true);
         try {
-            const sprint = await createSprint(projectId, newSprintName);
+            const sprint = await createSprint(projectId, {
+                name: newSprintName,
+                goal: newSprintGoal || undefined,
+                start_date: newSprintStartDate ? `${newSprintStartDate}T09:00:00` : undefined,
+                end_date: newSprintEndDate ? `${newSprintEndDate}T18:00:00` : undefined,
+            });
             setSprints([sprint, ...sprints]);
             toast.success("Sprint created!");
             setNewSprintName("");
-        } catch (e) {
+            setNewSprintGoal("");
+            setNewSprintStartDate("");
+            setNewSprintEndDate("");
+        } catch {
             toast.error("Failed to create sprint");
         } finally {
             setIsCreatingSprint(false);
@@ -146,8 +275,8 @@ export default function BacklogPage() {
             await startSprint(sprintId);
             toast.success("Sprint Started! Go to Board.");
             setSprints(sprints.map(s => s.id === sprintId ? { ...s, is_active: true } : s));
-        } catch (e: any) {
-            toast.error(e.response?.data?.detail || "Failed to start sprint");
+        } catch (error: unknown) {
+            toast.error(getApiErrorMessage(error, "Failed to start sprint"));
         }
     };
 
@@ -165,60 +294,167 @@ export default function BacklogPage() {
             await updateTask(taskId, { sprint_id: sprintId === null ? 0 : sprintId });
 
             toast.success("Task moved");
-        } catch (error) {
+        } catch {
             toast.error("Failed to move task");
             // Revert ar fi ideal aici
         }
     };
 
     const backlogTasks = tasks.filter(t => !t.sprint_id);
+    const sprintTasksCount = tasks.length - backlogTasks.length;
+    const activeSprint = sprints.find((sprint) => sprint.is_active);
 
     if (loading) return <div className="p-10 flex justify-center"><Loader2 className="animate-spin text-blue-500" /></div>;
 
     return (
-        <div className="p-6 max-w-6xl mx-auto space-y-8">
-            <div className="flex justify-between items-center">
-                <div>
-                    <h1 className="text-2xl font-bold text-white">Backlog</h1>
-                    <p className="text-slate-400 text-sm">Plan your sprints and prioritize work.</p>
+        <div className="mx-auto max-w-7xl space-y-8 p-6 text-slate-50 md:p-8">
+            <section className="rounded-3xl border border-slate-800 bg-slate-900/80 shadow-2xl shadow-slate-950/25">
+                <div className="flex flex-col gap-5 border-b border-slate-800 bg-slate-950/45 px-6 py-5 lg:flex-row lg:items-center lg:justify-between">
+                    <div>
+                        <div className="mb-3 flex flex-wrap items-center gap-2">
+                            <Badge className="bg-blue-600 text-white">Planning</Badge>
+                            {activeSprint && (
+                                <Badge className="border-emerald-500/20 bg-emerald-500/10 text-emerald-300">
+                                    Active: {activeSprint.name}
+                                </Badge>
+                            )}
+                        </div>
+                        <h1 className="text-3xl font-semibold tracking-tight text-white">Backlog</h1>
+                        <p className="mt-2 max-w-2xl text-sm text-slate-400">
+                            Prioritize work, shape upcoming sprints and keep unplanned tasks visible.
+                        </p>
+                    </div>
+
+                    {projectId && (
+                        <CreateTaskDialog
+                            projectId={projectId}
+                            methodology={currentProject?.methodology}
+                            onTaskCreated={(t) => setTasks([...tasks, t])}
+                        />
+                    )}
                 </div>
-                {projectId && (
-                    <CreateTaskDialog
-                        projectId={projectId}
-                        onTaskCreated={(t) => setTasks([...tasks, t])}
-                    />
-                )}
-            </div>
+
+                <div className="grid gap-4 p-5 md:grid-cols-3">
+                    <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
+                        <CircleDot className="mb-3 h-5 w-5 text-blue-300" />
+                        <p className="text-2xl font-semibold text-white">{backlogTasks.length}</p>
+                        <p className="text-xs text-slate-500">backlog issues</p>
+                    </div>
+                    <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
+                        <CalendarClock className="mb-3 h-5 w-5 text-amber-300" />
+                        <p className="text-2xl font-semibold text-white">{sprints.length}</p>
+                        <p className="text-xs text-slate-500">planned sprints</p>
+                    </div>
+                    <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
+                        <PlayCircle className="mb-3 h-5 w-5 text-emerald-300" />
+                        <p className="text-2xl font-semibold text-white">{sprintTasksCount}</p>
+                        <p className="text-xs text-slate-500">issues assigned to sprints</p>
+                    </div>
+                </div>
+            </section>
 
             {/* SPRINT LIST */}
-            <div className="space-y-4">
+            <section className="space-y-4">
+                <div className="flex items-center justify-between gap-4">
+                <div>
+                        <h2 className="text-lg font-semibold text-white">Sprint Planning</h2>
+                        <p className="text-sm text-slate-500">Move tasks into a sprint and start execution when ready.</p>
+                </div>
+
+                    <Dialog>
+                        <DialogTrigger asChild>
+                            <Button variant="outline" className="border-dashed border-slate-700 bg-slate-950/60 text-slate-300 hover:bg-slate-900 hover:text-white">
+                                Create Sprint
+                            </Button>
+                        </DialogTrigger>
+                        <DialogContent className="border-slate-800 bg-slate-950 text-white">
+                            <DialogHeader>
+                                <DialogTitle>Create Sprint</DialogTitle>
+                            </DialogHeader>
+                            <div className="space-y-4">
+                                <div className="space-y-2">
+                                    <label className="text-sm font-medium text-slate-300">Sprint Name</label>
+                                    <Input
+                                        placeholder="Sprint Name (e.g. Sprint 1)"
+                                        value={newSprintName}
+                                        onChange={(e) => setNewSprintName(e.target.value)}
+                                        className="border-slate-700 bg-slate-900"
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-sm font-medium text-slate-300">Sprint Goal</label>
+                                    <Input
+                                        placeholder="What should this sprint achieve?"
+                                        value={newSprintGoal}
+                                        onChange={(e) => setNewSprintGoal(e.target.value)}
+                                        className="border-slate-700 bg-slate-900"
+                                    />
+                                </div>
+                                <div className="grid gap-4 sm:grid-cols-2">
+                                    <div className="space-y-2">
+                                        <label className="text-sm font-medium text-slate-300">Start Date</label>
+                                        <Input
+                                            type="date"
+                                            value={newSprintStartDate}
+                                            onChange={(e) => setNewSprintStartDate(e.target.value)}
+                                            className="border-slate-700 bg-slate-900"
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <label className="text-sm font-medium text-slate-300">Target End Date</label>
+                                        <Input
+                                            type="date"
+                                            value={newSprintEndDate}
+                                            onChange={(e) => setNewSprintEndDate(e.target.value)}
+                                            className="border-slate-700 bg-slate-900"
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+                            <DialogFooter>
+                                <Button onClick={handleCreateSprint} disabled={isCreatingSprint}>Create</Button>
+                            </DialogFooter>
+                        </DialogContent>
+                    </Dialog>
+                </div>
+
                 {sprints.map((sprint) => (
-                    <Card key={sprint.id} className="bg-slate-950/50 border-slate-800 p-4">
-                        <div className="flex justify-between items-center mb-4">
+                    <Card key={sprint.id} className="overflow-hidden border-slate-800 bg-slate-900/70 p-0 shadow-xl shadow-slate-950/20">
+                        <div className="flex flex-col gap-4 border-b border-slate-800 bg-slate-950/35 p-4 md:flex-row md:items-center md:justify-between">
                             <div className="flex items-center gap-3">
-                                <ChevronRight className="w-4 h-4 text-slate-500" />
-                                <h3 className="font-bold text-lg text-slate-200">{sprint.name}</h3>
-                                {sprint.is_active && <Badge className="bg-green-500/10 text-green-400 border-green-500/20">ACTIVE</Badge>}
-                                <span className="text-xs text-slate-500">
-                                    {tasks.filter(t => t.sprint_id === sprint.id).length} issues
-                                </span>
+                                <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-slate-800 bg-slate-900">
+                                    <ChevronRight className="h-4 w-4 text-slate-500" />
+                                </div>
+                                <div>
+                                    <div className="flex flex-wrap items-center gap-2">
+                                        <h3 className="font-semibold text-slate-100">{sprint.name}</h3>
+                                        {sprint.is_active && <Badge className="border-green-500/20 bg-green-500/10 text-green-400">ACTIVE</Badge>}
+                                    </div>
+                                    <p className="mt-1 text-xs text-slate-500">
+                                        {tasks.filter(t => t.sprint_id === sprint.id).length} issues planned · Ends {formatDate(sprint.end_date)}
+                                    </p>
+                                </div>
                             </div>
                             <div className="flex gap-2">
                                 {!sprint.is_active && (
                                     <Button
                                         size="sm"
-                                        className="bg-slate-800 hover:bg-slate-700 text-slate-300"
+                                        className="bg-blue-600 text-white hover:bg-blue-700"
                                         onClick={() => handleStartSprint(sprint.id)}
                                     >
+                                        <PlayCircle className="mr-2 h-4 w-4" />
                                         Start Sprint
                                     </Button>
                                 )}
                             </div>
                         </div>
 
-                        <div className="pl-4 border-l-2 border-slate-800 ml-2 space-y-1">
+                        <div className="space-y-2 p-4">
                             {tasks.filter(t => t.sprint_id === sprint.id).length === 0 ? (
-                                <p className="text-xs text-slate-600 py-2 italic">No tasks in this sprint.</p>
+                                <div className="rounded-2xl border border-dashed border-slate-800 bg-slate-950/50 p-6 text-center">
+                                    <p className="text-sm font-medium text-slate-500">No tasks in this sprint.</p>
+                                    <p className="mt-1 text-xs text-slate-600">Move backlog work here when planning is ready.</p>
+                                </div>
                             ) : (
                                 tasks.filter(t => t.sprint_id === sprint.id).map(task => (
                                     <BacklogTaskRow
@@ -232,36 +468,16 @@ export default function BacklogPage() {
                         </div>
                     </Card>
                 ))}
-
-                <Dialog>
-                    <DialogTrigger asChild>
-                        <Button variant="outline" className="w-full border-dashed border-slate-700 text-slate-400 hover:text-white hover:bg-slate-900">
-                            Create Sprint
-                        </Button>
-                    </DialogTrigger>
-                    <DialogContent className="bg-slate-950 border-slate-800 text-white">
-                        <DialogHeader><DialogTitle>Create Sprint</DialogTitle></DialogHeader>
-                        <Input
-                            placeholder="Sprint Name (e.g. Sprint 1)"
-                            value={newSprintName}
-                            onChange={(e) => setNewSprintName(e.target.value)}
-                            className="bg-slate-900 border-slate-700"
-                        />
-                        <DialogFooter>
-                            <Button onClick={handleCreateSprint} disabled={isCreatingSprint}>Create</Button>
-                        </DialogFooter>
-                    </DialogContent>
-                </Dialog>
-            </div>
+            </section>
 
             {/* BACKLOG */}
-            <div className="mt-8">
-                <div className="flex items-center gap-2 mb-4">
-                    <h3 className="font-bold text-slate-400 uppercase text-xs tracking-wider">Backlog</h3>
-                    <Badge variant="secondary" className="text-xs">{backlogTasks.length} issues</Badge>
+            <section className="space-y-4">
+                <div className="flex items-center gap-2">
+                    <h2 className="text-lg font-semibold text-white">Unplanned Backlog</h2>
+                    <Badge variant="secondary" className="bg-slate-800 text-xs text-slate-300 hover:bg-slate-800">{backlogTasks.length} issues</Badge>
                 </div>
 
-                <div className="bg-slate-950/30 rounded-lg p-1 min-h-[200px]">
+                <div className="min-h-[220px] rounded-3xl border border-slate-800 bg-slate-950/45 p-3">
                     {backlogTasks.map(task => (
                         <BacklogTaskRow
                             key={task.id}
@@ -271,12 +487,12 @@ export default function BacklogPage() {
                         />
                     ))}
                     {backlogTasks.length === 0 && (
-                        <div className="text-center p-8 text-slate-600 text-sm border-2 border-dashed border-slate-800 rounded-lg">
-                            Your backlog is empty. Create a task!
+                        <div className="rounded-2xl border border-dashed border-slate-800 p-10 text-center text-sm text-slate-600">
+                            Your backlog is empty. Create a task or move unfinished work back here.
                         </div>
                     )}
                 </div>
-            </div>
+            </section>
         </div>
     );
 }
