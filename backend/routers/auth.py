@@ -1,4 +1,7 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from pathlib import Path
+from uuid import uuid4
+
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 from datetime import timedelta
@@ -7,8 +10,10 @@ from pydantic import BaseModel, EmailStr # <--- Importuri necesare
 
 from backend.database.session import get_db
 from backend.models.user import User
-from backend.models.project import Invitation
+from backend.models.project import Invitation, Project, ProjectMember
 from backend.schemas.auth import (
+    AccountPasswordUpdateRequest,
+    AccountUpdateRequest,
     AuthUser,
     PasswordResetConfirm,
     PasswordResetRequest,
@@ -272,3 +277,124 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
 @router.get("/me", response_model=AuthUser)
 def read_current_user(current_user: User = Depends(get_current_user)):
     return current_user
+
+
+@router.get("/me/account-summary")
+def read_account_summary(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    rows = (
+        db.query(ProjectMember, Project)
+        .join(Project, ProjectMember.project_id == Project.id)
+        .filter(ProjectMember.user_id == current_user.id)
+        .order_by(Project.created_at.desc())
+        .all()
+    )
+
+    projects = [
+        {
+            "id": project.id,
+            "name": project.name,
+            "key": project.key,
+            "methodology": project.methodology,
+            "role_name": membership.role.name if membership.role else "Member",
+            "is_owner": project.owner_id == current_user.id,
+            "joined_at": membership.joined_at,
+        }
+        for membership, project in rows
+    ]
+
+    return {
+        "user": current_user,
+        "projects_count": len(projects),
+        "projects": projects,
+    }
+
+
+@router.put("/me", response_model=AuthUser)
+def update_current_user(
+    data: AccountUpdateRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    update_data = data.model_dump(exclude_unset=True)
+
+    if "email" in update_data and update_data["email"] is not None:
+        new_email = update_data["email"].strip().lower()
+        existing_user = db.query(User).filter(
+            User.email == new_email,
+            User.id != current_user.id,
+        ).first()
+        if existing_user:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Email is already used by another account.",
+            )
+        current_user.email = new_email
+
+    if "full_name" in update_data:
+        current_user.full_name = update_data["full_name"].strip() if update_data["full_name"] else None
+
+    db.commit()
+    db.refresh(current_user)
+    return current_user
+
+
+@router.post("/me/avatar", response_model=AuthUser)
+async def upload_current_user_avatar(
+    avatar: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    allowed_types = {
+        "image/jpeg": ".jpg",
+        "image/png": ".png",
+        "image/webp": ".webp",
+        "image/gif": ".gif",
+    }
+
+    if avatar.content_type not in allowed_types:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Avatar must be a JPG, PNG, WEBP or GIF image.",
+        )
+
+    content = await avatar.read()
+    max_size = 2 * 1024 * 1024
+    if len(content) > max_size:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Avatar image must be smaller than 2MB.",
+        )
+
+    upload_dir = Path(__file__).resolve().parents[2] / "uploads" / "avatars"
+    upload_dir.mkdir(parents=True, exist_ok=True)
+
+    extension = allowed_types[avatar.content_type]
+    filename = f"user-{current_user.id}-{uuid4().hex}{extension}"
+    destination = upload_dir / filename
+    destination.write_bytes(content)
+
+    current_user.avatar_url = f"/uploads/avatars/{filename}"
+    db.commit()
+    db.refresh(current_user)
+
+    return current_user
+
+
+@router.put("/me/password")
+def update_current_user_password(
+    data: AccountPasswordUpdateRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    if not verify_password(data.current_password, current_user.hashed_password):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Current password is incorrect.",
+        )
+
+    current_user.hashed_password = get_password_hash(data.new_password)
+    db.commit()
+    return {"message": "Password updated successfully."}

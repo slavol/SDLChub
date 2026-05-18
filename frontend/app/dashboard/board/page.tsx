@@ -38,10 +38,11 @@ import { toast } from "sonner";
 
 // 3. UI Components
 import { CreateTaskDialog } from "@/components/dashboard/create-task-dialog";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { UserAvatar } from "@/components/user-avatar";
+import { useProjectPermissions } from "@/hooks/use-project-permissions";
 import { cn } from "@/lib/utils";
 
 // 4. Services, Store & Types
@@ -184,16 +185,15 @@ function TaskCard({ task, isOverlay }: { task: Task; isOverlay?: boolean }) {
           )}
         </div>
 
-        <Avatar className="h-7 w-7 border border-slate-700">
-          <AvatarFallback
-            className={cn(
-              "text-[10px] font-bold",
-              task.assignee_id ? "bg-blue-500/15 text-blue-200" : "bg-slate-800 text-slate-500"
-            )}
-          >
-            {task.assignee_id ? assigneeInitials || "U" : "NA"}
-          </AvatarFallback>
-        </Avatar>
+        <UserAvatar
+          name={task.assignee_name || (task.assignee_id ? assigneeInitials : "Not assigned")}
+          src={task.assignee_avatar_url}
+          className="h-7 w-7"
+          fallbackClassName={cn(
+            "text-[10px] font-bold",
+            task.assignee_id ? "bg-blue-500/15 text-blue-200" : "bg-slate-800 text-slate-500"
+          )}
+        />
       </div>
     </div>
   );
@@ -264,6 +264,10 @@ export default function BoardPage() {
   // State-uri pentru Modal-ul "Complete Sprint"
   const [completeSprintOpen, setCompleteSprintOpen] = useState(false);
   const [completingSprint, setCompletingSprint] = useState(false);
+  const { can } = useProjectPermissions(projectId);
+  const canCreateTask = can("TASK_CREATE");
+  const canMoveTask = can("TASK_MOVE");
+  const canCloseSprint = can("SPRINT_CLOSE");
 
   // Senzori DnD
   const sensors = useSensors(
@@ -331,6 +335,8 @@ export default function BoardPage() {
 
   // Handler: Drag Start
   const handleDragStart = (event: DragStartEvent) => {
+    if (!canMoveTask) return;
+
     const { active } = event;
     if (active.data.current?.type === "Task") {
       setActiveTask(active.data.current.task);
@@ -339,6 +345,8 @@ export default function BoardPage() {
 
   // Handler: Drag Over
   const handleDragOver = (event: DragOverEvent) => {
+    if (!canMoveTask) return;
+
     const { active, over } = event;
     if (!over) return;
 
@@ -390,6 +398,11 @@ export default function BoardPage() {
 
   // Handler: Drag End
   const handleDragEnd = async (event: DragEndEvent) => {
+    if (!canMoveTask) {
+      setActiveTask(null);
+      return;
+    }
+
     const { active, over } = event;
     setActiveTask(null);
 
@@ -475,7 +488,7 @@ export default function BoardPage() {
 
         {/* Acțiuni (Butoane) */}
         <div className="mt-5 flex flex-wrap gap-3">
-          {activeSprintId && (
+          {activeSprintId && canCloseSprint && (
             <Button
               variant="destructive"
               className="border border-red-900/50 bg-red-900/20 text-red-400 hover:bg-red-900/40"
@@ -490,7 +503,7 @@ export default function BoardPage() {
             Filters
           </Button>
 
-          {projectId && (!isScrumLike || activeSprintId) && (
+          {projectId && canCreateTask && (!isScrumLike || activeSprintId) && (
             <CreateTaskDialog
               projectId={projectId}
               sprintId={activeSprintId ?? undefined}

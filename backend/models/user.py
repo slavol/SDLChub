@@ -10,6 +10,7 @@ class User(Base):
     id = Column(Integer, primary_key=True, index=True)
     email = Column(String, unique=True, index=True, nullable=False)
     full_name = Column(String, nullable=True)
+    avatar_url = Column(String, nullable=True)
     hashed_password = Column(String, nullable=False)
     is_active = Column(Boolean, default=True, nullable=False)
 
@@ -17,3 +18,4 @@ class User(Base):
     memberships = relationship("ProjectMember", back_populates="user")
     assigned_tasks = relationship("Task", back_populates="assignee")
     calendar_events = relationship("CalendarEvent", back_populates="created_by")
+    project_audit_logs = relationship("ProjectAuditLog", back_populates="actor")

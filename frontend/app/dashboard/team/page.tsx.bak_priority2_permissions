@@ -63,9 +63,6 @@ const DEFAULT_ROLE_PERMISSIONS: Record<string, boolean> = {
   SPRINT_CLOSE: false,
   AI_USE: true,
   REPORT_VIEW: true,
-  CALENDAR_CREATE: true,
-  CALENDAR_UPDATE: false,
-  CALENDAR_DELETE: false,
 };
 
 function roleBadgeClass(role?: string | null) {

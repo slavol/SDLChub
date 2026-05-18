@@ -15,7 +15,24 @@ export interface AuthUser {
   id: number;
   email: string;
   full_name?: string;
+  avatar_url?: string | null;
   is_active: boolean;
+}
+
+export interface AccountProjectSummary {
+  id: number;
+  name: string;
+  key: string;
+  methodology: string;
+  role_name: string;
+  is_owner: boolean;
+  joined_at: string;
+}
+
+export interface AccountSummary {
+  user: AuthUser;
+  projects_count: number;
+  projects: AccountProjectSummary[];
 }
 
 export interface AuthResponse {
@@ -63,6 +80,39 @@ export const resendVerificationEmail = async (
 
 export const getCurrentUser = async (): Promise<AuthUser> => {
   const response = await api.get("/auth/me");
+  return response.data;
+};
+
+export const getAccountSummary = async (): Promise<AccountSummary> => {
+  const response = await api.get("/auth/me/account-summary");
+  return response.data;
+};
+
+export const updateCurrentUser = async (data: {
+  email?: string;
+  full_name?: string;
+}): Promise<AuthUser> => {
+  const response = await api.put("/auth/me", data);
+  return response.data;
+};
+
+export const uploadCurrentUserAvatar = async (file: File): Promise<AuthUser> => {
+  const formData = new FormData();
+  formData.append("avatar", file);
+
+  const response = await api.post("/auth/me/avatar", formData, {
+    headers: {
+      "Content-Type": "multipart/form-data",
+    },
+  });
+  return response.data;
+};
+
+export const updateCurrentUserPassword = async (data: {
+  current_password: string;
+  new_password: string;
+}): Promise<GenericMessageResponse> => {
+  const response = await api.put("/auth/me/password", data);
   return response.data;
 };
 

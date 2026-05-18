@@ -10,11 +10,20 @@ from backend.models.project import CalendarEvent, ProjectMember
 from backend.models.user import User
 from backend.routers.auth import get_current_user
 from backend.schemas.calendar import CalendarEventCreate, CalendarEventOut, CalendarEventUpdate
-from backend.utils.permissions import check_project_permission, member_has_permission, require_project_permission, member_has_permission, require_project_permission
+from backend.utils.permissions import check_project_permission
 
 
 router = APIRouter(prefix="/calendar", tags=["Calendar"])
 
+
+CALENDAR_MANAGEMENT_ROLES = [
+    "Project Admin",
+    "Project Manager",
+    "Product Owner",
+    "Scrum Master",
+    "Flow Manager",
+    "Tech Lead",
+]
 
 
 def _load_attendee_ids(raw_value: str | None) -> List[int]:
@@ -83,14 +92,9 @@ def _ensure_attendees_are_members(db: Session, project_id: int, attendee_ids: Li
         )
 
 
-def _can_manage_event(member: ProjectMember, current_user: User, event: CalendarEvent, permission_key: str) -> bool:
-    if event.created_by_id == current_user.id:
-        return True
-
-    if not member or not member.project:
-        return False
-
-    return member_has_permission(member.project, member, current_user.id, permission_key)
+def _can_manage_event(member, current_user: User, event: CalendarEvent) -> bool:
+    role_name = member.role.name if member and member.role else "Member"
+    return event.created_by_id == current_user.id or role_name in CALENDAR_MANAGEMENT_ROLES
 
 
 @router.get("/project/{project_id}", response_model=List[CalendarEventOut])
@@ -121,7 +125,7 @@ def create_project_calendar_event(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    require_project_permission(db, current_user.id, project_id, "CALENDAR_CREATE")
+    check_project_permission(db, current_user.id, project_id)
     _validate_date_range(event_in.starts_at, event_in.ends_at)
     _ensure_attendees_are_members(db, project_id, event_in.attendee_ids)
 
@@ -160,8 +164,8 @@ def update_calendar_event(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Calendar event not found")
 
     member = check_project_permission(db, current_user.id, event.project_id)
-    if not _can_manage_event(member, current_user, event, "CALENDAR_UPDATE"):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Missing project permission: CALENDAR_UPDATE.")
+    if not _can_manage_event(member, current_user, event):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You can only edit events you created.")
 
     update_data = event_in.model_dump(exclude_unset=True)
 
@@ -193,8 +197,8 @@ def delete_calendar_event(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Calendar event not found")
 
     member = check_project_permission(db, current_user.id, event.project_id)
-    if not _can_manage_event(member, current_user, event, "CALENDAR_DELETE"):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Missing project permission: CALENDAR_DELETE.")
+    if not _can_manage_event(member, current_user, event):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You can only delete events you created.")
 
     db.delete(event)
     db.commit()

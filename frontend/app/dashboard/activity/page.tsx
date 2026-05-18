@@ -41,6 +41,7 @@ import {
 } from "@/services/project";
 import { getProjectActivity, ProjectActivity } from "@/services/activity";
 import { useProjectStore } from "@/store/use-project-store";
+import { UserAvatar } from "@/components/user-avatar";
 
 type TimeFilter = "all" | "24" | "72" | "168" | "720";
 type ActionFilter = "all" | string;
@@ -140,20 +141,6 @@ function formatDateTime(value: string) {
   });
 }
 
-function getInitials(name?: string | null) {
-  if (!name) return "SY";
-
-  const parts = name
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2);
-
-  if (parts.length === 0) return "SY";
-
-  return parts.map((part) => part[0]?.toUpperCase()).join("");
-}
-
 function actionLabel(action: string) {
   return actionLabels[action] || action.replaceAll("_", " ").toLowerCase();
 }
@@ -201,9 +188,12 @@ function ActivityItem({
         <div className="absolute left-[23px] top-14 h-[calc(100%-20px)] w-px bg-slate-800" />
       )}
 
-      <div className="relative z-10 flex h-12 w-12 items-center justify-center rounded-2xl border border-slate-800 bg-slate-950 text-sm font-semibold text-slate-200 shadow-lg shadow-slate-950/30">
-        {getInitials(actor)}
-      </div>
+      <UserAvatar
+        name={actor}
+        src={item.actor_avatar_url}
+        className="relative z-10 h-12 w-12 rounded-2xl border-slate-800 shadow-lg shadow-slate-950/30"
+        fallbackClassName="bg-slate-950 text-sm font-semibold text-slate-200"
+      />
 
       <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4 transition hover:border-blue-500/35 hover:bg-slate-950">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
@@ -649,7 +639,16 @@ export default function ActivityPage() {
                         key={member.membership_id}
                         value={String(member.user.id)}
                       >
-                        {member.user.full_name || member.user.email}
+                        <div className="flex items-center gap-2">
+                          <UserAvatar
+                            name={member.user.full_name}
+                            email={member.user.email}
+                            src={member.user.avatar_url}
+                            className="h-5 w-5"
+                            fallbackClassName="bg-blue-900 text-[9px] text-blue-100"
+                          />
+                          {member.user.full_name || member.user.email}
+                        </div>
                       </SelectItem>
                     ))}
                   </SelectContent>

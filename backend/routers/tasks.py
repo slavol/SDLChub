@@ -30,7 +30,7 @@ from backend.schemas.task import (
     TaskUpdate,
 )
 from backend.services.ai_service import generate_task_metadata
-from backend.utils.permissions import check_project_permission
+from backend.utils.permissions import check_project_permission, require_project_permission
 
 
 router = APIRouter(prefix="/tasks", tags=["Tasks"])
@@ -49,6 +49,7 @@ class ProjectActivityOut(BaseModel):
     task_title: str
     actor_id: int | None = None
     actor_name: str | None = None
+    actor_avatar_url: str | None = None
     action: str
     field: str | None = None
     old_value: str | None = None
@@ -220,6 +221,7 @@ def get_project_activity(
             "task_title": task.title,
             "actor_id": log.actor_id,
             "actor_name": log.actor_name,
+            "actor_avatar_url": log.actor_avatar_url,
             "action": log.action,
             "field": log.field,
             "old_value": log.old_value,
@@ -247,6 +249,7 @@ def get_project_activity(
                 "task_title": task.title,
                 "actor_id": None,
                 "actor_name": "System",
+                "actor_avatar_url": None,
                 "action": "TASK_CREATED",
                 "field": "title",
                 "old_value": None,
@@ -265,7 +268,7 @@ def create_task(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    check_project_permission(db, current_user.id, task_in.project_id)
+    require_project_permission(db, current_user.id, task_in.project_id, "TASK_CREATE")
 
     project = db.query(Project).filter(Project.id == task_in.project_id).first()
     if not project:
@@ -339,6 +342,16 @@ def update_task(
     ]
 
     update_data = task_in.model_dump(exclude_unset=True)
+    general_update_fields = {"title", "description", "priority", "due_date", "story_points", "sprint_id"}
+
+    if any(field in update_data for field in general_update_fields):
+        require_project_permission(db, current_user.id, task.project_id, "TASK_UPDATE")
+
+    if "assignee_id" in update_data:
+        require_project_permission(db, current_user.id, task.project_id, "TASK_ASSIGN")
+
+    if "status" in update_data:
+        require_project_permission(db, current_user.id, task.project_id, "TASK_MOVE")
 
     if "story_points" in update_data and update_data["story_points"] != task.story_points:
         if not is_tech_admin:
@@ -441,6 +454,7 @@ def create_subtask(
     current_user: User = Depends(get_current_user),
 ):
     task = get_task_for_user(task_id, db, current_user)
+    require_project_permission(db, current_user.id, task.project_id, "TASK_UPDATE")
 
     subtask = Subtask(
         task_id=task.id,
@@ -468,6 +482,7 @@ def update_subtask(
     current_user: User = Depends(get_current_user),
 ):
     task = get_task_for_user(task_id, db, current_user)
+    require_project_permission(db, current_user.id, task.project_id, "TASK_UPDATE")
 
     subtask = db.query(Subtask).filter(
         Subtask.id == subtask_id,
@@ -498,6 +513,7 @@ def create_comment(
     current_user: User = Depends(get_current_user),
 ):
     task = get_task_for_user(task_id, db, current_user)
+    require_project_permission(db, current_user.id, task.project_id, "TASK_COMMENT")
 
     comment = TaskComment(
         task_id=task.id,
@@ -524,6 +540,7 @@ def update_comment(
     current_user: User = Depends(get_current_user),
 ):
     task = get_task_for_user(task_id, db, current_user)
+    require_project_permission(db, current_user.id, task.project_id, "TASK_COMMENT")
 
     comment = db.query(TaskComment).filter(
         TaskComment.id == comment_id,
@@ -557,6 +574,7 @@ def delete_comment(
     current_user: User = Depends(get_current_user),
 ):
     task = get_task_for_user(task_id, db, current_user)
+    require_project_permission(db, current_user.id, task.project_id, "TASK_COMMENT")
 
     comment = db.query(TaskComment).filter(
         TaskComment.id == comment_id,

@@ -9,7 +9,6 @@ import {
   Check,
   ChevronDown,
   FileText,
-  Gauge,
   KanbanSquare,
   LayoutDashboard,
   LogOut,
@@ -126,7 +125,6 @@ export function AppSidebar({ methodology, role, projectName }: SidebarProps) {
 
   const links = [
     { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
-    { name: "Workload", href: "/dashboard/workload", icon: Gauge },
     { name: "Activity", href: "/dashboard/activity", icon: Activity },
     { name: "Calendar", href: "/dashboard/calendar", icon: CalendarDays },
     { name: "Board", href: "/dashboard/board", icon: KanbanSquare },

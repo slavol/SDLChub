@@ -65,6 +65,7 @@ class RoleOut(BaseModel):
     id: int
     name: str
     description: Optional[str] = None
+    permissions: Optional[dict[str, bool]] = None
 
     class Config:
         from_attributes = True

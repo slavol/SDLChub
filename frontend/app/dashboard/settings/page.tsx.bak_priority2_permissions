@@ -80,10 +80,6 @@ const PERMISSION_GROUPS = [
     keys: ["SPRINT_CREATE", "SPRINT_START", "SPRINT_CLOSE"],
   },
   {
-    title: "Calendar",
-    keys: ["CALENDAR_CREATE", "CALENDAR_UPDATE", "CALENDAR_DELETE"],
-  },
-  {
     title: "AI & Reports",
     keys: ["AI_USE", "REPORT_VIEW"],
   },
@@ -105,9 +101,6 @@ const PERMISSION_LABELS: Record<string, string> = {
   SPRINT_CREATE: "Create sprints",
   SPRINT_START: "Start sprints",
   SPRINT_CLOSE: "Close sprints",
-  CALENDAR_CREATE: "Create calendar events",
-  CALENDAR_UPDATE: "Edit calendar events",
-  CALENDAR_DELETE: "Delete calendar events",
   AI_USE: "Use AI",
   REPORT_VIEW: "View reports",
 };

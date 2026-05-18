@@ -1,0 +1,49 @@
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+
+import { hasProjectPermission } from "@/lib/project-permissions";
+import { getProjectMembers, ProjectMember } from "@/services/project";
+import { useAuthStore } from "@/store/use-auth-store";
+import { useProjectStore } from "@/store/use-project-store";
+
+export function useProjectPermissions(projectId?: number | null) {
+  const user = useAuthStore((state) => state.user);
+  const { currentProject } = useProjectStore();
+
+  const [members, setMembers] = useState<ProjectMember[]>([]);
+
+  useEffect(() => {
+    if (!projectId || !user?.id) {
+      return;
+    }
+
+    let cancelled = false;
+
+    getProjectMembers(projectId)
+      .then((remoteMembers) => {
+        if (!cancelled) setMembers(remoteMembers);
+      })
+      .catch(() => {
+        if (!cancelled) setMembers([]);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId, user?.id]);
+
+  const membership = useMemo(
+    () => members.find((member) => member.user.id === user?.id) || null,
+    [members, user?.id]
+  );
+
+  const can = (permissionKey: string) =>
+    Boolean(projectId) && hasProjectPermission(currentProject, user, membership, permissionKey);
+
+  return {
+    can,
+    membership,
+    permissions: membership?.role?.permissions || {},
+  };
+}

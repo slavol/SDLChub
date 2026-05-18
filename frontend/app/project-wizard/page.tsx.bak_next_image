@@ -1,5 +1,4 @@
 "use client";
-import Image from "next/image";
 
 import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
@@ -359,14 +358,7 @@ export default function ProjectWizard() {
                       >
                           {logoPreview ? (
                               <>
-                                <Image
-                                  src={logoPreview}
-                                  alt="Logo Preview"
-                                  fill
-                                  sizes="192px"
-                                  className="object-cover"
-                                  unoptimized
-                                />
+                                <img src={logoPreview} alt="Logo Preview" className="w-full h-full object-cover" />
                                 <div onClick={removeLogo} className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex items-center justify-center transition">
                                     <X className="w-8 h-8 text-white" />
                                 </div>

@@ -3,6 +3,7 @@ from backend.models.project import (
     CalendarEvent,
     Invitation,
     Project,
+    ProjectAuditLog,
     ProjectMember,
     Role,
     Sprint,
@@ -15,6 +16,7 @@ from backend.models.project import (
 __all__ = [
     "User",
     "Project",
+    "ProjectAuditLog",
     "ProjectMember",
     "Role",
     "Invitation",

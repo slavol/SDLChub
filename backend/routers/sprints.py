@@ -10,7 +10,7 @@ from backend.models.project import Project, Sprint, Task, TaskStatus
 from backend.models.user import User
 from backend.routers.auth import get_current_user
 from backend.schemas.sprint import SprintOut
-from backend.utils.permissions import check_project_permission
+from backend.utils.permissions import check_project_permission, require_project_permission
 
 
 router = APIRouter(prefix="/sprints", tags=["Sprints"])
@@ -57,12 +57,7 @@ def create_sprint(
     project = get_project_or_404(db, sprint_in.project_id)
     ensure_project_uses_sprints(project)
 
-    check_project_permission(
-        db,
-        current_user.id,
-        sprint_in.project_id,
-        SPRINT_MANAGEMENT_ROLES,
-    )
+    require_project_permission(db, current_user.id, sprint_in.project_id, "SPRINT_CREATE")
 
     new_sprint = Sprint(
         name=sprint_in.name.strip(),
@@ -109,12 +104,7 @@ def start_sprint(
     project = get_project_or_404(db, sprint.project_id)
     ensure_project_uses_sprints(project)
 
-    check_project_permission(
-        db,
-        current_user.id,
-        sprint.project_id,
-        SPRINT_MANAGEMENT_ROLES,
-    )
+    require_project_permission(db, current_user.id, sprint.project_id, "SPRINT_START")
 
     if sprint.is_active:
         return {"message": "Sprint is already active.", "sprint": sprint.name}
@@ -152,12 +142,7 @@ def complete_sprint(
     project = get_project_or_404(db, sprint.project_id)
     ensure_project_uses_sprints(project)
 
-    check_project_permission(
-        db,
-        current_user.id,
-        sprint.project_id,
-        SPRINT_MANAGEMENT_ROLES,
-    )
+    require_project_permission(db, current_user.id, sprint.project_id, "SPRINT_CLOSE")
 
     if not sprint.is_active:
         raise HTTPException(

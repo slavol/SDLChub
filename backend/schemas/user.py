@@ -5,6 +5,7 @@ from typing import Optional
 class UserBase(BaseModel):
     email: EmailStr
     full_name: Optional[str] = None
+    avatar_url: Optional[str] = None
 
 # Proprietăți necesare la înregistrare
 class UserCreate(UserBase):

@@ -51,7 +51,6 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { UserAvatar } from "@/components/user-avatar";
-import { useProjectPermissions } from "@/hooks/use-project-permissions";
 import { getApiErrorMessage } from "@/lib/api-error";
 import { cn } from "@/lib/utils";
 import {
@@ -198,12 +197,10 @@ function CalendarItemCard({
   item,
   memberMap,
   onDeleteEvent,
-  canDeleteEvent,
 }: {
   item: CalendarFeedItem;
   memberMap: Map<number, ProjectMember>;
   onDeleteEvent: (event: CalendarEvent) => void;
-  canDeleteEvent: (event: CalendarEvent) => boolean;
 }) {
   if (item.kind === "task") {
     return (
@@ -247,16 +244,14 @@ function CalendarItemCard({
         >
           {item.event.event_type}
         </Badge>
-        {canDeleteEvent(item.event) && (
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7 text-slate-500 hover:bg-red-950/30 hover:text-red-300"
-            onClick={() => onDeleteEvent(item.event)}
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-          </Button>
-        )}
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-7 w-7 text-slate-500 hover:bg-red-950/30 hover:text-red-300"
+          onClick={() => onDeleteEvent(item.event)}
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+        </Button>
       </div>
 
       <p className="line-clamp-2 text-sm font-semibold text-white">{item.title}</p>
@@ -338,10 +333,6 @@ export default function CalendarPage() {
   const [location, setLocation] = useState("");
   const [description, setDescription] = useState("");
   const [selectedAttendees, setSelectedAttendees] = useState<number[]>([]);
-
-  const { can } = useProjectPermissions(project?.id || currentProject?.id);
-  const canCreateCalendarEvent = can("CALENDAR_CREATE");
-  const canDeleteCalendarEvent = can("CALENDAR_DELETE");
 
   const memberMap = useMemo(
     () => new Map(members.map((member) => [member.user.id, member])),
@@ -512,11 +503,6 @@ export default function CalendarPage() {
   const handleCreateEvent = async () => {
     if (!project || !title.trim()) return;
 
-    if (!canCreateCalendarEvent) {
-      toast.error("You do not have permission to create calendar events.");
-      return;
-    }
-
     const startsAt = `${eventDate}T${startTime}:00`;
     const endsAt = `${eventDate}T${endTime}:00`;
 
@@ -607,23 +593,9 @@ export default function CalendarPage() {
                 Today
               </Button>
 
-              <Dialog
-                open={eventDialogOpen}
-                onOpenChange={(open) => {
-                  if (open && !canCreateCalendarEvent) {
-                    toast.error("You do not have permission to create calendar events.");
-                    return;
-                  }
-
-                  setEventDialogOpen(open);
-                }}
-              >
+              <Dialog open={eventDialogOpen} onOpenChange={setEventDialogOpen}>
                 <DialogTrigger asChild>
-                  <Button
-                    className="bg-blue-600 hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
-                    disabled={!canCreateCalendarEvent}
-                    title={!canCreateCalendarEvent ? "You do not have permission to create calendar events." : undefined}
-                  >
+                  <Button className="bg-blue-600 hover:bg-blue-700">
                     <CalendarPlus className="mr-2 h-4 w-4" />
                     New Event
                   </Button>
@@ -788,7 +760,7 @@ export default function CalendarPage() {
                     </Button>
                     <Button
                       type="button"
-                      disabled={creatingEvent || !title.trim() || !canCreateCalendarEvent}
+                      disabled={creatingEvent || !title.trim()}
                       className="bg-blue-600 hover:bg-blue-700"
                       onClick={handleCreateEvent}
                     >
@@ -1008,7 +980,6 @@ export default function CalendarPage() {
                         item={item}
                         memberMap={memberMap}
                         onDeleteEvent={setEventToDelete}
-                        canDeleteEvent={(event) => canDeleteCalendarEvent || event.created_by_id === currentUser?.id}
                       />
                     ))}
 
@@ -1016,9 +987,7 @@ export default function CalendarPage() {
                       <div className="rounded-2xl border border-dashed border-slate-800 bg-slate-950/70 p-8 text-center">
                         <p className="font-medium text-slate-300">No calendar items</p>
                         <p className="mt-1 text-sm text-slate-500">
-                          {canCreateCalendarEvent
-                            ? "Create a meeting or add target dates to tasks."
-                            : "You can view calendar items, but your role cannot create new events."}
+                          Create a meeting or add target dates to tasks.
                         </p>
                       </div>
                     )}
@@ -1048,7 +1017,6 @@ export default function CalendarPage() {
                   item={item}
                   memberMap={memberMap}
                   onDeleteEvent={setEventToDelete}
-                        canDeleteEvent={(event) => canDeleteCalendarEvent || event.created_by_id === currentUser?.id}
                 />
               ))}
 

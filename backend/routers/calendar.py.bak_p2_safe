@@ -10,7 +10,7 @@ from backend.models.project import CalendarEvent, ProjectMember
 from backend.models.user import User
 from backend.routers.auth import get_current_user
 from backend.schemas.calendar import CalendarEventCreate, CalendarEventOut, CalendarEventUpdate
-from backend.utils.permissions import check_project_permission, member_has_permission, require_project_permission, member_has_permission, require_project_permission
+from backend.utils.permissions import check_project_permission, member_has_permission, require_project_permission
 
 
 router = APIRouter(prefix="/calendar", tags=["Calendar"])

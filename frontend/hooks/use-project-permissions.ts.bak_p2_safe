@@ -1,0 +1,50 @@
+"use client";
+
+import { useEffect, useState } from "react";
+
+import { getMyProjectPermissions, type MyProjectPermissions } from "@/services/project";
+import { useAuthStore } from "@/store/use-auth-store";
+
+export function useProjectPermissions(projectId?: number | null) {
+  const user = useAuthStore((state) => state.user);
+  const [permissionState, setPermissionState] = useState<MyProjectPermissions | null>(null);
+
+  useEffect(() => {
+    if (!projectId || !user?.id) {
+      setPermissionState(null);
+      return;
+    }
+
+    let cancelled = false;
+    setPermissionState(null);
+
+    getMyProjectPermissions(projectId)
+      .then((remotePermissions) => {
+        if (!cancelled) setPermissionState(remotePermissions);
+      })
+      .catch(() => {
+        if (!cancelled) setPermissionState(null);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId, user?.id]);
+
+  const can = (permissionKey: string) =>
+    Boolean(
+      projectId &&
+        permissionState &&
+        (permissionState.is_project_owner ||
+          permissionState.is_project_admin ||
+          permissionState.permissions?.[permissionKey])
+    );
+
+  return {
+    can,
+    membership: permissionState,
+    permissions: permissionState?.permissions || {},
+    isProjectOwner: Boolean(permissionState?.is_project_owner),
+    isProjectAdmin: Boolean(permissionState?.is_project_admin),
+  };
+}

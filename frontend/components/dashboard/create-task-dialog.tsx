@@ -34,7 +34,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { UserAvatar } from "@/components/user-avatar";
 
 // Asigură-te că generateTaskDescription este exportată din services/task
 import { createTask, Task, TaskPriority, generateTaskDescription } from "@/services/task";
@@ -268,11 +268,13 @@ export function CreateTaskDialog({ projectId, sprintId, methodology, onTaskCreat
                           {members.map((member) => (
                               <SelectItem key={member.membership_id} value={member.user.id.toString()}>
                                   <div className="flex items-center gap-2">
-                                      <Avatar className="h-5 w-5">
-                                          <AvatarFallback className="text-[9px] bg-blue-900 text-blue-100">
-                                              {member.user.full_name?.charAt(0) || "U"}
-                                          </AvatarFallback>
-                                      </Avatar>
+                                      <UserAvatar
+                                        name={member.user.full_name}
+                                        email={member.user.email}
+                                        src={member.user.avatar_url}
+                                        className="h-5 w-5"
+                                        fallbackClassName="bg-blue-900 text-[9px] text-blue-100"
+                                      />
                                       {member.user.full_name || member.user.email}
                                   </div>
                               </SelectItem>

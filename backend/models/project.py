@@ -28,6 +28,7 @@ class Project(Base):
     tasks = relationship("Task", back_populates="project")
     sprints = relationship("Sprint", back_populates="project")
     calendar_events = relationship("CalendarEvent", back_populates="project", cascade="all, delete-orphan")
+    audit_logs = relationship("ProjectAuditLog", back_populates="project", cascade="all, delete-orphan", order_by="ProjectAuditLog.created_at")
 
 class ProjectMember(Base):
     __tablename__ = "project_members"
@@ -131,6 +132,10 @@ class Task(Base):
     def assignee_name(self):
         return self.assignee.full_name if self.assignee else None
 
+    @property
+    def assignee_avatar_url(self):
+        return self.assignee.avatar_url if self.assignee else None
+
 class Subtask(Base):
     __tablename__ = "subtasks"
     __table_args__ = {'extend_existing': True}
@@ -168,6 +173,10 @@ class TaskComment(Base):
     def author_name(self):
         return self.author.full_name if self.author else None
 
+    @property
+    def author_avatar_url(self):
+        return self.author.avatar_url if self.author else None
+
 class TaskAuditLog(Base):
     __tablename__ = "task_audit_logs"
     __table_args__ = {'extend_existing': True}
@@ -187,6 +196,10 @@ class TaskAuditLog(Base):
     @property
     def actor_name(self):
         return self.actor.full_name if self.actor else None
+
+    @property
+    def actor_avatar_url(self):
+        return self.actor.avatar_url if self.actor else None
 
 
 class CalendarEvent(Base):
@@ -213,3 +226,25 @@ class CalendarEvent(Base):
     @property
     def created_by_name(self):
         return self.created_by.full_name if self.created_by else None
+
+
+class ProjectAuditLog(Base):
+    __tablename__ = "project_audit_logs"
+    __table_args__ = {'extend_existing': True}
+
+    id = Column(Integer, primary_key=True, index=True)
+    project_id = Column(Integer, ForeignKey("projects.id"))
+    actor_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    action = Column(String)
+    field = Column(String, nullable=True)
+    old_value = Column(Text, nullable=True)
+    new_value = Column(Text, nullable=True)
+    metadata_json = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    project = relationship("Project", back_populates="audit_logs")
+    actor = relationship("User", foreign_keys=[actor_id])
+
+    @property
+    def actor_name(self):
+        return self.actor.full_name if self.actor else None

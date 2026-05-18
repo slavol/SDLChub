@@ -26,6 +26,7 @@ export interface Task {
     due_date?: string | null;
     assignee_id?: number;
     assignee_name?: string | null;
+    assignee_avatar_url?: string | null;
     project_id: number;
     sprint_id?: number | null;
     created_at?: string;
@@ -46,6 +47,7 @@ export interface TaskComment {
     task_id: number;
     author_id: number;
     author_name?: string | null;
+    author_avatar_url?: string | null;
     body: string;
     created_at: string;
     updated_at?: string | null;
@@ -56,6 +58,7 @@ export interface TaskAuditLog {
     task_id: number;
     actor_id?: number | null;
     actor_name?: string | null;
+    actor_avatar_url?: string | null;
     action: string;
     field?: string | null;
     old_value?: string | null;

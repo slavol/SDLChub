@@ -7,6 +7,7 @@ export interface ProjectActivity {
   task_title: string;
   actor_id?: number | null;
   actor_name?: string | null;
+  actor_avatar_url?: string | null;
   action: string;
   field?: string | null;
   old_value?: string | null;

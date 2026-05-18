@@ -1,7 +1,42 @@
+import json
+
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
 from backend.models.project import Project, ProjectMember
+
+
+def parse_role_permissions(raw_permissions: str | None) -> dict[str, bool]:
+    if not raw_permissions:
+        return {}
+
+    try:
+        parsed = json.loads(raw_permissions)
+    except json.JSONDecodeError:
+        return {}
+
+    if not isinstance(parsed, dict):
+        return {}
+
+    return {str(key): bool(value) for key, value in parsed.items()}
+
+
+def member_has_permission(
+    project: Project,
+    membership: ProjectMember,
+    user_id: int,
+    permission_key: str,
+) -> bool:
+    role_name = membership.role.name if membership and membership.role else "Member"
+
+    if project.owner_id == user_id:
+        return True
+
+    if role_name == "Project Admin":
+        return True
+
+    permissions = parse_role_permissions(membership.role.permissions if membership.role else None)
+    return bool(permissions.get(permission_key))
 
 
 def check_project_permission(
@@ -9,6 +44,7 @@ def check_project_permission(
     user_id: int,
     project_id: int,
     allowed_roles: list[str] | None = None,
+    required_permission: str | None = None,
 ) -> ProjectMember:
     """
     Verifică dacă userul este membru în proiect.
@@ -39,6 +75,17 @@ def check_project_permission(
             detail="You are not a member of this project.",
         )
 
+    if required_permission is not None and not member_has_permission(
+        project,
+        membership,
+        user_id,
+        required_permission,
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Missing project permission: {required_permission}.",
+        )
+
     if allowed_roles is None:
         return membership
 
@@ -56,4 +103,18 @@ def check_project_permission(
     raise HTTPException(
         status_code=status.HTTP_403_FORBIDDEN,
         detail="You do not have permission to perform this action.",
+    )
+
+
+def require_project_permission(
+    db: Session,
+    user_id: int,
+    project_id: int,
+    permission_key: str,
+) -> ProjectMember:
+    return check_project_permission(
+        db,
+        user_id,
+        project_id,
+        required_permission=permission_key,
     )

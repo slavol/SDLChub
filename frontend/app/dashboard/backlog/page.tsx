@@ -8,10 +8,11 @@ import { getProjectSprints, createSprint, startSprint, Sprint } from "@/services
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { CreateTaskDialog } from "@/components/dashboard/create-task-dialog";
+import { UserAvatar } from "@/components/user-avatar";
+import { useProjectPermissions } from "@/hooks/use-project-permissions";
 import {
     Loader2,
     ChevronRight,
@@ -58,20 +59,6 @@ const statusLabels: Record<string, string> = {
     DONE: "Done",
 };
 
-function getInitials(value?: string | null) {
-    if (!value) return "NA";
-
-    const parts = value
-        .trim()
-        .split(/\s+/)
-        .filter(Boolean)
-        .slice(0, 2);
-
-    if (parts.length === 0) return "NA";
-
-    return parts.map((part) => part[0]?.toUpperCase()).join("");
-}
-
 function formatDate(value?: string | null) {
     if (!value) return "No date";
 
@@ -94,7 +81,7 @@ function BacklogTaskRow({
 }: {
     task: Task,
     sprints: Sprint[],
-    onMoveTask: (taskId: number, sprintId: number | null) => void
+    onMoveTask?: (taskId: number, sprintId: number | null) => void
 }) {
     const activeOrFutureSprints = sprints;
     const assigneeName = task.assignee_name || "Unassigned";
@@ -151,20 +138,20 @@ function BacklogTaskRow({
             </div>
 
             <div className="flex items-center justify-between gap-3 md:justify-end">
-                <Avatar className="h-8 w-8 border border-slate-700">
-                    <AvatarFallback
-                        className={cn(
-                            "text-[10px] font-bold",
-                            task.assignee_id
-                                ? "bg-blue-500/15 text-blue-200"
-                                : "bg-slate-800 text-slate-500"
-                        )}
-                    >
-                        {task.assignee_id ? getInitials(assigneeName) : "NA"}
-                    </AvatarFallback>
-                </Avatar>
+                <UserAvatar
+                    name={task.assignee_id ? assigneeName : "Not assigned"}
+                    src={task.assignee_avatar_url}
+                    className="h-8 w-8"
+                    fallbackClassName={cn(
+                        "text-[10px] font-bold",
+                        task.assignee_id
+                            ? "bg-blue-500/15 text-blue-200"
+                            : "bg-slate-800 text-slate-500"
+                    )}
+                />
 
                 {/* DROPDOWN PENTRU MUTARE */}
+                {onMoveTask && (
                 <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                         <Button variant="ghost" className="h-9 w-9 rounded-xl p-0 text-slate-500 opacity-100 transition hover:bg-slate-800 hover:text-white md:opacity-0 md:group-hover:opacity-100">
@@ -192,6 +179,7 @@ function BacklogTaskRow({
                         ))}
                     </DropdownMenuContent>
                 </DropdownMenu>
+                )}
             </div>
         </div>
     );
@@ -209,6 +197,11 @@ export default function BacklogPage() {
     const [newSprintStartDate, setNewSprintStartDate] = useState("");
     const [newSprintEndDate, setNewSprintEndDate] = useState("");
     const [isCreatingSprint, setIsCreatingSprint] = useState(false);
+    const { can } = useProjectPermissions(projectId);
+    const canCreateTask = can("TASK_CREATE");
+    const canCreateSprint = can("SPRINT_CREATE");
+    const canStartSprint = can("SPRINT_START");
+    const canPlanTasks = can("TASK_UPDATE");
 
     useEffect(() => {
         const init = async () => {
@@ -248,6 +241,7 @@ export default function BacklogPage() {
     }, [currentProject, setCurrentProject]);
 
     const handleCreateSprint = async () => {
+        if (!canCreateSprint) return;
         if (!projectId || !newSprintName) return;
         setIsCreatingSprint(true);
         try {
@@ -271,6 +265,8 @@ export default function BacklogPage() {
     };
 
     const handleStartSprint = async (sprintId: number) => {
+        if (!canStartSprint) return;
+
         try {
             await startSprint(sprintId);
             toast.success("Sprint Started! Go to Board.");
@@ -282,6 +278,8 @@ export default function BacklogPage() {
 
     // --- LOGICA DE MUTARE TASK ---
     const handleMoveTask = async (taskId: number, sprintId: number | null) => {
+        if (!canPlanTasks) return;
+
         try {
             // Optimistic update
             const updatedTasks = tasks.map(t =>
@@ -325,7 +323,7 @@ export default function BacklogPage() {
                         </p>
                     </div>
 
-                    {projectId && (
+                    {projectId && canCreateTask && (
                         <CreateTaskDialog
                             projectId={projectId}
                             methodology={currentProject?.methodology}
@@ -361,6 +359,7 @@ export default function BacklogPage() {
                         <p className="text-sm text-slate-500">Move tasks into a sprint and start execution when ready.</p>
                 </div>
 
+                    {canCreateSprint && (
                     <Dialog>
                         <DialogTrigger asChild>
                             <Button variant="outline" className="border-dashed border-slate-700 bg-slate-950/60 text-slate-300 hover:bg-slate-900 hover:text-white">
@@ -416,6 +415,7 @@ export default function BacklogPage() {
                             </DialogFooter>
                         </DialogContent>
                     </Dialog>
+                    )}
                 </div>
 
                 {sprints.map((sprint) => (
@@ -436,7 +436,7 @@ export default function BacklogPage() {
                                 </div>
                             </div>
                             <div className="flex gap-2">
-                                {!sprint.is_active && (
+                                {!sprint.is_active && canStartSprint && (
                                     <Button
                                         size="sm"
                                         className="bg-blue-600 text-white hover:bg-blue-700"
@@ -461,7 +461,7 @@ export default function BacklogPage() {
                                         key={task.id}
                                         task={task}
                                         sprints={sprints}
-                                        onMoveTask={handleMoveTask}
+                                        onMoveTask={canPlanTasks ? handleMoveTask : undefined}
                                     />
                                 ))
                             )}
@@ -483,7 +483,7 @@ export default function BacklogPage() {
                             key={task.id}
                             task={task}
                             sprints={sprints}
-                            onMoveTask={handleMoveTask}
+                            onMoveTask={canPlanTasks ? handleMoveTask : undefined}
                         />
                     ))}
                     {backlogTasks.length === 0 && (

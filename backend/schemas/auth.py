@@ -18,6 +18,7 @@ class AuthUser(BaseModel):
     id: int
     email: EmailStr
     full_name: Optional[str] = None
+    avatar_url: Optional[str] = None
     is_active: bool
 
     class Config:
@@ -47,3 +48,13 @@ class PasswordResetConfirm(BaseModel):
 
 class ResendVerificationRequest(BaseModel):
     email: EmailStr
+
+
+class AccountUpdateRequest(BaseModel):
+    email: Optional[EmailStr] = None
+    full_name: Optional[str] = None
+
+
+class AccountPasswordUpdateRequest(BaseModel):
+    current_password: str
+    new_password: str

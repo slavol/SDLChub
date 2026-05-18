@@ -52,6 +52,7 @@ class TaskOut(BaseModel):
     due_date: Optional[datetime] = None
     assignee_id: Optional[int]
     assignee_name: Optional[str] = None
+    assignee_avatar_url: Optional[str] = None
     project_id: int
     sprint_id: Optional[int]
     created_at: datetime
@@ -95,6 +96,7 @@ class TaskCommentOut(BaseModel):
     task_id: int
     author_id: int
     author_name: Optional[str] = None
+    author_avatar_url: Optional[str] = None
     body: str
     created_at: datetime
     updated_at: Optional[datetime] = None
@@ -108,6 +110,7 @@ class TaskAuditLogOut(BaseModel):
     task_id: int
     actor_id: Optional[int]
     actor_name: Optional[str] = None
+    actor_avatar_url: Optional[str] = None
     action: str
     field: Optional[str]
     old_value: Optional[str]

@@ -25,7 +25,6 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -47,6 +46,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { UserAvatar } from "@/components/user-avatar";
+import { useProjectPermissions } from "@/hooks/use-project-permissions";
 import { getApiErrorMessage } from "@/lib/api-error";
 import { cn } from "@/lib/utils";
 import {
@@ -93,20 +94,6 @@ const priorityClass: Record<TaskPriority, string> = {
   [TaskPriority.HIGH]: "border-orange-500/25 bg-orange-500/10 text-orange-300",
   [TaskPriority.CRITICAL]: "border-rose-500/25 bg-rose-500/10 text-rose-300",
 };
-
-function getInitials(name?: string | null) {
-  if (!name) return "U";
-
-  const parts = name
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2);
-
-  if (parts.length === 0) return "U";
-
-  return parts.map((part) => part[0]?.toUpperCase()).join("");
-}
 
 function formatDate(value?: string | null) {
   if (!value) return "-";
@@ -165,6 +152,12 @@ export default function TaskDetailPage() {
   const [deletingComment, setDeletingComment] = useState(false);
 
   const supportsStoryPoints = project?.methodology !== "KANBAN";
+  const { can } = useProjectPermissions(task?.project_id || project?.id || currentProject?.id);
+  const canUpdateTask = can("TASK_UPDATE");
+  const canAssignTask = can("TASK_ASSIGN");
+  const canMoveTask = can("TASK_MOVE");
+  const canComment = can("TASK_COMMENT");
+  const canSaveTask = canUpdateTask || canAssignTask || canMoveTask;
 
   const completedSubtasks = useMemo(
     () => task?.subtasks.filter((subtask) => subtask.is_done).length || 0,
@@ -217,6 +210,7 @@ export default function TaskDetailPage() {
   };
 
   const handleSave = async () => {
+    if (!canSaveTask) return;
     if (!task) return;
 
     setSaving(true);
@@ -243,6 +237,8 @@ export default function TaskDetailPage() {
   };
 
   const handleAssigneeChange = (value: string) => {
+    if (!canAssignTask) return;
+
     const assigneeId = value === "unassigned" ? undefined : Number(value);
     const member = members.find((item) => item.user.id === assigneeId);
 
@@ -253,6 +249,7 @@ export default function TaskDetailPage() {
   };
 
   const handleAddSubtask = async () => {
+    if (!canUpdateTask) return;
     if (!task || !newSubtaskTitle.trim()) return;
 
     try {
@@ -266,6 +263,7 @@ export default function TaskDetailPage() {
   };
 
   const handleToggleSubtask = async (subtaskId: number, isDone: boolean) => {
+    if (!canUpdateTask) return;
     if (!task) return;
 
     try {
@@ -277,6 +275,7 @@ export default function TaskDetailPage() {
   };
 
   const handleAddComment = async () => {
+    if (!canComment) return;
     if (!task || !newComment.trim()) return;
 
     try {
@@ -290,11 +289,14 @@ export default function TaskDetailPage() {
   };
 
   const handleStartEditComment = (commentId: number, body: string) => {
+    if (!canComment) return;
+
     setEditingCommentId(commentId);
     setEditingCommentBody(body);
   };
 
   const handleSaveCommentEdit = async () => {
+    if (!canComment) return;
     if (!task || !editingCommentId || !editingCommentBody.trim()) return;
 
     try {
@@ -309,6 +311,7 @@ export default function TaskDetailPage() {
   };
 
   const handleDeleteComment = async () => {
+    if (!canComment) return;
     if (!task) return;
     if (!commentToDelete) return;
 
@@ -391,7 +394,7 @@ export default function TaskDetailPage() {
 
             <Button
               onClick={handleSave}
-              disabled={saving}
+              disabled={saving || !canSaveTask}
               className="bg-blue-600 hover:bg-blue-700"
             >
               {saving ? (
@@ -440,9 +443,17 @@ export default function TaskDetailPage() {
           <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
             <UserRound className="mb-3 h-5 w-5 text-violet-300" />
             <p className="text-sm text-slate-500">Assignee</p>
-            <p className="mt-1 truncate text-lg font-semibold text-white">
-              {assigneeName}
-            </p>
+            <div className="mt-2 flex min-w-0 items-center gap-2">
+              <UserAvatar
+                name={assigneeName}
+                src={task.assignee_avatar_url}
+                className="h-8 w-8"
+                fallbackClassName="bg-violet-500/10 text-[10px] text-violet-200"
+              />
+              <p className="truncate text-lg font-semibold text-white">
+                {assigneeName}
+              </p>
+            </div>
           </div>
         </div>
       </section>
@@ -462,6 +473,7 @@ export default function TaskDetailPage() {
                 <Input
                   value={task.title}
                   onChange={(event) => patchLocalTask({ title: event.target.value })}
+                  disabled={!canUpdateTask}
                   className="h-12 border-slate-700 bg-slate-950 text-base font-semibold text-white"
                 />
               </div>
@@ -473,6 +485,7 @@ export default function TaskDetailPage() {
                   onChange={(event) =>
                     patchLocalTask({ description: event.target.value })
                   }
+                  disabled={!canUpdateTask}
                   className="min-h-[260px] resize-y border-slate-700 bg-slate-950 leading-6 text-slate-100"
                   placeholder="User story, acceptance criteria, technical notes..."
                 />
@@ -513,6 +526,7 @@ export default function TaskDetailPage() {
                     onClick={() =>
                       handleToggleSubtask(subtask.id, subtask.is_done)
                     }
+                    disabled={!canUpdateTask}
                     className="flex w-full items-start gap-3 rounded-2xl border border-slate-800 bg-slate-950/75 p-4 text-left transition hover:border-blue-500/30 hover:bg-slate-950"
                   >
                     {subtask.is_done ? (
@@ -557,9 +571,10 @@ export default function TaskDetailPage() {
                     event.key === "Enter" && handleAddSubtask()
                   }
                   placeholder="Add a subtask..."
+                  disabled={!canUpdateTask}
                   className="h-11 border-slate-700 bg-slate-950"
                 />
-                <Button onClick={handleAddSubtask} className="bg-blue-600 hover:bg-blue-700">
+                <Button onClick={handleAddSubtask} disabled={!canUpdateTask} className="bg-blue-600 hover:bg-blue-700">
                   <Plus className="h-4 w-4" />
                 </Button>
               </div>
@@ -581,11 +596,12 @@ export default function TaskDetailPage() {
                     className="rounded-2xl border border-slate-800 bg-slate-950/75 p-4"
                   >
                     <div className="mb-3 flex items-start gap-3">
-                      <Avatar className="h-9 w-9 border border-slate-700">
-                        <AvatarFallback className="bg-blue-500/10 text-[10px] text-blue-200">
-                          {getInitials(comment.author_name)}
-                        </AvatarFallback>
-                      </Avatar>
+                      <UserAvatar
+                        name={comment.author_name}
+                        src={comment.author_avatar_url}
+                        className="h-9 w-9"
+                        fallbackClassName="bg-blue-500/10 text-[10px] text-blue-200"
+                      />
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-sm font-semibold text-slate-100">
                           {comment.author_name || "Unknown user"}
@@ -598,7 +614,7 @@ export default function TaskDetailPage() {
                             : ""}
                         </p>
                       </div>
-                      {currentUser?.id === comment.author_id && (
+                      {currentUser?.id === comment.author_id && canComment && (
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
                             <Button
@@ -642,6 +658,7 @@ export default function TaskDetailPage() {
                           onChange={(event) =>
                             setEditingCommentBody(event.target.value)
                           }
+                          disabled={!canComment}
                           className="min-h-24 border-slate-700 bg-slate-900"
                         />
                         <div className="flex justify-end gap-2">
@@ -661,6 +678,7 @@ export default function TaskDetailPage() {
                             size="sm"
                             className="bg-blue-600 hover:bg-blue-700"
                             onClick={handleSaveCommentEdit}
+                            disabled={!canComment}
                           >
                             <Save className="mr-2 h-4 w-4" />
                             Save
@@ -692,10 +710,12 @@ export default function TaskDetailPage() {
                   value={newComment}
                   onChange={(event) => setNewComment(event.target.value)}
                   placeholder="Add a comment..."
+                  disabled={!canComment}
                   className="min-h-28 border-slate-700 bg-slate-950"
                 />
                 <Button
                   onClick={handleAddComment}
+                  disabled={!canComment}
                   className="w-full bg-blue-600 hover:bg-blue-700"
                 >
                   Add comment
@@ -718,6 +738,7 @@ export default function TaskDetailPage() {
                   onValueChange={(value) =>
                     patchLocalTask({ status: value as TaskStatus })
                   }
+                  disabled={!canMoveTask}
                 >
                   <SelectTrigger className="h-11 border-slate-700 bg-slate-950">
                     <SelectValue />
@@ -739,6 +760,7 @@ export default function TaskDetailPage() {
                   onValueChange={(value) =>
                     patchLocalTask({ priority: value as TaskPriority })
                   }
+                  disabled={!canUpdateTask}
                 >
                   <SelectTrigger className="h-11 border-slate-700 bg-slate-950">
                     <SelectValue />
@@ -768,6 +790,7 @@ export default function TaskDetailPage() {
                           : null,
                       })
                     }
+                    disabled={!canUpdateTask}
                     className="h-11 border-slate-700 bg-slate-950"
                   />
                 </div>
@@ -794,6 +817,7 @@ export default function TaskDetailPage() {
                         : null,
                     })
                   }
+                  disabled={!canUpdateTask}
                   className="h-11 border-slate-700 bg-slate-950"
                 />
               </div>
@@ -803,6 +827,7 @@ export default function TaskDetailPage() {
                 <Select
                   value={task.assignee_id ? String(task.assignee_id) : "unassigned"}
                   onValueChange={handleAssigneeChange}
+                  disabled={!canAssignTask}
                 >
                   <SelectTrigger className="h-11 border-slate-700 bg-slate-950">
                     <SelectValue placeholder="Unassigned" />
@@ -814,7 +839,16 @@ export default function TaskDetailPage() {
                         key={member.membership_id}
                         value={String(member.user.id)}
                       >
-                        {member.user.full_name || member.user.email}
+                        <div className="flex items-center gap-2">
+                          <UserAvatar
+                            name={member.user.full_name}
+                            email={member.user.email}
+                            src={member.user.avatar_url}
+                            className="h-5 w-5"
+                            fallbackClassName="bg-blue-900 text-[9px] text-blue-100"
+                          />
+                          {member.user.full_name || member.user.email}
+                        </div>
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -837,11 +871,12 @@ export default function TaskDetailPage() {
                   className="rounded-2xl border border-slate-800 bg-slate-950/75 p-4"
                 >
                   <div className="flex items-start gap-3">
-                    <Avatar className="h-8 w-8 border border-slate-700">
-                      <AvatarFallback className="bg-violet-500/10 text-[10px] text-violet-200">
-                        {getInitials(log.actor_name)}
-                      </AvatarFallback>
-                    </Avatar>
+                    <UserAvatar
+                      name={log.actor_name || "System"}
+                      src={log.actor_avatar_url}
+                      className="h-8 w-8"
+                      fallbackClassName="bg-violet-500/10 text-[10px] text-violet-200"
+                    />
                     <div className="min-w-0 flex-1">
                       <p className="font-medium text-slate-200">
                         {actionLabel(log.action)}
