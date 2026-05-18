@@ -1,4 +1,7 @@
 from backend.models.user import User
+from backend.models.notification import Notification
+from backend.models.documentation import DocumentationPage
+from backend.models.github import GitHubEvent
 from backend.models.project import (
     CalendarEvent,
     Invitation,
@@ -26,4 +29,7 @@ __all__ = [
     "TaskComment",
     "TaskAuditLog",
     "CalendarEvent",
+    "Notification",
+    "DocumentationPage",
+    "GitHubEvent",
 ]

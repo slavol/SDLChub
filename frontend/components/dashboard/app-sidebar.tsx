@@ -10,6 +10,10 @@ import {
   ChevronDown,
   FileText,
   Gauge,
+  BarChart3,
+  Bell,
+  BookOpen,
+  Github,
   KanbanSquare,
   LayoutDashboard,
   LogOut,
@@ -30,6 +34,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { getMyProjects, Project } from "@/services/project";
+import { getUnreadNotificationCount } from "@/services/notification";
 import { useAuthStore } from "@/store/use-auth-store";
 import { useProjectStore } from "@/store/use-project-store";
 
@@ -72,6 +77,7 @@ export function AppSidebar({ methodology, role, projectName }: SidebarProps) {
 
   const [projects, setProjects] = useState<Project[]>([]);
   const [loadingProjects, setLoadingProjects] = useState(true);
+  const [unreadNotifications, setUnreadNotifications] = useState(0);
 
   useEffect(() => {
     const loadProjects = async () => {
@@ -103,6 +109,25 @@ export function AppSidebar({ methodology, role, projectName }: SidebarProps) {
     loadProjects();
   }, [clearCurrentProject, currentProject, setCurrentProject]);
 
+  useEffect(() => {
+    const loadUnreadNotifications = async () => {
+      try {
+        const count = await getUnreadNotificationCount();
+        setUnreadNotifications(count);
+      } catch {
+        setUnreadNotifications(0);
+      }
+    };
+
+    loadUnreadNotifications();
+
+    const intervalId = window.setInterval(loadUnreadNotifications, 30000);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, []);
+
   const activeProject = useMemo(() => {
     if (!currentProject) return null;
 
@@ -127,6 +152,9 @@ export function AppSidebar({ methodology, role, projectName }: SidebarProps) {
   const links = [
     { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
     { name: "Workload", href: "/dashboard/workload", icon: Gauge },
+    { name: "Reports", href: "/dashboard/reports", icon: BarChart3 },
+    { name: "Documentation", href: "/dashboard/documentation", icon: BookOpen },
+    { name: "DevOps", href: "/dashboard/devops", icon: Github },
     { name: "Activity", href: "/dashboard/activity", icon: Activity },
     { name: "Calendar", href: "/dashboard/calendar", icon: CalendarDays },
     { name: "Board", href: "/dashboard/board", icon: KanbanSquare },
@@ -160,19 +188,38 @@ export function AppSidebar({ methodology, role, projectName }: SidebarProps) {
   return (
     <aside className="flex h-screen w-[272px] shrink-0 flex-col border-r border-slate-800 bg-slate-950 text-slate-200">
       <div className="border-b border-slate-800 px-4 py-4">
-        <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-2xl border border-blue-500/25 bg-blue-500/10 text-sm font-bold text-blue-200 shadow-lg shadow-blue-950/20">
-            SD
-          </div>
-
+        <div className="flex items-center justify-between gap-3">
           <div className="min-w-0">
-            <h2 className="truncate text-lg font-semibold leading-tight text-white">
+            <h2 className="truncate text-xl font-semibold leading-tight text-white">
               SDLC Hub
             </h2>
             <p className="truncate text-xs text-slate-500">
               Adaptive project workspace
             </p>
           </div>
+
+          <Link
+            href="/dashboard/notifications"
+            title={
+              unreadNotifications > 0
+                ? `${unreadNotifications} unread notifications`
+                : "Notifications"
+            }
+            className={cn(
+              "relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border transition focus:outline-none focus:ring-2 focus:ring-blue-500/40",
+              pathname.startsWith("/dashboard/notifications")
+                ? "border-blue-500/40 bg-blue-600 text-white shadow-lg shadow-blue-950/25"
+                : "border-slate-800 bg-slate-900/70 text-slate-400 hover:border-blue-500/35 hover:bg-slate-900 hover:text-white"
+            )}
+          >
+            <Bell className="h-4 w-4" />
+
+            {unreadNotifications > 0 && (
+              <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-blue-500 px-1.5 text-[10px] font-bold text-white ring-2 ring-slate-950">
+                {unreadNotifications > 99 ? "99+" : unreadNotifications}
+              </span>
+            )}
+          </Link>
         </div>
 
         <DropdownMenu>

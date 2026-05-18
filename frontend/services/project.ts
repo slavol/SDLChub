@@ -603,3 +603,82 @@ export const getProjectWorkloadSuggestions = async (
   return response.data;
 };
 
+// --- PRIORITY 4 REPORTING V1 ---
+
+export interface ReportDistributionPoint {
+  name: string;
+  value: number;
+}
+
+export interface ReportVelocityPoint {
+  sprint_id: number;
+  name: string;
+  start_date?: string | null;
+  end_date?: string | null;
+  total_points: number;
+  done_points: number;
+  done_tasks: number;
+  total_tasks: number;
+}
+
+export interface ReportActiveSprint {
+  sprint_id: number;
+  name: string;
+  goal?: string | null;
+  start_date?: string | null;
+  end_date?: string | null;
+  total_points: number;
+  done_points: number;
+  remaining_points: number;
+  total_tasks: number;
+  done_tasks: number;
+}
+
+export interface ReportStatusAgePoint {
+  status: string;
+  tasks: number;
+  average_age_days: number;
+  max_age_days: number;
+}
+
+export interface ProjectReportsOverview {
+  project: Project;
+  summary: {
+    total_tasks: number;
+    active_tasks: number;
+    done_tasks: number;
+    completion_rate: number;
+    total_story_points: number;
+    completed_story_points: number;
+    story_point_completion_rate: number;
+    overdue_tasks: number;
+    due_soon_tasks: number;
+    average_cycle_time_days: number;
+    closed_sprints: number;
+  };
+  velocity: ReportVelocityPoint[];
+  active_sprint?: ReportActiveSprint | null;
+  status_distribution: ReportDistributionPoint[];
+  priority_distribution: ReportDistributionPoint[];
+  status_age: ReportStatusAgePoint[];
+  status_change_counts: ReportDistributionPoint[];
+  bottleneck?: ReportStatusAgePoint | null;
+}
+
+export const getProjectReportsOverview = async (
+  projectId: number
+): Promise<ProjectReportsOverview> => {
+  const response = await api.get(`/projects/${projectId}/reports/overview`);
+  return response.data;
+};
+
+export const downloadProjectStatusReportPdf = async (
+  projectId: number
+): Promise<Blob> => {
+  const response = await api.get(`/projects/${projectId}/reports/status.pdf`, {
+    responseType: "blob",
+  });
+
+  return response.data;
+};
+

@@ -1,0 +1,2013 @@
+import json
+import secrets
+from datetime import datetime, timedelta
+from typing import List
+
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
+from pydantic import BaseModel
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
+
+from backend.database.session import get_db
+from backend.models.project import Invitation, Project, ProjectMember, Role, Task, TaskAuditLog
+from backend.models.user import User
+from backend.routers.auth import get_current_user
+from backend.schemas.project import (
+    AIRequest,
+    AIResponse,
+    AIRoleRequest,
+    InvitationOut,
+    OnboardingStatusOut,
+    ProjectCreateFull,
+    ProjectMemberOut,
+    ProjectOut,
+)
+from backend.services.ai_advisor import get_methodology_recommendation, get_role_suggestions
+from backend.utils.email import send_project_invitation_email
+from backend.utils.permissions import check_project_permission, parse_role_permissions, require_project_permission
+
+
+router = APIRouter(prefix="/projects", tags=["Projects"])
+
+
+PROJECT_ADMIN_PERMISSIONS = {
+    "PROJECT_UPDATE": True,
+    "PROJECT_DELETE": True,
+    "MEMBER_INVITE": True,
+    "MEMBER_REMOVE": True,
+    "ROLE_MANAGE": True,
+    "TASK_CREATE": True,
+    "TASK_UPDATE": True,
+    "TASK_DELETE": True,
+    "TASK_ASSIGN": True,
+    "TASK_MOVE": True,
+    "SPRINT_CREATE": True,
+    "SPRINT_START": True,
+    "SPRINT_CLOSE": True,
+    "AI_USE": True,
+    "REPORT_VIEW": True,
+    "SETTINGS_MANAGE": True,
+    "CALENDAR_CREATE": True,
+    "CALENDAR_UPDATE": True,
+    "CALENDAR_DELETE": True,
+}
+
+
+DEFAULT_ROLE_PERMISSIONS = {
+    "TASK_CREATE": True,
+    "TASK_UPDATE": True,
+    "TASK_ASSIGN": True,
+    "TASK_COMMENT": True,
+    "TASK_MOVE": True,
+    "SPRINT_CREATE": False,
+    "SPRINT_START": False,
+    "SPRINT_CLOSE": False,
+    "AI_USE": True,
+    "REPORT_VIEW": True,
+    "CALENDAR_CREATE": True,
+    "CALENDAR_UPDATE": False,
+    "CALENDAR_DELETE": False,
+}
+
+
+class JoinRequest(BaseModel):
+    code: str
+
+
+def normalize_project_key(key: str) -> str:
+    return key.strip().upper().replace(" ", "-")
+
+
+def ensure_project_member(project_id: int, user_id: int, db: Session) -> ProjectMember:
+    membership = db.query(ProjectMember).filter(
+        ProjectMember.project_id == project_id,
+        ProjectMember.user_id == user_id,
+    ).first()
+
+    if not membership:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You are not a member of this project.",
+        )
+
+    return membership
+
+
+def serialize_member(member: ProjectMember) -> dict:
+    return {
+        "membership_id": member.id,
+        "user": member.user,
+        "role": _serialize_role(member.role) if member.role else None,
+        "joined_at": member.joined_at,
+    }
+
+
+def serialize_invitation(invite: Invitation) -> dict:
+    return {
+        "id": invite.id,
+        "email": invite.email,
+        "project_id": invite.project_id,
+        "project_name": invite.project.name if invite.project else "",
+        "role_id": invite.role_id,
+        "role_name": invite.role.name if invite.role else "",
+        "code": invite.code,
+        "status": invite.status,
+        "created_at": invite.created_at,
+    }
+
+
+@router.get("/onboarding/status", response_model=OnboardingStatusOut)
+def get_onboarding_status(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    memberships = db.query(ProjectMember).filter(
+        ProjectMember.user_id == current_user.id
+    ).all()
+
+    projects = [membership.project for membership in memberships if membership.project]
+
+    has_pending_invites = db.query(Invitation).filter(
+        Invitation.email == current_user.email,
+        Invitation.status == "PENDING",
+    ).first() is not None
+
+    return {
+        "has_projects": len(projects) > 0,
+        "has_pending_invites": has_pending_invites,
+        "projects": projects,
+    }
+
+
+@router.get("/invitations/pending", response_model=List[InvitationOut])
+def get_pending_invitations(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    invites = db.query(Invitation).filter(
+        Invitation.email == current_user.email,
+        Invitation.status == "PENDING",
+    ).order_by(Invitation.created_at.desc()).all()
+
+    return [serialize_invitation(invite) for invite in invites]
+
+
+@router.post("/join")
+def join_project(
+    data: JoinRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    invite = db.query(Invitation).filter(
+        Invitation.code == data.code.strip().upper(),
+        Invitation.status == "PENDING",
+    ).first()
+
+    if not invite:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Invalid or expired invitation code.",
+        )
+
+    if invite.email != current_user.email:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This invitation was sent to another email address.",
+        )
+
+    existing_member = db.query(ProjectMember).filter(
+        ProjectMember.project_id == invite.project_id,
+        ProjectMember.user_id == current_user.id,
+    ).first()
+
+    if existing_member:
+        invite.status = "ACCEPTED"
+        db.commit()
+        return {
+            "message": "You are already a member of this project.",
+            "project": existing_member.project,
+        }
+
+    new_member = ProjectMember(
+        user_id=current_user.id,
+        project_id=invite.project_id,
+        role_id=invite.role_id,
+    )
+
+    db.add(new_member)
+    invite.status = "ACCEPTED"
+    db.commit()
+    db.refresh(new_member)
+
+    return {
+        "message": "Successfully joined project!",
+        "project": new_member.project,
+    }
+
+
+@router.post("/ai-recommend", response_model=AIResponse)
+def ask_ai_methodology(
+    request: AIRequest,
+    current_user: User = Depends(get_current_user),
+):
+    return get_methodology_recommendation(request.model_dump())
+
+
+@router.post("/ai-roles")
+def ask_ai_roles(
+    request: AIRoleRequest,
+    current_user: User = Depends(get_current_user),
+):
+    return get_role_suggestions(request.methodology, request.description)
+
+
+@router.post("/create_full", response_model=ProjectOut)
+def create_project_full(
+    data: ProjectCreateFull,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    project_key = normalize_project_key(data.key)
+
+    existing_project = db.query(Project).filter(Project.key == project_key).first()
+    if existing_project:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Project key already exists.",
+        )
+
+    pending_email_tasks: list[tuple[str, str, str, str]] = []
+
+    try:
+        new_project = Project(
+            name=data.name.strip(),
+            key=project_key,
+            description=data.description,
+            methodology=data.methodology,
+            owner_id=current_user.id,
+        )
+        db.add(new_project)
+        db.flush()
+
+        project_admin_role = Role(
+            project_id=new_project.id,
+            name="Project Admin",
+            description="Full control over project settings, members, roles, tasks and reports.",
+            permissions=json.dumps(PROJECT_ADMIN_PERMISSIONS),
+        )
+        db.add(project_admin_role)
+        db.flush()
+
+        created_role_names = {"project admin"}
+
+        for role_in in data.roles:
+            role_name = role_in.name.strip()
+            if not role_name:
+                continue
+
+            normalized_role_name = role_name.lower()
+            if normalized_role_name in created_role_names:
+                continue
+
+            db_role = Role(
+                project_id=new_project.id,
+                name=role_name,
+                description=role_in.description,
+                permissions=json.dumps(DEFAULT_ROLE_PERMISSIONS),
+            )
+            db.add(db_role)
+            db.flush()
+
+            created_role_names.add(normalized_role_name)
+
+            for email in role_in.emails:
+                email_value = str(email).strip().lower()
+                secure_code = secrets.token_hex(4).upper()
+                final_code = f"{project_key}-{secure_code}"
+
+                invite = Invitation(
+                    email=email_value,
+                    project_id=new_project.id,
+                    role_id=db_role.id,
+                    code=final_code,
+                    status="PENDING",
+                )
+                db.add(invite)
+
+                pending_email_tasks.append(
+                    (email_value, new_project.name, db_role.name, final_code)
+                )
+
+        owner_membership = ProjectMember(
+            user_id=current_user.id,
+            project_id=new_project.id,
+            role_id=project_admin_role.id,
+        )
+        db.add(owner_membership)
+
+        db.commit()
+        db.refresh(new_project)
+
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Project could not be created. Please check if the project key or invitation codes already exist.",
+        ) from exc
+
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Project could not be created: {exc}",
+        ) from exc
+
+    for email, project_name, role_name, code in pending_email_tasks:
+        background_tasks.add_task(
+            send_project_invitation_email,
+            email=email,
+            project_name=project_name,
+            role_name=role_name,
+            code=code,
+        )
+
+    return new_project
+
+
+@router.get("/mine", response_model=List[ProjectOut])
+def get_my_projects(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    memberships = db.query(ProjectMember).filter(
+        ProjectMember.user_id == current_user.id
+    ).all()
+
+    return [membership.project for membership in memberships if membership.project]
+
+
+@router.get("/{project_id}/members", response_model=List[ProjectMemberOut])
+def get_project_members(
+    project_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    ensure_project_member(project_id, current_user.id, db)
+
+    members = db.query(ProjectMember).filter(
+        ProjectMember.project_id == project_id
+    ).order_by(ProjectMember.joined_at.asc()).all()
+
+    return [serialize_member(member) for member in members]
+
+
+
+@router.get("/{project_id}/my-permissions")
+def get_my_project_permissions(
+    project_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found.")
+
+    membership = check_project_permission(db, current_user.id, project_id)
+    role_name = membership.role.name if membership.role else "Member"
+    is_project_owner = project.owner_id == current_user.id
+    is_project_admin = role_name == "Project Admin"
+
+    role_permissions = _parse_permissions(membership.role.permissions if membership.role else None)
+    permissions = {**DEFAULT_ROLE_PERMISSIONS, **role_permissions}
+
+    if is_project_owner or is_project_admin:
+        permissions.update(PROJECT_ADMIN_PERMISSIONS)
+
+    return {
+        "membership_id": membership.id,
+        "role": _serialize_role(membership.role) if membership.role else None,
+        "permissions": permissions,
+        "is_project_owner": is_project_owner,
+        "is_project_admin": is_project_admin,
+    }
+
+# --- BATCH 6A TEAM SETTINGS PERMISSIONS ---
+
+from pydantic import EmailStr, Field
+from backend.models.project import ProjectAuditLog, Sprint, Task, TaskStatus, Subtask, TaskComment, TaskAuditLog
+
+
+PROJECT_SETTINGS_ROLES = ["Project Admin"]
+TEAM_MANAGEMENT_ROLES = ["Project Admin", "Project Manager", "Product Owner", "Scrum Master", "Flow Manager", "Tech Lead"]
+ROLE_MANAGEMENT_ROLES = ["Project Admin"]
+
+
+class ProjectUpdateRequest(BaseModel):
+    name: str | None = Field(default=None, min_length=2, max_length=120)
+    description: str | None = None
+    methodology: str | None = None
+
+
+class MethodologyTransitionRequest(BaseModel):
+    target_methodology: str
+    strategy: str = "recommended"
+
+
+class ProjectDeleteRequest(BaseModel):
+    confirmation_key: str
+
+
+class InviteMemberRequest(BaseModel):
+    email: EmailStr
+    role_id: int
+
+
+class UpdateMemberRoleRequest(BaseModel):
+    role_id: int
+
+
+class UpdateRolePermissionsRequest(BaseModel):
+    permissions: dict[str, bool]
+
+
+def _parse_permissions(raw_permissions: str | None) -> dict:
+    if not raw_permissions:
+        return {}
+    try:
+        parsed = json.loads(raw_permissions)
+        return parsed if isinstance(parsed, dict) else {}
+    except Exception:
+        return {}
+
+
+def _serialize_project(project: Project) -> dict:
+    return {
+        "id": project.id,
+        "name": project.name,
+        "key": project.key,
+        "description": project.description,
+        "methodology": project.methodology,
+        "owner_id": project.owner_id,
+        "created_at": project.created_at,
+    }
+
+
+def _serialize_role(role: Role) -> dict:
+    return {
+        "id": role.id,
+        "project_id": role.project_id,
+        "name": role.name,
+        "description": role.description,
+        "permissions": _parse_permissions(role.permissions),
+    }
+
+
+def _serialize_project_invitation(invite: Invitation) -> dict:
+    return {
+        "id": invite.id,
+        "email": invite.email,
+        "project_id": invite.project_id,
+        "project_name": invite.project.name if invite.project else "",
+        "role_id": invite.role_id,
+        "role_name": invite.role.name if invite.role else "",
+        "code": invite.code,
+        "status": invite.status,
+        "created_at": invite.created_at,
+    }
+
+
+def _normalize_methodology(value: str) -> str:
+    methodology = value.upper()
+    if methodology not in {"SCRUM", "KANBAN", "SCRUMBAN"}:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid methodology.")
+    return methodology
+
+
+def _build_methodology_transition_preview(db: Session, project: Project, target_methodology: str) -> dict:
+    current_methodology = project.methodology
+    active_sprint = db.query(Sprint).filter(
+        Sprint.project_id == project.id,
+        Sprint.is_active == True,  # noqa: E712
+    ).first()
+    future_sprints = db.query(Sprint).filter(
+        Sprint.project_id == project.id,
+        Sprint.is_active == False,  # noqa: E712
+    ).count()
+    tasks = db.query(Task).filter(Task.project_id == project.id).all()
+
+    active_sprint_tasks = [
+        task for task in tasks
+        if active_sprint and task.sprint_id == active_sprint.id
+    ]
+    unfinished_sprint_tasks = [
+        task for task in active_sprint_tasks
+        if _enum_value(task.status) != "DONE"
+    ]
+    backlog_tasks = [task for task in tasks if task.sprint_id is None]
+    sprint_tasks = [task for task in tasks if task.sprint_id is not None]
+    story_point_tasks = [task for task in tasks if task.story_points is not None]
+
+    blockers: list[str] = []
+    warnings: list[str] = []
+    actions: list[str] = []
+    recommended_strategy = "no_op"
+
+    if target_methodology == current_methodology:
+        actions.append("No workflow change is required.")
+    elif target_methodology == "KANBAN":
+        recommended_strategy = "flatten_to_flow"
+
+        if active_sprint:
+            blockers.append(
+                f"Complete active sprint '{active_sprint.name}' before switching to Kanban."
+            )
+
+        if future_sprints:
+            warnings.append(
+                f"{future_sprints} inactive sprint(s) will remain as history, but sprint planning will be hidden."
+            )
+
+        if story_point_tasks:
+            warnings.append(
+                "Existing story points will remain for history, but Kanban issue creation/editing will hide estimation."
+            )
+
+        actions.extend([
+            "Backlog and sprint planning will be hidden from navigation.",
+            "Open work will be treated as continuous flow on the board.",
+            "Sprint endpoints will reject new Kanban sprint operations.",
+        ])
+    elif current_methodology == "KANBAN" and target_methodology in {"SCRUM", "SCRUMBAN"}:
+        recommended_strategy = "enable_planning"
+        actions.extend([
+            "Backlog and sprint planning will become available.",
+            "Existing board work will be available for sprint planning.",
+            "Story points will be visible again in create/edit issue flows.",
+        ])
+
+        if backlog_tasks:
+            warnings.append(
+                f"{len(backlog_tasks)} existing task(s) will start as planning backlog candidates."
+            )
+    elif current_methodology in {"SCRUM", "SCRUMBAN"} and target_methodology in {"SCRUM", "SCRUMBAN"}:
+        recommended_strategy = "preserve_planning"
+        actions.extend([
+            "Existing backlog, sprint history and active planning structure will be preserved.",
+            "Navigation and estimation controls will adapt to the selected methodology.",
+        ])
+
+        if target_methodology == "SCRUM" and backlog_tasks:
+            warnings.append(
+                f"{len(backlog_tasks)} unplanned task(s) should be reviewed during sprint planning."
+            )
+
+    return {
+        "current_methodology": current_methodology,
+        "target_methodology": target_methodology,
+        "recommended_strategy": recommended_strategy,
+        "can_apply": len(blockers) == 0,
+        "blockers": blockers,
+        "warnings": warnings,
+        "actions": actions,
+        "affected_counts": {
+            "total_tasks": len(tasks),
+            "backlog_tasks": len(backlog_tasks),
+            "sprint_tasks": len(sprint_tasks),
+            "active_sprint_tasks": len(active_sprint_tasks),
+            "unfinished_active_sprint_tasks": len(unfinished_sprint_tasks),
+            "future_sprints": future_sprints,
+            "story_point_tasks": len(story_point_tasks),
+        },
+    }
+
+
+@router.get("/{project_id}/methodology-transition-preview")
+def get_methodology_transition_preview(
+    project_id: int,
+    target: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    ensure_project_member(project_id, current_user.id, db)
+    require_project_permission(db, current_user.id, project_id, "SETTINGS_MANAGE")
+
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found.")
+
+    target_methodology = _normalize_methodology(target)
+    return _build_methodology_transition_preview(db, project, target_methodology)
+
+
+@router.post("/{project_id}/methodology-transition")
+def apply_methodology_transition(
+    project_id: int,
+    data: MethodologyTransitionRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    ensure_project_member(project_id, current_user.id, db)
+    require_project_permission(db, current_user.id, project_id, "SETTINGS_MANAGE")
+
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found.")
+
+    target_methodology = _normalize_methodology(data.target_methodology)
+    preview = _build_methodology_transition_preview(db, project, target_methodology)
+
+    if not preview["can_apply"]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "message": "Methodology transition has blockers.",
+                "blockers": preview["blockers"],
+            },
+        )
+
+    old_methodology = project.methodology
+
+    if old_methodology == target_methodology:
+        return {
+            "project": _serialize_project(project),
+            "transition": preview,
+            "message": "Project already uses this methodology.",
+        }
+
+    moved_to_flow_count = 0
+    if target_methodology == "KANBAN":
+        open_sprint_tasks = db.query(Task).filter(
+            Task.project_id == project_id,
+            Task.sprint_id.isnot(None),
+            Task.status != TaskStatus.DONE,
+        ).all()
+
+        for task in open_sprint_tasks:
+            task.sprint_id = None
+            moved_to_flow_count += 1
+
+    project.methodology = target_methodology
+
+    audit_metadata = {
+        "strategy": data.strategy,
+        "recommended_strategy": preview["recommended_strategy"],
+        "moved_to_flow_count": moved_to_flow_count,
+        "affected_counts": preview["affected_counts"],
+        "warnings": preview["warnings"],
+        "actions": preview["actions"],
+    }
+
+    db.add(
+        ProjectAuditLog(
+            project_id=project.id,
+            actor_id=current_user.id,
+            action="PROJECT_METHODOLOGY_CHANGED",
+            field="methodology",
+            old_value=old_methodology,
+            new_value=target_methodology,
+            metadata_json=json.dumps(audit_metadata),
+        )
+    )
+
+    db.commit()
+    db.refresh(project)
+
+    return {
+        "project": _serialize_project(project),
+        "transition": _build_methodology_transition_preview(db, project, target_methodology),
+        "message": f"Methodology changed from {old_methodology} to {target_methodology}.",
+    }
+
+
+@router.get("/{project_id}")
+def get_project_detail(
+    project_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    ensure_project_member(project_id, current_user.id, db)
+
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found.")
+
+    return _serialize_project(project)
+
+
+@router.put("/{project_id}")
+def update_project_settings(
+    project_id: int,
+    data: ProjectUpdateRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    ensure_project_member(project_id, current_user.id, db)
+    require_project_permission(db, current_user.id, project_id, "PROJECT_UPDATE")
+
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found.")
+
+    update_data = data.model_dump(exclude_unset=True)
+
+    if "name" in update_data and update_data["name"] is not None:
+        project.name = update_data["name"].strip()
+
+    if "description" in update_data:
+        project.description = update_data["description"]
+
+    if "methodology" in update_data and update_data["methodology"] is not None:
+        methodology = update_data["methodology"].upper()
+        if methodology not in {"SCRUM", "KANBAN", "SCRUMBAN"}:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid methodology.")
+
+        if methodology == "KANBAN":
+            active_sprint = db.query(Sprint).filter(
+                Sprint.project_id == project_id,
+                Sprint.is_active == True,  # noqa: E712
+            ).first()
+            if active_sprint:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Cannot switch to Kanban while a sprint is active.",
+                )
+
+        project.methodology = methodology
+
+    db.commit()
+    db.refresh(project)
+
+    return _serialize_project(project)
+
+
+@router.delete("/{project_id}")
+def delete_project(
+    project_id: int,
+    data: ProjectDeleteRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    require_project_permission(db, current_user.id, project_id, "PROJECT_DELETE")
+
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found.")
+
+    if data.confirmation_key.strip().upper() != project.key:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Confirmation key does not match project key.",
+        )
+
+    task_ids = [task.id for task in db.query(Task).filter(Task.project_id == project_id).all()]
+
+    if task_ids:
+        db.query(TaskAuditLog).filter(TaskAuditLog.task_id.in_(task_ids)).delete(synchronize_session=False)
+        db.query(TaskComment).filter(TaskComment.task_id.in_(task_ids)).delete(synchronize_session=False)
+        db.query(Subtask).filter(Subtask.task_id.in_(task_ids)).delete(synchronize_session=False)
+
+    db.query(Task).filter(Task.project_id == project_id).delete(synchronize_session=False)
+    db.query(Sprint).filter(Sprint.project_id == project_id).delete(synchronize_session=False)
+    db.query(Invitation).filter(Invitation.project_id == project_id).delete(synchronize_session=False)
+    db.query(ProjectMember).filter(ProjectMember.project_id == project_id).delete(synchronize_session=False)
+    db.query(Role).filter(Role.project_id == project_id).delete(synchronize_session=False)
+    db.delete(project)
+
+    db.commit()
+
+    return {"message": "Project deleted successfully."}
+
+
+@router.get("/{project_id}/roles")
+def get_project_roles(
+    project_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    ensure_project_member(project_id, current_user.id, db)
+
+    roles = db.query(Role).filter(Role.project_id == project_id).order_by(Role.id.asc()).all()
+    return [_serialize_role(role) for role in roles]
+
+
+@router.put("/{project_id}/roles/{role_id}/permissions")
+def update_role_permissions(
+    project_id: int,
+    role_id: int,
+    data: UpdateRolePermissionsRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    require_project_permission(db, current_user.id, project_id, "ROLE_MANAGE")
+
+    role = db.query(Role).filter(
+        Role.id == role_id,
+        Role.project_id == project_id,
+    ).first()
+
+    if not role:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Role not found.")
+
+    if role.name == "Project Admin":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Project Admin permissions cannot be edited.",
+        )
+
+    role.permissions = json.dumps(data.permissions)
+
+    db.commit()
+    db.refresh(role)
+
+    return _serialize_role(role)
+
+
+@router.get("/{project_id}/invitations")
+def get_project_invitations(
+    project_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    require_project_permission(db, current_user.id, project_id, "MEMBER_INVITE")
+
+    invites = db.query(Invitation).filter(
+        Invitation.project_id == project_id,
+    ).order_by(Invitation.created_at.desc()).all()
+
+    return [_serialize_project_invitation(invite) for invite in invites]
+
+
+@router.post("/{project_id}/invitations")
+def invite_project_member(
+    project_id: int,
+    data: InviteMemberRequest,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    require_project_permission(db, current_user.id, project_id, "MEMBER_INVITE")
+
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found.")
+
+    role = db.query(Role).filter(
+        Role.id == data.role_id,
+        Role.project_id == project_id,
+    ).first()
+
+    if not role:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Role not found.")
+
+    if role.name == "Project Admin":
+        require_project_permission(db, current_user.id, project_id, "SETTINGS_MANAGE")
+
+    email_value = str(data.email).strip().lower()
+
+    existing_user = db.query(User).filter(User.email == email_value).first()
+    if existing_user:
+        existing_member = db.query(ProjectMember).filter(
+            ProjectMember.project_id == project_id,
+            ProjectMember.user_id == existing_user.id,
+        ).first()
+        if existing_member:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="This user is already a member of the project.",
+            )
+
+    existing_invite = db.query(Invitation).filter(
+        Invitation.project_id == project_id,
+        Invitation.email == email_value,
+        Invitation.status == "PENDING",
+    ).first()
+
+    if existing_invite:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This email already has a pending invitation.",
+        )
+
+    secure_code = secrets.token_hex(4).upper()
+    final_code = f"{project.key}-{secure_code}"
+
+    invite = Invitation(
+        email=email_value,
+        project_id=project.id,
+        role_id=role.id,
+        code=final_code,
+        status="PENDING",
+    )
+
+    db.add(invite)
+    db.commit()
+    db.refresh(invite)
+
+    background_tasks.add_task(
+        send_project_invitation_email,
+        email=email_value,
+        project_name=project.name,
+        role_name=role.name,
+        code=final_code,
+    )
+
+    return _serialize_project_invitation(invite)
+
+
+@router.post("/{project_id}/invitations/{invitation_id}/resend")
+def resend_project_invitation(
+    project_id: int,
+    invitation_id: int,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    require_project_permission(db, current_user.id, project_id, "MEMBER_INVITE")
+
+    invite = db.query(Invitation).filter(
+        Invitation.id == invitation_id,
+        Invitation.project_id == project_id,
+    ).first()
+
+    if not invite:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invitation not found.")
+
+    if invite.status != "PENDING":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only pending invitations can be resent.")
+
+    background_tasks.add_task(
+        send_project_invitation_email,
+        email=invite.email,
+        project_name=invite.project.name if invite.project else "Project",
+        role_name=invite.role.name if invite.role else "Member",
+        code=invite.code,
+    )
+
+    return {"message": "Invitation resent."}
+
+
+@router.delete("/{project_id}/invitations/{invitation_id}")
+def cancel_project_invitation(
+    project_id: int,
+    invitation_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    require_project_permission(db, current_user.id, project_id, "ROLE_MANAGE")
+
+    invite = db.query(Invitation).filter(
+        Invitation.id == invitation_id,
+        Invitation.project_id == project_id,
+    ).first()
+
+    if not invite:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invitation not found.")
+
+    if invite.status != "PENDING":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only pending invitations can be cancelled.")
+
+    db.delete(invite)
+    db.commit()
+
+    return {"message": "Invitation cancelled."}
+
+
+@router.put("/{project_id}/members/{membership_id}/role")
+def update_project_member_role(
+    project_id: int,
+    membership_id: int,
+    data: UpdateMemberRoleRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    require_project_permission(db, current_user.id, project_id, "MEMBER_REMOVE")
+
+    membership = db.query(ProjectMember).filter(
+        ProjectMember.id == membership_id,
+        ProjectMember.project_id == project_id,
+    ).first()
+
+    if not membership:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Member not found.")
+
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if project and membership.user_id == project.owner_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Project owner role cannot be changed from here.",
+        )
+
+    role = db.query(Role).filter(
+        Role.id == data.role_id,
+        Role.project_id == project_id,
+    ).first()
+
+    if not role:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Role not found.")
+
+    if role.name == "Project Admin":
+        require_project_permission(db, current_user.id, project_id, "SETTINGS_MANAGE")
+
+    membership.role_id = role.id
+
+    db.commit()
+    db.refresh(membership)
+
+    return serialize_member(membership)
+
+
+@router.delete("/{project_id}/members/{membership_id}")
+def remove_project_member(
+    project_id: int,
+    membership_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    require_project_permission(db, current_user.id, project_id, "MEMBER_REMOVE")
+
+    membership = db.query(ProjectMember).filter(
+        ProjectMember.id == membership_id,
+        ProjectMember.project_id == project_id,
+    ).first()
+
+    if not membership:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Member not found.")
+
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if project and membership.user_id == project.owner_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Project owner cannot be removed.",
+        )
+
+    db.delete(membership)
+    db.commit()
+
+    return {"message": "Member removed."}
+
+
+
+# --- BATCH 6B ROLE CRUD ---
+
+from pydantic import Field as _RoleField
+
+
+try:
+    ROLE_MANAGEMENT_ROLES
+except NameError:
+    ROLE_MANAGEMENT_ROLES = ["Project Admin"]
+
+
+class ProjectRoleCreateRequest(BaseModel):
+    name: str = _RoleField(min_length=1, max_length=80)
+    description: str | None = None
+    permissions: dict[str, bool] | None = None
+
+
+class ProjectRoleUpdateRequest(BaseModel):
+    name: str | None = _RoleField(default=None, min_length=1, max_length=80)
+    description: str | None = None
+    permissions: dict[str, bool] | None = None
+
+
+@router.post("/{project_id}/roles")
+def create_project_role(
+    project_id: int,
+    data: ProjectRoleCreateRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    require_project_permission(db, current_user.id, project_id, "ROLE_MANAGE")
+
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found.")
+
+    role_name = data.name.strip()
+    existing_role = db.query(Role).filter(
+        Role.project_id == project_id,
+        Role.name.ilike(role_name),
+    ).first()
+
+    if existing_role:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="A role with this name already exists.",
+        )
+
+    role = Role(
+        project_id=project_id,
+        name=role_name,
+        description=data.description,
+        permissions=json.dumps(data.permissions or DEFAULT_ROLE_PERMISSIONS),
+    )
+
+    db.add(role)
+    db.commit()
+    db.refresh(role)
+
+    return _serialize_role(role)
+
+
+@router.put("/{project_id}/roles/{role_id}")
+def update_project_role(
+    project_id: int,
+    role_id: int,
+    data: ProjectRoleUpdateRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    require_project_permission(db, current_user.id, project_id, "ROLE_MANAGE")
+
+    role = db.query(Role).filter(
+        Role.id == role_id,
+        Role.project_id == project_id,
+    ).first()
+
+    if not role:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Role not found.")
+
+    if role.name == "Project Admin":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Project Admin role cannot be edited.",
+        )
+
+    update_data = data.model_dump(exclude_unset=True)
+
+    if "name" in update_data and update_data["name"] is not None:
+        role_name = update_data["name"].strip()
+
+        duplicate = db.query(Role).filter(
+            Role.project_id == project_id,
+            Role.id != role_id,
+            Role.name.ilike(role_name),
+        ).first()
+
+        if duplicate:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="A role with this name already exists.",
+            )
+
+        role.name = role_name
+
+    if "description" in update_data:
+        role.description = update_data["description"]
+
+    if "permissions" in update_data and update_data["permissions"] is not None:
+        role.permissions = json.dumps(update_data["permissions"])
+
+    db.commit()
+    db.refresh(role)
+
+    return _serialize_role(role)
+
+
+@router.delete("/{project_id}/roles/{role_id}")
+def delete_project_role(
+    project_id: int,
+    role_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    require_project_permission(db, current_user.id, project_id, "ROLE_MANAGE")
+
+    role = db.query(Role).filter(
+        Role.id == role_id,
+        Role.project_id == project_id,
+    ).first()
+
+    if not role:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Role not found.")
+
+    if role.name == "Project Admin":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Project Admin role cannot be deleted.",
+        )
+
+    member_count = db.query(ProjectMember).filter(ProjectMember.role_id == role_id).count()
+    if member_count > 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot delete a role that is assigned to members. Move members to another role first.",
+        )
+
+    pending_invite_count = db.query(Invitation).filter(
+        Invitation.role_id == role_id,
+        Invitation.status == "PENDING",
+    ).count()
+
+    if pending_invite_count > 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot delete a role with pending invitations. Cancel those invitations first.",
+        )
+
+    db.delete(role)
+    db.commit()
+
+    return {"message": "Role deleted successfully."}
+
+
+# --- BATCH 7 PROJECT SELECTOR REAL DASHBOARD ---
+
+def _dashboard_enum_value(value):
+    if value is None:
+        return None
+    if hasattr(value, "value"):
+        return value.value
+    return str(value)
+
+
+def _serialize_dashboard_task(task: Task) -> dict:
+    return {
+        "id": task.id,
+        "key": task.key,
+        "title": task.title,
+        "status": _dashboard_enum_value(task.status),
+        "priority": _dashboard_enum_value(task.priority),
+        "story_points": task.story_points,
+        "due_date": task.due_date,
+        "assignee_id": task.assignee_id,
+        "assignee_name": task.assignee_name,
+        "project_id": task.project_id,
+        "sprint_id": task.sprint_id,
+        "created_at": task.created_at,
+    }
+
+
+@router.get("/{project_id}/dashboard/summary")
+def get_project_dashboard_summary(
+    project_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    check_project_permission(db, current_user.id, project_id)
+
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found.")
+
+    tasks = db.query(Task).filter(Task.project_id == project_id).order_by(Task.id.desc()).all()
+    members_count = db.query(ProjectMember).filter(ProjectMember.project_id == project_id).count()
+    pending_invites_count = db.query(Invitation).filter(
+        Invitation.project_id == project_id,
+        Invitation.status == "PENDING",
+    ).count()
+
+    statuses = ["TODO", "IN_PROGRESS", "REVIEW", "DONE"]
+    priorities = ["LOW", "MEDIUM", "HIGH", "CRITICAL"]
+
+    tasks_by_status = {key: 0 for key in statuses}
+    tasks_by_priority = {key: 0 for key in priorities}
+
+    total_story_points = 0
+    done_story_points = 0
+    backlog_count = 0
+
+    for task in tasks:
+        task_status = _dashboard_enum_value(task.status)
+        task_priority = _dashboard_enum_value(task.priority)
+
+        if task_status in tasks_by_status:
+            tasks_by_status[task_status] += 1
+
+        if task_priority in tasks_by_priority:
+            tasks_by_priority[task_priority] += 1
+
+        if task.story_points:
+            total_story_points += task.story_points
+            if task_status == "DONE":
+                done_story_points += task.story_points
+
+        if task.sprint_id is None:
+            backlog_count += 1
+
+    my_active_tasks = [
+        task for task in tasks
+        if task.assignee_id == current_user.id and _dashboard_enum_value(task.status) != "DONE"
+    ][:6]
+
+    active_sprint = db.query(Sprint).filter(
+        Sprint.project_id == project_id,
+        Sprint.is_active == True,  # noqa: E712
+    ).first()
+
+    active_sprint_payload = None
+    if active_sprint:
+        sprint_tasks = [task for task in tasks if task.sprint_id == active_sprint.id]
+        sprint_done_tasks = [
+            task for task in sprint_tasks
+            if _dashboard_enum_value(task.status) == "DONE"
+        ]
+
+        sprint_total_points = sum(task.story_points or 0 for task in sprint_tasks)
+        sprint_done_points = sum(task.story_points or 0 for task in sprint_done_tasks)
+
+        active_sprint_payload = {
+            "id": active_sprint.id,
+            "name": active_sprint.name,
+            "goal": active_sprint.goal,
+            "start_date": active_sprint.start_date,
+            "end_date": active_sprint.end_date,
+            "tasks_total": len(sprint_tasks),
+            "tasks_done": len(sprint_done_tasks),
+            "story_points_total": sprint_total_points,
+            "story_points_done": sprint_done_points,
+            "progress_percent": round((len(sprint_done_tasks) / len(sprint_tasks)) * 100) if sprint_tasks else 0,
+        }
+
+    return {
+        "project": _serialize_project(project),
+        "members_count": members_count,
+        "pending_invites_count": pending_invites_count,
+        "tasks_total": len(tasks),
+        "tasks_by_status": tasks_by_status,
+        "tasks_by_priority": tasks_by_priority,
+        "backlog_count": backlog_count,
+        "my_active_tasks_count": len(my_active_tasks),
+        "my_tasks": [_serialize_dashboard_task(task) for task in my_active_tasks],
+        "done_tasks_count": tasks_by_status["DONE"],
+        "total_story_points": total_story_points,
+        "done_story_points": done_story_points,
+        "active_sprint": active_sprint_payload,
+    }
+
+
+@router.get("/{project_id}/dashboard/activity")
+def get_project_dashboard_activity(
+    project_id: int,
+    limit: int = 12,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    check_project_permission(db, current_user.id, project_id)
+
+    rows = (
+        db.query(TaskAuditLog, Task)
+        .join(Task, TaskAuditLog.task_id == Task.id)
+        .filter(Task.project_id == project_id)
+        .order_by(TaskAuditLog.created_at.desc())
+        .limit(min(max(limit, 1), 30))
+        .all()
+    )
+
+    return [
+        {
+            "id": log.id,
+            "task_id": task.id,
+            "task_key": task.key,
+            "task_title": task.title,
+            "actor_id": log.actor_id,
+            "actor_name": log.actor_name or "System",
+            "action": log.action,
+            "field": log.field,
+            "old_value": log.old_value,
+            "new_value": log.new_value,
+            "created_at": log.created_at,
+        }
+        for log, task in rows
+    ]
+
+
+
+# --- BATCH 7 REAL DASHBOARD ---
+
+def _enum_value(value) -> str:
+    if value is None:
+        return ""
+    if hasattr(value, "value"):
+        return str(value.value)
+    return str(value)
+
+
+def _task_summary(task: Task) -> dict:
+    return {
+        "id": task.id,
+        "key": task.key,
+        "title": task.title,
+        "status": _enum_value(task.status),
+        "priority": _enum_value(task.priority),
+        "story_points": task.story_points,
+        "due_date": task.due_date,
+        "assignee_id": task.assignee_id,
+        "assignee_name": task.assignee_name,
+        "sprint_id": task.sprint_id,
+        "created_at": task.created_at,
+    }
+
+
+@router.get("/{project_id}/dashboard")
+def get_project_dashboard(
+    project_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    from backend.models.project import TaskStatus, TaskPriority
+
+    check_project_permission(db, current_user.id, project_id)
+
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found.")
+
+    tasks = (
+        db.query(Task)
+        .filter(Task.project_id == project_id)
+        .order_by(Task.created_at.desc())
+        .all()
+    )
+
+    members = (
+        db.query(ProjectMember)
+        .filter(ProjectMember.project_id == project_id)
+        .all()
+    )
+
+    active_sprint = (
+        db.query(Sprint)
+        .filter(
+            Sprint.project_id == project_id,
+            Sprint.is_active == True,  # noqa: E712
+        )
+        .first()
+    )
+
+    total_tasks = len(tasks)
+    completed_tasks = len([task for task in tasks if _enum_value(task.status) == "DONE"])
+    active_tasks = len([task for task in tasks if _enum_value(task.status) != "DONE"])
+    backlog_tasks = len([task for task in tasks if task.sprint_id is None])
+    unassigned_tasks = len([
+        task for task in tasks
+        if _enum_value(task.status) != "DONE" and task.assignee_id is None
+    ])
+    now = datetime.utcnow()
+    week_end = now + timedelta(days=7)
+
+    def _due_date_without_timezone(task: Task):
+        if not task.due_date:
+            return None
+        return task.due_date.replace(tzinfo=None) if task.due_date.tzinfo else task.due_date
+
+    overdue_tasks = len([
+        task for task in tasks
+        if _enum_value(task.status) != "DONE"
+        and _due_date_without_timezone(task)
+        and _due_date_without_timezone(task) < now
+    ])
+    due_soon_tasks = len([
+        task for task in tasks
+        if _enum_value(task.status) != "DONE"
+        and _due_date_without_timezone(task)
+        and now <= _due_date_without_timezone(task) <= week_end
+    ])
+
+    completion_rate = round((completed_tasks / total_tasks) * 100) if total_tasks else 0
+
+    status_distribution = {status_item.value: 0 for status_item in TaskStatus}
+    for task in tasks:
+        status_value = _enum_value(task.status)
+        status_distribution[status_value] = status_distribution.get(status_value, 0) + 1
+
+    priority_distribution = {priority_item.value: 0 for priority_item in TaskPriority}
+    for task in tasks:
+        priority_value = _enum_value(task.priority)
+        priority_distribution[priority_value] = priority_distribution.get(priority_value, 0) + 1
+
+    my_active_tasks = [
+        _task_summary(task)
+        for task in tasks
+        if task.assignee_id == current_user.id and _enum_value(task.status) != "DONE"
+    ][:6]
+
+    sprint_payload = None
+    if active_sprint:
+        sprint_tasks = [task for task in tasks if task.sprint_id == active_sprint.id]
+        sprint_done = len([task for task in sprint_tasks if _enum_value(task.status) == "DONE"])
+        sprint_total = len(sprint_tasks)
+        sprint_progress = round((sprint_done / sprint_total) * 100) if sprint_total else 0
+
+        sprint_payload = {
+            "id": active_sprint.id,
+            "name": active_sprint.name,
+            "goal": active_sprint.goal,
+            "start_date": active_sprint.start_date,
+            "end_date": active_sprint.end_date,
+            "is_active": active_sprint.is_active,
+            "total_tasks": sprint_total,
+            "done_tasks": sprint_done,
+            "progress_percent": sprint_progress,
+        }
+
+    task_ids = [task.id for task in tasks]
+    task_lookup = {task.id: task for task in tasks}
+
+    recent_activity = []
+    if task_ids:
+        logs = (
+            db.query(TaskAuditLog)
+            .filter(TaskAuditLog.task_id.in_(task_ids))
+            .order_by(TaskAuditLog.created_at.desc())
+            .limit(12)
+            .all()
+        )
+
+        for log in logs:
+            related_task = task_lookup.get(log.task_id)
+            recent_activity.append({
+                "id": log.id,
+                "task_id": log.task_id,
+                "task_key": related_task.key if related_task else None,
+                "task_title": related_task.title if related_task else None,
+                "actor_name": log.actor_name,
+                "action": log.action,
+                "field": log.field,
+                "old_value": log.old_value,
+                "new_value": log.new_value,
+                "created_at": log.created_at,
+            })
+
+    critical_open = len([
+        task for task in tasks
+        if _enum_value(task.priority) == "CRITICAL" and _enum_value(task.status) != "DONE"
+    ])
+
+    review_tasks = len([
+        task for task in tasks
+        if _enum_value(task.status) == "REVIEW"
+    ])
+
+    risk_cards = []
+
+    if project.methodology in {"SCRUM", "SCRUMBAN"} and not active_sprint:
+        risk_cards.append({
+            "title": "No active sprint",
+            "value": "Planning needed",
+            "severity": "medium",
+            "detail": "Scrum/Scrumban projects should usually have one active sprint.",
+        })
+
+    if critical_open > 0:
+        risk_cards.append({
+            "title": "Critical work open",
+            "value": str(critical_open),
+            "severity": "high",
+            "detail": "Critical tasks are still unresolved.",
+        })
+
+    if review_tasks > 0:
+        risk_cards.append({
+            "title": "Review load",
+            "value": str(review_tasks),
+            "severity": "medium",
+            "detail": "Tasks are waiting in review.",
+        })
+
+    if unassigned_tasks > 0:
+        risk_cards.append({
+            "title": "Unassigned work",
+            "value": str(unassigned_tasks),
+            "severity": "low",
+            "detail": "Some active tasks do not have an assignee.",
+        })
+
+    if not risk_cards:
+        risk_cards.append({
+            "title": "No obvious risks",
+            "value": "Healthy",
+            "severity": "low",
+            "detail": "No major delivery risks detected from current task data.",
+        })
+
+    unassigned_penalty = min(35, round((unassigned_tasks / active_tasks) * 35)) if active_tasks else 0
+    critical_penalty = min(25, critical_open * 5)
+    review_penalty = min(20, review_tasks * 3)
+    team_health_score = max(0, 100 - unassigned_penalty - critical_penalty - review_penalty)
+
+    total_story_points = sum(task.story_points or 0 for task in tasks)
+    completed_story_points = sum(
+        task.story_points or 0
+        for task in tasks
+        if _enum_value(task.status) == "DONE"
+    )
+
+    return {
+        "project": _serialize_project(project),
+        "metrics": {
+            "total_tasks": total_tasks,
+            "active_tasks": active_tasks,
+            "completed_tasks": completed_tasks,
+            "backlog_tasks": backlog_tasks,
+            "unassigned_tasks": unassigned_tasks,
+            "due_soon_tasks": due_soon_tasks,
+            "overdue_tasks": overdue_tasks,
+            "critical_open_tasks": critical_open,
+            "review_tasks": review_tasks,
+            "completion_rate": completion_rate,
+            "team_members_count": len(members),
+            "team_health_score": team_health_score,
+            "total_story_points": total_story_points,
+            "completed_story_points": completed_story_points,
+        },
+        "active_sprint": sprint_payload,
+        "my_active_tasks": my_active_tasks,
+        "status_distribution": status_distribution,
+        "priority_distribution": priority_distribution,
+        "recent_activity": recent_activity,
+        "risk_cards": risk_cards,
+    }
+
+
+
+# --- PRIORITY 3 WORKLOAD BALANCER V1 ---
+
+def _workload_status(value) -> str:
+    if value is None:
+        return ""
+    if hasattr(value, "value"):
+        return str(value.value)
+    return str(value)
+
+
+def _workload_due_date(task: Task):
+    if not task.due_date:
+        return None
+    return task.due_date.replace(tzinfo=None) if task.due_date.tzinfo else task.due_date
+
+
+def _workload_task_payload(task: Task) -> dict:
+    return {
+        "id": task.id,
+        "key": task.key,
+        "title": task.title,
+        "status": _workload_status(task.status),
+        "priority": _workload_status(task.priority),
+        "story_points": task.story_points,
+        "due_date": task.due_date,
+        "assignee_id": task.assignee_id,
+        "assignee_name": task.assignee_name,
+        "assignee_avatar_url": task.assignee_avatar_url,
+        "sprint_id": task.sprint_id,
+    }
+
+
+def _build_project_workload(db: Session, project_id: int) -> dict:
+    now = datetime.utcnow()
+
+    project = db.query(Project).filter(Project.id == project_id).first()
+    members = (
+        db.query(ProjectMember)
+        .filter(ProjectMember.project_id == project_id)
+        .order_by(ProjectMember.joined_at.asc())
+        .all()
+    )
+    tasks = db.query(Task).filter(Task.project_id == project_id).all()
+
+    active_tasks = [
+        task for task in tasks
+        if _workload_status(task.status) != "DONE"
+    ]
+
+    unassigned_tasks = [
+        task for task in active_tasks
+        if task.assignee_id is None
+    ]
+
+    member_payloads = []
+
+    for member in members:
+        member_tasks = [
+            task for task in active_tasks
+            if task.assignee_id == member.user_id
+        ]
+
+        member_tasks.sort(
+            key=lambda task: (
+                _workload_due_date(task) is None,
+                _workload_due_date(task) or datetime.max,
+                task.id,
+            )
+        )
+
+        story_points = sum(task.story_points or 0 for task in member_tasks)
+        overdue_tasks = len([
+            task for task in member_tasks
+            if _workload_due_date(task) and _workload_due_date(task) < now
+        ])
+        review_tasks = len([
+            task for task in member_tasks
+            if _workload_status(task.status) == "REVIEW"
+        ])
+        critical_tasks = len([
+            task for task in member_tasks
+            if _workload_status(task.priority) == "CRITICAL"
+        ])
+
+        risk_score = min(
+            100,
+            len(member_tasks) * 8
+            + story_points * 3
+            + overdue_tasks * 20
+            + review_tasks * 8
+            + critical_tasks * 12,
+        )
+
+        if risk_score >= 70:
+            load_label = "Overloaded"
+        elif risk_score >= 40:
+            load_label = "Busy"
+        elif len(member_tasks) == 0:
+            load_label = "Available"
+        else:
+            load_label = "Balanced"
+
+        member_payloads.append(
+            {
+                "membership_id": member.id,
+                "user_id": member.user_id,
+                "full_name": member.user.full_name if member.user else None,
+                "email": member.user.email if member.user else None,
+                "avatar_url": member.user.avatar_url if member.user else None,
+                "role_name": member.role.name if member.role else "Member",
+                "active_tasks": len(member_tasks),
+                "story_points": story_points,
+                "overdue_tasks": overdue_tasks,
+                "review_tasks": review_tasks,
+                "critical_tasks": critical_tasks,
+                "risk_score": risk_score,
+                "load_label": load_label,
+                "tasks": [_workload_task_payload(task) for task in member_tasks],
+            }
+        )
+
+    member_payloads.sort(
+        key=lambda item: (
+            item["risk_score"],
+            item["story_points"],
+            item["active_tasks"],
+        ),
+        reverse=True,
+    )
+
+    unassigned_story_points = sum(task.story_points or 0 for task in unassigned_tasks)
+    overloaded_members = len([
+        member for member in member_payloads
+        if member["risk_score"] >= 70
+    ])
+
+    return {
+        "project": _serialize_project(project) if project else None,
+        "summary": {
+            "members_count": len(member_payloads),
+            "active_tasks": len(active_tasks),
+            "assigned_tasks": len(active_tasks) - len(unassigned_tasks),
+            "unassigned_tasks": len(unassigned_tasks),
+            "unassigned_story_points": unassigned_story_points,
+            "total_story_points": sum(task.story_points or 0 for task in active_tasks),
+            "overdue_tasks": sum(member["overdue_tasks"] for member in member_payloads),
+            "review_tasks": sum(member["review_tasks"] for member in member_payloads),
+            "overloaded_members": overloaded_members,
+        },
+        "members": member_payloads,
+        "unassigned_tasks": [_workload_task_payload(task) for task in unassigned_tasks],
+    }
+
+
+@router.get("/{project_id}/workload")
+def get_project_workload(
+    project_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    check_project_permission(db, current_user.id, project_id)
+    return _build_project_workload(db, project_id)
+
+
+@router.post("/{project_id}/workload/ai-suggestions")
+def get_project_workload_suggestions(
+    project_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    require_project_permission(db, current_user.id, project_id, "AI_USE")
+
+    workload = _build_project_workload(db, project_id)
+    members = workload["members"]
+
+    overloaded = [
+        member for member in members
+        if member["risk_score"] >= 70 and member["tasks"]
+    ]
+    available = [
+        member for member in members
+        if member["risk_score"] <= 35
+    ]
+
+    suggestions = []
+
+    for source in overloaded:
+        if not available:
+            break
+
+        target = sorted(
+            available,
+            key=lambda member: (member["risk_score"], member["active_tasks"], member["story_points"]),
+        )[0]
+
+        movable_tasks = [
+            task for task in source["tasks"]
+            if task["status"] in {"TODO", "IN_PROGRESS"} and task["priority"] != "CRITICAL"
+        ]
+
+        if not movable_tasks:
+            movable_tasks = source["tasks"]
+
+        task = sorted(
+            movable_tasks,
+            key=lambda item: (
+                item["story_points"] or 0,
+                item["due_date"] is None,
+                item["due_date"] or "",
+            ),
+            reverse=True,
+        )[0]
+
+        suggestions.append(
+            {
+                "type": "REASSIGN_TASK",
+                "severity": "high" if source["risk_score"] >= 85 else "medium",
+                "task_id": task["id"],
+                "task_key": task["key"],
+                "task_title": task["title"],
+                "from_user_id": source["user_id"],
+                "from_name": source["full_name"] or source["email"] or "Unassigned",
+                "to_user_id": target["user_id"],
+                "to_name": target["full_name"] or target["email"] or "Available member",
+                "reason": (
+                    f"{source['full_name'] or source['email']} has a high workload score "
+                    f"({source['risk_score']}/100), while {target['full_name'] or target['email']} "
+                    f"has more available capacity."
+                ),
+            }
+        )
+
+        target["risk_score"] += 20
+        target["active_tasks"] += 1
+        target["story_points"] += task["story_points"] or 0
+
+    if workload["summary"]["unassigned_tasks"] > 0 and available:
+        target = sorted(
+            available,
+            key=lambda member: (member["risk_score"], member["active_tasks"], member["story_points"]),
+        )[0]
+
+        for task in workload["unassigned_tasks"][:3]:
+            suggestions.append(
+                {
+                    "type": "ASSIGN_UNASSIGNED_TASK",
+                    "severity": "medium",
+                    "task_id": task["id"],
+                    "task_key": task["key"],
+                    "task_title": task["title"],
+                    "from_user_id": None,
+                    "from_name": "Unassigned",
+                    "to_user_id": target["user_id"],
+                    "to_name": target["full_name"] or target["email"] or "Available member",
+                    "reason": (
+                        "This task is currently unassigned. Assigning it improves ownership "
+                        "and reduces delivery uncertainty."
+                    ),
+                }
+            )
+
+    if not suggestions:
+        suggestions.append(
+            {
+                "type": "NO_ACTION_NEEDED",
+                "severity": "low",
+                "task_id": None,
+                "task_key": None,
+                "task_title": None,
+                "from_user_id": None,
+                "from_name": None,
+                "to_user_id": None,
+                "to_name": None,
+                "reason": "The current workload distribution looks balanced based on active tasks, overdue work and story points.",
+            }
+        )
+
+    return {
+        "summary": (
+            "Workload suggestions are generated from active tasks, story points, overdue items, "
+            "review queues and critical priority tasks."
+        ),
+        "suggestions": suggestions,
+    }
+
+
+# --- BATCH 7 PROJECT ACTIVITY ---
+
+class ProjectActivityOut(BaseModel):
+    id: int
+    task_id: int
+    task_key: str
+    task_title: str
+    actor_id: int | None = None
+    actor_name: str | None = None
+    actor_avatar_url: str | None = None
+    action: str
+    field: str | None = None
+    old_value: str | None = None
+    new_value: str | None = None
+    created_at: str
+
+
+@router.get("/{project_id}/activity", response_model=List[ProjectActivityOut])
+def get_project_activity(
+    project_id: int,
+    limit: int = 80,
+    hours: int | None = None,
+    actor_id: int | None = None,
+    action: str | None = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    check_project_permission(db, current_user.id, project_id)
+
+    from datetime import datetime, timedelta
+
+    safe_limit = max(1, min(limit, 200))
+
+    query = (
+        db.query(TaskAuditLog, Task)
+        .join(Task, TaskAuditLog.task_id == Task.id)
+        .filter(Task.project_id == project_id)
+    )
+
+    if hours:
+        since = datetime.utcnow() - timedelta(hours=hours)
+        query = query.filter(TaskAuditLog.created_at >= since)
+
+    if actor_id:
+        query = query.filter(TaskAuditLog.actor_id == actor_id)
+
+    if action:
+        query = query.filter(TaskAuditLog.action == action)
+
+    rows = (
+        query
+        .order_by(TaskAuditLog.created_at.desc())
+        .limit(safe_limit)
+        .all()
+    )
+
+    activities = [
+        {
+            "id": log.id,
+            "task_id": task.id,
+            "task_key": task.key,
+            "task_title": task.title,
+            "actor_id": log.actor_id,
+            "actor_name": log.actor_name,
+            "actor_avatar_url": log.actor_avatar_url,
+            "action": log.action,
+            "field": log.field,
+            "old_value": log.old_value,
+            "new_value": log.new_value,
+            "created_at": log.created_at.isoformat() if log.created_at else "",
+        }
+        for log, task in rows
+    ]
+
+    # Fallback: pentru proiecte fără audit logs, arătăm task-urile ca activitate inițială.
+    if not activities:
+        tasks = (
+            db.query(Task)
+            .filter(Task.project_id == project_id)
+            .order_by(Task.created_at.desc())
+            .limit(safe_limit)
+            .all()
+        )
+
+        activities = [
+            {
+                "id": task.id,
+                "task_id": task.id,
+                "task_key": task.key,
+                "task_title": task.title,
+                "actor_id": None,
+                "actor_name": "System",
+                "actor_avatar_url": None,
+                "action": "TASK_CREATED",
+                "field": "title",
+                "old_value": None,
+                "new_value": task.title,
+                "created_at": task.created_at.isoformat() if task.created_at else "",
+            }
+            for task in tasks
+        ]
+
+    return activities

@@ -1,4 +1,3 @@
-from backend.routers.activity import router as activity_router
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -6,7 +5,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from backend.config import get_settings
-from backend.routers import auth, calendar, projects, sprints, tasks
+from backend.routers import auth, calendar, documentation, github, notifications, projects, sprints, tasks
+from backend.routers.activity import router as activity_router
 
 
 settings = get_settings()
@@ -34,6 +34,9 @@ app.include_router(tasks.router)
 app.include_router(sprints.router)
 app.include_router(calendar.router)
 app.include_router(activity_router)
+app.include_router(notifications.router)
+app.include_router(documentation.router)
+app.include_router(github.router)
 
 
 @app.get("/")

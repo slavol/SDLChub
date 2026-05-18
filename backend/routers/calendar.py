@@ -10,7 +10,8 @@ from backend.models.project import CalendarEvent, ProjectMember
 from backend.models.user import User
 from backend.routers.auth import get_current_user
 from backend.schemas.calendar import CalendarEventCreate, CalendarEventOut, CalendarEventUpdate
-from backend.utils.permissions import check_project_permission, member_has_permission, require_project_permission, member_has_permission, require_project_permission
+from backend.utils.permissions import check_project_permission, member_has_permission, require_project_permission
+from backend.utils.notifications import notify_calendar_attendees
 
 
 router = APIRouter(prefix="/calendar", tags=["Calendar"])
@@ -145,6 +146,10 @@ def create_project_calendar_event(
     db.commit()
     db.refresh(new_event)
 
+    notify_calendar_attendees(db, new_event, attendee_ids, current_user)
+    db.commit()
+    db.refresh(new_event)
+
     return _event_to_out(new_event)
 
 
@@ -164,20 +169,29 @@ def update_calendar_event(
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Missing project permission: CALENDAR_UPDATE.")
 
     update_data = event_in.model_dump(exclude_unset=True)
+    old_attendee_ids = set(_load_attendee_ids(event.attendee_ids))
+    new_attendee_ids: set[int] = set()
 
     starts_at = update_data.get("starts_at", event.starts_at)
     ends_at = update_data.get("ends_at", event.ends_at)
     _validate_date_range(starts_at, ends_at)
 
     if "attendee_ids" in update_data:
-        _ensure_attendees_are_members(db, event.project_id, update_data["attendee_ids"] or [])
-        update_data["attendee_ids"] = _dump_attendee_ids(update_data["attendee_ids"])
+        requested_attendee_ids = set(update_data["attendee_ids"] or [])
+        _ensure_attendees_are_members(db, event.project_id, list(requested_attendee_ids))
+        new_attendee_ids = requested_attendee_ids - old_attendee_ids
+        update_data["attendee_ids"] = _dump_attendee_ids(list(requested_attendee_ids))
 
     for field, value in update_data.items():
         setattr(event, field, value)
 
     db.commit()
     db.refresh(event)
+
+    if new_attendee_ids:
+        notify_calendar_attendees(db, event, new_attendee_ids, current_user)
+        db.commit()
+        db.refresh(event)
 
     return _event_to_out(event)
 

@@ -680,6 +680,286 @@ def apply_methodology_transition(
     }
 
 
+def _pdf_safe(value) -> str:
+    if value is None:
+        return "-"
+
+    text = str(value)
+    replacements = {
+        "ă": "a",
+        "â": "a",
+        "î": "i",
+        "ș": "s",
+        "ş": "s",
+        "ț": "t",
+        "ţ": "t",
+        "Ă": "A",
+        "Â": "A",
+        "Î": "I",
+        "Ș": "S",
+        "Ş": "S",
+        "Ț": "T",
+        "Ţ": "T",
+        "–": "-",
+        "—": "-",
+        "“": '"',
+        "”": '"',
+        "„": '"',
+        "’": "'",
+    }
+
+    for old, new in replacements.items():
+        text = text.replace(old, new)
+
+    return text.encode("latin-1", "replace").decode("latin-1")
+
+
+def _pdf_date(value) -> str:
+    if not value:
+        return "-"
+
+    try:
+        return value.strftime("%Y-%m-%d")
+    except AttributeError:
+        return str(value)
+
+
+@router.get("/{project_id}/reports/status.pdf")
+def export_project_status_pdf(
+    project_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    from io import BytesIO
+
+    from fastapi.responses import StreamingResponse
+    from fpdf import FPDF
+
+    require_project_permission(db, current_user.id, project_id, "REPORT_VIEW")
+
+    report = _build_reports_overview(db, project_id)
+    project = report.get("project") or {}
+    summary = report.get("summary") or {}
+    velocity = report.get("velocity") or []
+    active_sprint = report.get("active_sprint")
+    status_distribution = report.get("status_distribution") or []
+    priority_distribution = report.get("priority_distribution") or []
+    status_age = report.get("status_age") or []
+    bottleneck = report.get("bottleneck")
+
+    pdf = FPDF()
+    pdf.set_auto_page_break(auto=True, margin=15)
+    pdf.add_page()
+
+    # Header
+    pdf.set_fill_color(15, 23, 42)
+    pdf.rect(0, 0, 210, 28, "F")
+    pdf.set_text_color(255, 255, 255)
+    pdf.set_font("Helvetica", "B", 18)
+    pdf.set_xy(12, 9)
+    pdf.cell(0, 8, _pdf_safe("SDLC Hub - Project Status Report"), ln=True)
+
+    pdf.set_font("Helvetica", "", 10)
+    pdf.set_text_color(203, 213, 225)
+    pdf.set_x(12)
+    pdf.cell(0, 6, _pdf_safe(f"Project: {project.get('name', 'Unknown')} ({project.get('key', '-')})"), ln=True)
+
+    pdf.ln(10)
+
+    # Project overview
+    pdf.set_text_color(15, 23, 42)
+    pdf.set_font("Helvetica", "B", 14)
+    pdf.cell(0, 8, _pdf_safe("1. Executive summary"), ln=True)
+
+    pdf.set_font("Helvetica", "", 10)
+    pdf.set_text_color(51, 65, 85)
+    pdf.multi_cell(
+        0,
+        6,
+        _pdf_safe(
+            "This report summarizes project delivery health using current tasks, story points, "
+            "sprint information and audit-log based flow signals."
+        ),
+    )
+    pdf.ln(2)
+
+    def metric_row(label: str, value) -> None:
+        pdf.set_font("Helvetica", "B", 10)
+        pdf.set_text_color(30, 41, 59)
+        pdf.cell(70, 7, _pdf_safe(label), border=1)
+        pdf.set_font("Helvetica", "", 10)
+        pdf.set_text_color(51, 65, 85)
+        pdf.cell(0, 7, _pdf_safe(value), border=1, ln=True)
+
+    metric_row("Total tasks", summary.get("total_tasks", 0))
+    metric_row("Active tasks", summary.get("active_tasks", 0))
+    metric_row("Done tasks", summary.get("done_tasks", 0))
+    metric_row("Completion rate", f"{summary.get('completion_rate', 0)}%")
+    metric_row(
+        "Story points",
+        f"{summary.get('completed_story_points', 0)}/{summary.get('total_story_points', 0)} completed",
+    )
+    metric_row("Story point completion", f"{summary.get('story_point_completion_rate', 0)}%")
+    metric_row("Average cycle time", f"{summary.get('average_cycle_time_days', 0)} days")
+    metric_row("Overdue tasks", summary.get("overdue_tasks", 0))
+    metric_row("Due soon tasks", summary.get("due_soon_tasks", 0))
+    metric_row("Closed sprints", summary.get("closed_sprints", 0))
+
+    # Active sprint
+    pdf.ln(7)
+    pdf.set_font("Helvetica", "B", 14)
+    pdf.set_text_color(15, 23, 42)
+    pdf.cell(0, 8, _pdf_safe("2. Sprint / flow status"), ln=True)
+
+    if active_sprint:
+        pdf.set_font("Helvetica", "", 10)
+        metric_row("Active sprint", active_sprint.get("name", "-"))
+        metric_row("Sprint goal", active_sprint.get("goal") or "-")
+        metric_row("Sprint dates", f"{_pdf_date(active_sprint.get('start_date'))} - {_pdf_date(active_sprint.get('end_date'))}")
+        metric_row(
+            "Sprint points",
+            f"{active_sprint.get('done_points', 0)}/{active_sprint.get('total_points', 0)} done",
+        )
+        metric_row(
+            "Sprint tasks",
+            f"{active_sprint.get('done_tasks', 0)}/{active_sprint.get('total_tasks', 0)} done",
+        )
+    else:
+        pdf.set_font("Helvetica", "", 10)
+        pdf.set_text_color(51, 65, 85)
+        pdf.multi_cell(0, 6, _pdf_safe("No active sprint was found. For Kanban projects, use the flow metrics below."))
+
+    # Velocity
+    pdf.ln(7)
+    pdf.set_font("Helvetica", "B", 14)
+    pdf.set_text_color(15, 23, 42)
+    pdf.cell(0, 8, _pdf_safe("3. Velocity"), ln=True)
+
+    pdf.set_font("Helvetica", "B", 9)
+    pdf.set_fill_color(226, 232, 240)
+    pdf.set_text_color(15, 23, 42)
+    pdf.cell(60, 7, _pdf_safe("Sprint"), border=1, fill=True)
+    pdf.cell(35, 7, _pdf_safe("Done pts"), border=1, fill=True)
+    pdf.cell(35, 7, _pdf_safe("Planned pts"), border=1, fill=True)
+    pdf.cell(35, 7, _pdf_safe("Done tasks"), border=1, fill=True)
+    pdf.cell(25, 7, _pdf_safe("Tasks"), border=1, ln=True, fill=True)
+
+    pdf.set_font("Helvetica", "", 9)
+    pdf.set_text_color(51, 65, 85)
+
+    if velocity:
+        for item in velocity:
+            pdf.cell(60, 7, _pdf_safe(item.get("name", "-"))[:32], border=1)
+            pdf.cell(35, 7, _pdf_safe(item.get("done_points", 0)), border=1)
+            pdf.cell(35, 7, _pdf_safe(item.get("total_points", 0)), border=1)
+            pdf.cell(35, 7, _pdf_safe(item.get("done_tasks", 0)), border=1)
+            pdf.cell(25, 7, _pdf_safe(item.get("total_tasks", 0)), border=1, ln=True)
+    else:
+        pdf.cell(190, 7, _pdf_safe("No closed sprint data available yet."), border=1, ln=True)
+
+    # Distributions
+    pdf.ln(7)
+    pdf.set_font("Helvetica", "B", 14)
+    pdf.set_text_color(15, 23, 42)
+    pdf.cell(0, 8, _pdf_safe("4. Distribution"), ln=True)
+
+    pdf.set_font("Helvetica", "B", 10)
+    pdf.cell(95, 7, _pdf_safe("Status distribution"), border=1)
+    pdf.cell(95, 7, _pdf_safe("Priority distribution"), border=1, ln=True)
+
+    max_rows = max(len(status_distribution), len(priority_distribution))
+    pdf.set_font("Helvetica", "", 9)
+    pdf.set_text_color(51, 65, 85)
+
+    for index in range(max_rows):
+        status_item = status_distribution[index] if index < len(status_distribution) else {"name": "", "value": ""}
+        priority_item = priority_distribution[index] if index < len(priority_distribution) else {"name": "", "value": ""}
+
+        pdf.cell(
+            95,
+            7,
+            _pdf_safe(f"{status_item.get('name', '')}: {status_item.get('value', '')}"),
+            border=1,
+        )
+        pdf.cell(
+            95,
+            7,
+            _pdf_safe(f"{priority_item.get('name', '')}: {priority_item.get('value', '')}"),
+            border=1,
+            ln=True,
+        )
+
+    # Bottleneck
+    pdf.ln(7)
+    pdf.set_font("Helvetica", "B", 14)
+    pdf.set_text_color(15, 23, 42)
+    pdf.cell(0, 8, _pdf_safe("5. Bottleneck analysis"), ln=True)
+
+    if bottleneck and bottleneck.get("tasks", 0) > 0:
+        pdf.set_font("Helvetica", "", 10)
+        pdf.set_text_color(51, 65, 85)
+        pdf.multi_cell(
+            0,
+            6,
+            _pdf_safe(
+                f"Highest average age appears in {bottleneck.get('status')} with "
+                f"{bottleneck.get('average_age_days')} days average age across "
+                f"{bottleneck.get('tasks')} active tasks."
+            ),
+        )
+    else:
+        pdf.set_font("Helvetica", "", 10)
+        pdf.set_text_color(51, 65, 85)
+        pdf.multi_cell(0, 6, _pdf_safe("No bottleneck signal was detected from the current active tasks."))
+
+    pdf.ln(2)
+    pdf.set_font("Helvetica", "B", 9)
+    pdf.set_fill_color(226, 232, 240)
+    pdf.set_text_color(15, 23, 42)
+    pdf.cell(55, 7, _pdf_safe("Status"), border=1, fill=True)
+    pdf.cell(35, 7, _pdf_safe("Tasks"), border=1, fill=True)
+    pdf.cell(50, 7, _pdf_safe("Avg age days"), border=1, fill=True)
+    pdf.cell(50, 7, _pdf_safe("Max age days"), border=1, ln=True, fill=True)
+
+    pdf.set_font("Helvetica", "", 9)
+    pdf.set_text_color(51, 65, 85)
+    for item in status_age:
+        pdf.cell(55, 7, _pdf_safe(item.get("status", "-")), border=1)
+        pdf.cell(35, 7, _pdf_safe(item.get("tasks", 0)), border=1)
+        pdf.cell(50, 7, _pdf_safe(item.get("average_age_days", 0)), border=1)
+        pdf.cell(50, 7, _pdf_safe(item.get("max_age_days", 0)), border=1, ln=True)
+
+    # Footer
+    pdf.ln(8)
+    pdf.set_font("Helvetica", "I", 8)
+    pdf.set_text_color(100, 116, 139)
+    pdf.multi_cell(
+        0,
+        5,
+        _pdf_safe(
+            "Generated by SDLC Hub. Metrics are calculated from project tasks, sprints and audit logs. "
+            "Cycle time and bottleneck age are approximate when historical audit data is incomplete."
+        ),
+    )
+
+    output = pdf.output(dest="S")
+    if isinstance(output, str):
+        pdf_bytes = output.encode("latin-1")
+    else:
+        pdf_bytes = bytes(output)
+
+    filename = f"{project.get('key', 'project')}-status-report.pdf".replace(" ", "-")
+
+    return StreamingResponse(
+        BytesIO(pdf_bytes),
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+        },
+    )
+
+
+
 @router.get("/{project_id}")
 def get_project_detail(
     project_id: int,
@@ -1622,6 +1902,268 @@ def get_project_dashboard(
 
 
 
+
+
+# --- PRIORITY 4 REPORTING V1 ---
+
+def _report_enum_value(value) -> str:
+    if value is None:
+        return ""
+    if hasattr(value, "value"):
+        return str(value.value)
+    return str(value)
+
+
+def _report_plain_date(value):
+    if not value:
+        return None
+    return value.replace(tzinfo=None) if value.tzinfo else value
+
+
+def _report_days_between(start, end) -> float:
+    start_value = _report_plain_date(start)
+    end_value = _report_plain_date(end)
+
+    if not start_value or not end_value:
+        return 0.0
+
+    seconds = max(0.0, (end_value - start_value).total_seconds())
+    return round(seconds / 86400, 2)
+
+
+def _report_chart_item(name: str, value: int) -> dict:
+    return {"name": name, "value": value}
+
+
+def _build_reports_overview(db: Session, project_id: int) -> dict:
+    now = datetime.utcnow()
+    week_end = now + timedelta(days=7)
+
+    project = db.query(Project).filter(Project.id == project_id).first()
+    tasks = db.query(Task).filter(Task.project_id == project_id).all()
+    sprints = (
+        db.query(Sprint)
+        .filter(Sprint.project_id == project_id)
+        .order_by(Sprint.end_date.asc().nullslast(), Sprint.id.asc())
+        .all()
+    )
+
+    task_ids = [task.id for task in tasks]
+
+    status_order = ["TODO", "IN_PROGRESS", "REVIEW", "DONE"]
+    priority_order = ["LOW", "MEDIUM", "HIGH", "CRITICAL"]
+
+    status_distribution = {
+        status: 0 for status in status_order
+    }
+    priority_distribution = {
+        priority: 0 for priority in priority_order
+    }
+
+    total_story_points = 0
+    completed_story_points = 0
+    active_tasks = 0
+    done_tasks_count = 0
+    overdue_tasks = 0
+    due_soon_tasks = 0
+
+    for task in tasks:
+        status = _report_enum_value(task.status)
+        priority = _report_enum_value(task.priority)
+        due_date = _report_plain_date(task.due_date)
+
+        status_distribution[status] = status_distribution.get(status, 0) + 1
+        priority_distribution[priority] = priority_distribution.get(priority, 0) + 1
+
+        points = task.story_points or 0
+        total_story_points += points
+
+        if status == "DONE":
+            done_tasks_count += 1
+            completed_story_points += points
+        else:
+            active_tasks += 1
+
+            if due_date and due_date < now:
+                overdue_tasks += 1
+
+            if due_date and now <= due_date <= week_end:
+                due_soon_tasks += 1
+
+    closed_sprints = [
+        sprint for sprint in sprints
+        if not sprint.is_active and sprint.end_date is not None
+    ]
+
+    velocity = []
+    for sprint in closed_sprints[-8:]:
+        sprint_tasks = [task for task in tasks if task.sprint_id == sprint.id]
+        done_tasks = [
+            task for task in sprint_tasks
+            if _report_enum_value(task.status) == "DONE"
+        ]
+
+        total_points = sum(task.story_points or 0 for task in sprint_tasks)
+        done_points = sum(task.story_points or 0 for task in done_tasks)
+
+        velocity.append(
+            {
+                "sprint_id": sprint.id,
+                "name": sprint.name,
+                "start_date": sprint.start_date,
+                "end_date": sprint.end_date,
+                "total_points": total_points,
+                "done_points": done_points,
+                "done_tasks": len(done_tasks),
+                "total_tasks": len(sprint_tasks),
+            }
+        )
+
+    active_sprint = next((sprint for sprint in sprints if sprint.is_active), None)
+    active_sprint_report = None
+
+    if active_sprint:
+        sprint_tasks = [task for task in tasks if task.sprint_id == active_sprint.id]
+        sprint_done_tasks = [
+            task for task in sprint_tasks
+            if _report_enum_value(task.status) == "DONE"
+        ]
+
+        sprint_total_points = sum(task.story_points or 0 for task in sprint_tasks)
+        sprint_done_points = sum(task.story_points or 0 for task in sprint_done_tasks)
+        remaining_points = max(0, sprint_total_points - sprint_done_points)
+
+        active_sprint_report = {
+            "sprint_id": active_sprint.id,
+            "name": active_sprint.name,
+            "goal": active_sprint.goal,
+            "start_date": active_sprint.start_date,
+            "end_date": active_sprint.end_date,
+            "total_points": sprint_total_points,
+            "done_points": sprint_done_points,
+            "remaining_points": remaining_points,
+            "total_tasks": len(sprint_tasks),
+            "done_tasks": len(sprint_done_tasks),
+        }
+
+    done_date_by_task: dict[int, datetime] = {}
+    last_status_change_by_task: dict[int, datetime] = {}
+    status_change_counts: dict[str, int] = {status: 0 for status in status_order}
+
+    if task_ids:
+        status_logs = (
+            db.query(TaskAuditLog)
+            .filter(
+                TaskAuditLog.task_id.in_(task_ids),
+                TaskAuditLog.action == "TASK_UPDATED",
+                TaskAuditLog.field == "status",
+            )
+            .order_by(TaskAuditLog.created_at.asc())
+            .all()
+        )
+
+        for log in status_logs:
+            last_status_change_by_task[log.task_id] = log.created_at
+
+            new_status = str(log.new_value or "")
+            if new_status:
+                status_change_counts[new_status] = status_change_counts.get(new_status, 0) + 1
+
+            if new_status == "DONE" and log.task_id not in done_date_by_task:
+                done_date_by_task[log.task_id] = log.created_at
+
+    done_cycle_times = []
+    for task in tasks:
+        if _report_enum_value(task.status) != "DONE":
+            continue
+
+        done_date = done_date_by_task.get(task.id) or task.updated_at or task.created_at
+        done_cycle_times.append(_report_days_between(task.created_at, done_date))
+
+    average_cycle_time_days = (
+        round(sum(done_cycle_times) / len(done_cycle_times), 2)
+        if done_cycle_times
+        else 0
+    )
+
+    status_age = []
+    for status in status_order:
+        open_tasks_in_status = [
+            task for task in tasks
+            if _report_enum_value(task.status) == status and status != "DONE"
+        ]
+
+        ages = []
+        for task in open_tasks_in_status:
+            last_change = last_status_change_by_task.get(task.id) or task.created_at
+            ages.append(_report_days_between(last_change, now))
+
+        status_age.append(
+            {
+                "status": status,
+                "tasks": len(open_tasks_in_status),
+                "average_age_days": round(sum(ages) / len(ages), 2) if ages else 0,
+                "max_age_days": round(max(ages), 2) if ages else 0,
+            }
+        )
+
+    bottleneck_status = None
+    if status_age:
+        bottleneck_status = max(
+            status_age,
+            key=lambda item: (item["average_age_days"], item["tasks"]),
+        )
+
+    completion_rate = round((done_tasks_count / len(tasks)) * 100, 2) if tasks else 0
+    story_point_completion_rate = (
+        round((completed_story_points / total_story_points) * 100, 2)
+        if total_story_points
+        else 0
+    )
+
+    return {
+        "project": _serialize_project(project) if project else None,
+        "summary": {
+            "total_tasks": len(tasks),
+            "active_tasks": active_tasks,
+            "done_tasks": done_tasks_count,
+            "completion_rate": completion_rate,
+            "total_story_points": total_story_points,
+            "completed_story_points": completed_story_points,
+            "story_point_completion_rate": story_point_completion_rate,
+            "overdue_tasks": overdue_tasks,
+            "due_soon_tasks": due_soon_tasks,
+            "average_cycle_time_days": average_cycle_time_days,
+            "closed_sprints": len(closed_sprints),
+        },
+        "velocity": velocity,
+        "active_sprint": active_sprint_report,
+        "status_distribution": [
+            _report_chart_item(status, status_distribution.get(status, 0))
+            for status in status_order
+        ],
+        "priority_distribution": [
+            _report_chart_item(priority, priority_distribution.get(priority, 0))
+            for priority in priority_order
+        ],
+        "status_age": status_age,
+        "status_change_counts": [
+            _report_chart_item(status, status_change_counts.get(status, 0))
+            for status in status_order
+        ],
+        "bottleneck": bottleneck_status,
+    }
+
+
+@router.get("/{project_id}/reports/overview")
+def get_project_reports_overview(
+    project_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    require_project_permission(db, current_user.id, project_id, "REPORT_VIEW")
+    return _build_reports_overview(db, project_id)
+
 # --- PRIORITY 3 WORKLOAD BALANCER V1 ---
 
 def _workload_status(value) -> str:
@@ -1774,6 +2316,8 @@ def _build_project_workload(db: Session, project_id: int) -> dict:
         "members": member_payloads,
         "unassigned_tasks": [_workload_task_payload(task) for task in unassigned_tasks],
     }
+
+
 
 
 @router.get("/{project_id}/workload")

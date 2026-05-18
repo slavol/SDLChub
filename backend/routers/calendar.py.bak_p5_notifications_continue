@@ -1,0 +1,202 @@
+import json
+from datetime import datetime
+from typing import List, Optional
+
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy.orm import Session
+
+from backend.database.session import get_db
+from backend.models.project import CalendarEvent, ProjectMember
+from backend.models.user import User
+from backend.routers.auth import get_current_user
+from backend.schemas.calendar import CalendarEventCreate, CalendarEventOut, CalendarEventUpdate
+from backend.utils.permissions import check_project_permission, member_has_permission, require_project_permission, member_has_permission, require_project_permission
+
+
+router = APIRouter(prefix="/calendar", tags=["Calendar"])
+
+
+
+def _load_attendee_ids(raw_value: str | None) -> List[int]:
+    if not raw_value:
+        return []
+
+    try:
+        values = json.loads(raw_value)
+    except json.JSONDecodeError:
+        return []
+
+    if not isinstance(values, list):
+        return []
+
+    return [int(value) for value in values if isinstance(value, int) or str(value).isdigit()]
+
+
+def _dump_attendee_ids(values: List[int] | None) -> str:
+    unique_ids = sorted({int(value) for value in values or [] if value})
+    return json.dumps(unique_ids)
+
+
+def _event_to_out(event: CalendarEvent) -> dict:
+    return {
+        "id": event.id,
+        "project_id": event.project_id,
+        "title": event.title,
+        "description": event.description,
+        "event_type": event.event_type,
+        "starts_at": event.starts_at,
+        "ends_at": event.ends_at,
+        "location": event.location,
+        "meeting_url": event.meeting_url,
+        "attendee_ids": _load_attendee_ids(event.attendee_ids),
+        "created_by_id": event.created_by_id,
+        "created_by_name": event.created_by_name,
+        "created_at": event.created_at,
+        "updated_at": event.updated_at,
+    }
+
+
+def _validate_date_range(starts_at: datetime, ends_at: datetime) -> None:
+    if ends_at <= starts_at:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Event end time must be after the start time.",
+        )
+
+
+def _ensure_attendees_are_members(db: Session, project_id: int, attendee_ids: List[int]) -> None:
+    if not attendee_ids:
+        return
+
+    member_ids = {
+        row.user_id
+        for row in db.query(ProjectMember.user_id)
+        .filter(ProjectMember.project_id == project_id)
+        .all()
+    }
+
+    missing_ids = sorted(set(attendee_ids) - member_ids)
+    if missing_ids:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="All attendees must be members of this project.",
+        )
+
+
+def _can_manage_event(member: ProjectMember, current_user: User, event: CalendarEvent, permission_key: str) -> bool:
+    if event.created_by_id == current_user.id:
+        return True
+
+    if not member or not member.project:
+        return False
+
+    return member_has_permission(member.project, member, current_user.id, permission_key)
+
+
+@router.get("/project/{project_id}", response_model=List[CalendarEventOut])
+def get_project_calendar_events(
+    project_id: int,
+    start: Optional[datetime] = Query(None),
+    end: Optional[datetime] = Query(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    check_project_permission(db, current_user.id, project_id)
+
+    query = db.query(CalendarEvent).filter(CalendarEvent.project_id == project_id)
+
+    if start:
+        query = query.filter(CalendarEvent.ends_at >= start)
+    if end:
+        query = query.filter(CalendarEvent.starts_at <= end)
+
+    events = query.order_by(CalendarEvent.starts_at.asc()).all()
+    return [_event_to_out(event) for event in events]
+
+
+@router.post("/project/{project_id}", response_model=CalendarEventOut)
+def create_project_calendar_event(
+    project_id: int,
+    event_in: CalendarEventCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    require_project_permission(db, current_user.id, project_id, "CALENDAR_CREATE")
+    _validate_date_range(event_in.starts_at, event_in.ends_at)
+    _ensure_attendees_are_members(db, project_id, event_in.attendee_ids)
+
+    attendee_ids = set(event_in.attendee_ids)
+    attendee_ids.add(current_user.id)
+
+    new_event = CalendarEvent(
+        project_id=project_id,
+        title=event_in.title.strip(),
+        description=event_in.description,
+        event_type=event_in.event_type,
+        starts_at=event_in.starts_at,
+        ends_at=event_in.ends_at,
+        location=event_in.location,
+        meeting_url=event_in.meeting_url,
+        attendee_ids=_dump_attendee_ids(list(attendee_ids)),
+        created_by_id=current_user.id,
+    )
+
+    db.add(new_event)
+    db.commit()
+    db.refresh(new_event)
+
+    return _event_to_out(new_event)
+
+
+@router.put("/{event_id}", response_model=CalendarEventOut)
+def update_calendar_event(
+    event_id: int,
+    event_in: CalendarEventUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    event = db.query(CalendarEvent).filter(CalendarEvent.id == event_id).first()
+    if not event:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Calendar event not found")
+
+    member = check_project_permission(db, current_user.id, event.project_id)
+    if not _can_manage_event(member, current_user, event, "CALENDAR_UPDATE"):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Missing project permission: CALENDAR_UPDATE.")
+
+    update_data = event_in.model_dump(exclude_unset=True)
+
+    starts_at = update_data.get("starts_at", event.starts_at)
+    ends_at = update_data.get("ends_at", event.ends_at)
+    _validate_date_range(starts_at, ends_at)
+
+    if "attendee_ids" in update_data:
+        _ensure_attendees_are_members(db, event.project_id, update_data["attendee_ids"] or [])
+        update_data["attendee_ids"] = _dump_attendee_ids(update_data["attendee_ids"])
+
+    for field, value in update_data.items():
+        setattr(event, field, value)
+
+    db.commit()
+    db.refresh(event)
+
+    return _event_to_out(event)
+
+
+@router.delete("/{event_id}")
+def delete_calendar_event(
+    event_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    event = db.query(CalendarEvent).filter(CalendarEvent.id == event_id).first()
+    if not event:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Calendar event not found")
+
+    member = check_project_permission(db, current_user.id, event.project_id)
+    if not _can_manage_event(member, current_user, event, "CALENDAR_DELETE"):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Missing project permission: CALENDAR_DELETE.")
+
+    db.delete(event)
+    db.commit()
+
+    return {"message": "Calendar event deleted"}
