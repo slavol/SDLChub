@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 
 import { AppSidebar } from "@/components/dashboard/app-sidebar";
+import { RealtimeBridge } from "@/components/realtime/realtime-bridge";
 import { getMyProjects, getProjectMembers } from "@/services/project";
 import { useAuthStore } from "@/store/use-auth-store";
 import { useProjectStore } from "@/store/use-project-store";
@@ -78,6 +79,7 @@ export default function DashboardLayout({
 
   return (
     <div className="flex h-screen bg-slate-950 overflow-hidden">
+      <RealtimeBridge />
       <AppSidebar methodology={methodology} role={role} projectName={projectName} />
 
       <main className="flex-1 overflow-y-auto bg-slate-950">

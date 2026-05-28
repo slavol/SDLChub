@@ -44,3 +44,13 @@ export const markAllNotificationsRead = async (): Promise<{ updated: number }> =
   const response = await api.put("/notifications/read-all");
   return response.data;
 };
+
+export const generateDueTaskReminders = async (
+  projectId?: number | null
+): Promise<{ created: number }> => {
+  const response = await api.post("/notifications/generate-reminders", null, {
+    params: projectId ? { project_id: projectId } : undefined,
+  });
+
+  return response.data;
+};

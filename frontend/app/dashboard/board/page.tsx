@@ -1,7 +1,7 @@
 "use client";
 
 // 1. React & Next Imports
-import { useState, useEffect } from "react";
+import { useCallback, useState, useEffect } from "react";
 import Link from "next/link";
 
 // 2. Third-Party Libraries (DnD Kit, Icons, etc.)
@@ -27,6 +27,7 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import {
   ExternalLink,
+  AlertTriangle,
   Loader2,
   CalendarClock,
   CheckCircle,
@@ -43,10 +44,11 @@ import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { UserAvatar } from "@/components/user-avatar";
 import { useProjectPermissions } from "@/hooks/use-project-permissions";
+import { useRealtimeEvent } from "@/hooks/use-realtime-event";
 import { cn } from "@/lib/utils";
 
 // 4. Services, Store & Types
-import { getMyProjects } from "@/services/project";
+import { getMyProjects, getProjectDetail } from "@/services/project";
 import { getProjectTasks, updateTask, Task, TaskStatus, TaskPriority } from "@/services/task";
 import { completeSprint, getProjectSprints } from "@/services/sprint";
 import { getApiErrorMessage } from "@/lib/api-error";
@@ -88,7 +90,15 @@ function formatTaskDate(value?: string | null) {
 // COMPONENT: TASK CARD
 // ==========================================
 
-function TaskCard({ task, isOverlay }: { task: Task; isOverlay?: boolean }) {
+function TaskCard({
+  task,
+  isOverlay,
+  showStoryPoints = true,
+}: {
+  task: Task;
+  isOverlay?: boolean;
+  showStoryPoints?: boolean;
+}) {
   const { setNodeRef, attributes, listeners, transform, transition, isDragging } = useSortable({
     id: task.id,
     data: { type: "Task", task },
@@ -166,9 +176,11 @@ function TaskCard({ task, isOverlay }: { task: Task; isOverlay?: boolean }) {
       {/* Footer Task (Estimări, Assignee, Dată) */}
       <div className="mt-auto flex items-center justify-between gap-3 pl-1">
         <div className="flex min-w-0 items-center gap-2 text-xs text-slate-500">
-          <Badge variant="secondary" className="h-6 rounded-lg bg-slate-800 px-2 text-xs text-slate-300 hover:bg-slate-800">
-            {task.story_points ? `${task.story_points} pts` : "No est."}
-          </Badge>
+          {showStoryPoints && (
+            <Badge variant="secondary" className="h-6 rounded-lg bg-slate-800 px-2 text-xs text-slate-300 hover:bg-slate-800">
+              {task.story_points ? `${task.story_points} pts` : "No est."}
+            </Badge>
+          )}
 
           {!task.assignee_id && (
             <span className="hidden items-center gap-1 text-slate-600 sm:flex">
@@ -203,16 +215,35 @@ function TaskCard({ task, isOverlay }: { task: Task; isOverlay?: boolean }) {
 // COMPONENT: BOARD COLUMN
 // ==========================================
 
-function BoardColumn({ id, title, tasks, color }: { id: TaskStatus; title: string; tasks: Task[]; color: string }) {
+function BoardColumn({
+  id,
+  title,
+  tasks,
+  color,
+  showStoryPoints,
+  wipLimit,
+}: {
+  id: TaskStatus;
+  title: string;
+  tasks: Task[];
+  color: string;
+  showStoryPoints: boolean;
+  wipLimit?: number | null;
+}) {
   const { setNodeRef } = useSortable({
     id: id,
     data: { type: "Column", id },
   });
 
+  const limitExceeded = typeof wipLimit === "number" && wipLimit > 0 && tasks.length > wipLimit;
+
   return (
     <div
       ref={setNodeRef}
-      className="flex h-full min-w-[340px] w-[340px] flex-col rounded-2xl border border-slate-800 bg-slate-950/55 shadow-xl shadow-slate-950/20"
+      className={cn(
+        "flex h-full min-w-[340px] w-[340px] flex-col rounded-2xl border bg-slate-950/55 shadow-xl shadow-slate-950/20",
+        limitExceeded ? "border-red-500/45" : "border-slate-800"
+      )}
     >
       <div className="flex items-center justify-between border-b border-slate-800 p-4">
         <div className="flex items-center gap-2">
@@ -221,14 +252,28 @@ function BoardColumn({ id, title, tasks, color }: { id: TaskStatus; title: strin
           <Badge variant="secondary" className="ml-1 rounded-lg bg-slate-800 text-slate-400 hover:bg-slate-800">
             {tasks.length}
           </Badge>
+          {typeof wipLimit === "number" && wipLimit > 0 && (
+            <Badge
+              variant="outline"
+              className={cn(
+                "rounded-lg text-[10px]",
+                limitExceeded
+                  ? "border-red-500/40 bg-red-500/10 text-red-200"
+                  : "border-slate-700 bg-slate-900 text-slate-400"
+              )}
+            >
+              WIP {tasks.length}/{wipLimit}
+            </Badge>
+          )}
         </div>
+        {limitExceeded && <AlertTriangle className="h-4 w-4 text-red-300" />}
       </div>
 
       <div className="min-h-[180px] flex-1 overflow-y-auto p-3">
         <SortableContext items={tasks.map((t) => t.id)} strategy={verticalListSortingStrategy}>
           <div className="space-y-3">
             {tasks.map((task) => (
-              <TaskCard key={task.id} task={task} />
+              <TaskCard key={task.id} task={task} showStoryPoints={showStoryPoints} />
             ))}
 
             {tasks.length === 0 && (
@@ -256,6 +301,7 @@ export default function BoardPage() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [projectId, setProjectId] = useState<number | null>(null);
   const [methodology, setMethodology] = useState<string>("SCRUM");
+  const [wipLimits, setWipLimits] = useState<Record<string, number | null>>({});
   const [activeSprintId, setActiveSprintId] = useState<number | null>(null);
   const [activeTask, setActiveTask] = useState<Task | null>(null);
   const [loading, setLoading] = useState(true);
@@ -275,11 +321,9 @@ export default function BoardPage() {
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   );
 
-  // Initializare Date
-  useEffect(() => {
-    setIsMounted(true);
-
-    const init = async () => {
+  const loadBoard = useCallback(
+    async (showLoader = true) => {
+      if (showLoader) setLoading(true);
       try {
         let project = currentProject;
 
@@ -294,11 +338,15 @@ export default function BoardPage() {
           setProjectId(pid);
           setMethodology(project.methodology);
 
-          const [remoteTasks, remoteSprints] = await Promise.all([
+          const [freshProject, remoteTasks, remoteSprints] = await Promise.all([
+            getProjectDetail(pid),
             getProjectTasks(pid, "board"),
             getProjectSprints(pid),
           ]);
 
+          setCurrentProject(freshProject);
+          setMethodology(freshProject.methodology);
+          setWipLimits(freshProject.workflow_config?.wip_limits || {});
           setTasks(remoteTasks);
           const activeSprint = remoteSprints.find((sprint) => sprint.is_active);
           setActiveSprintId(activeSprint?.id ?? null);
@@ -308,10 +356,23 @@ export default function BoardPage() {
       } finally {
         setLoading(false);
       }
-    };
+    },
+    [currentProject, setCurrentProject]
+  );
 
-    init();
-  }, [currentProject, setCurrentProject]);
+  // Initializare Date
+  useEffect(() => {
+    setIsMounted(true);
+    loadBoard();
+  }, [loadBoard]);
+
+  useRealtimeEvent((message) => {
+    if (!projectId || (message.project_id && message.project_id !== projectId)) return;
+
+    if (message.type === "task.changed" || message.type === "sprint.changed") {
+      loadBoard(false);
+    }
+  }, [projectId, loadBoard]);
 
   // Handler: Complete Sprint
   const handleCompleteSprint = async () => {
@@ -432,6 +493,7 @@ export default function BoardPage() {
 
   // Calculare Statistici
   const isScrumLike = methodology === "SCRUM" || methodology === "SCRUMBAN";
+  const supportsWipLimits = methodology === "KANBAN" || methodology === "SCRUMBAN";
   const activeTasks = tasks.filter((task) => task.status !== TaskStatus.DONE).length;
   const doneTasks = tasks.filter((task) => task.status === TaskStatus.DONE).length;
   const reviewTasks = tasks.filter((task) => task.status === TaskStatus.REVIEW).length;
@@ -536,12 +598,14 @@ export default function BoardPage() {
                   title={col.title}
                   color={col.color}
                   tasks={tasks.filter((t) => t.status === col.id)}
+                  showStoryPoints={isScrumLike}
+                  wipLimit={supportsWipLimits ? wipLimits[col.id] : null}
                 />
               ))}
             </div>
 
             <DragOverlay>
-              {activeTask ? <TaskCard task={activeTask} isOverlay /> : null}
+              {activeTask ? <TaskCard task={activeTask} isOverlay showStoryPoints={isScrumLike} /> : null}
             </DragOverlay>
           </DndContext>
         )}

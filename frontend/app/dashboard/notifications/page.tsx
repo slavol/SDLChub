@@ -1,9 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  AlertTriangle,
   Bell,
+  Clock3,
   CalendarDays,
   CheckCheck,
   Loader2,
@@ -16,6 +18,7 @@ import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { useRealtimeEvent } from "@/hooks/use-realtime-event";
 import { getApiErrorMessage } from "@/lib/api-error";
 import {
   getNotifications,
@@ -35,15 +38,21 @@ function formatDate(value: string) {
 
 function notificationIcon(type: string) {
   if (type === "TASK_ASSIGNED") return UserRoundCheck;
+  if (type === "TASK_OVERDUE") return AlertTriangle;
+  if (type === "TASK_DUE_SOON") return Clock3;
   if (type === "MENTION") return MessageSquareText;
-  if (type === "CALENDAR_INVITE") return CalendarDays;
+  if (type === "CALENDAR_INVITE" || type === "CALENDAR_REMINDER") return CalendarDays;
+  if (type === "AI_RISK") return AlertTriangle;
   return Bell;
 }
 
 function notificationTone(type: string) {
   if (type === "TASK_ASSIGNED") return "border-blue-500/20 bg-blue-500/10 text-blue-200";
+  if (type === "TASK_OVERDUE") return "border-rose-500/25 bg-rose-500/10 text-rose-200";
+  if (type === "TASK_DUE_SOON") return "border-amber-500/25 bg-amber-500/10 text-amber-200";
   if (type === "MENTION") return "border-purple-500/20 bg-purple-500/10 text-purple-200";
-  if (type === "CALENDAR_INVITE") return "border-emerald-500/20 bg-emerald-500/10 text-emerald-200";
+  if (type === "CALENDAR_INVITE" || type === "CALENDAR_REMINDER") return "border-emerald-500/20 bg-emerald-500/10 text-emerald-200";
+  if (type === "AI_RISK") return "border-orange-500/25 bg-orange-500/10 text-orange-200";
   return "border-slate-700 bg-slate-900 text-slate-300";
 }
 
@@ -57,8 +66,8 @@ export default function NotificationsPage() {
     [notifications]
   );
 
-  const loadNotifications = async () => {
-    setLoading(true);
+  const loadNotifications = useCallback(async (showLoader = true) => {
+    if (showLoader) setLoading(true);
 
     try {
       const data = await getNotifications(false, 100);
@@ -66,13 +75,23 @@ export default function NotificationsPage() {
     } catch (error) {
       toast.error(getApiErrorMessage(error, "Could not load notifications."));
     } finally {
-      setLoading(false);
+      if (showLoader) setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     loadNotifications();
-  }, []);
+  }, [loadNotifications]);
+
+  useRealtimeEvent((message) => {
+    if (
+      message.type === "notification.created" ||
+      message.type === "notification.read" ||
+      message.type === "notification.read_all"
+    ) {
+      loadNotifications(false);
+    }
+  }, [loadNotifications]);
 
   const handleOpen = async (item: NotificationItem) => {
     if (!item.read_at) {
@@ -94,7 +113,7 @@ export default function NotificationsPage() {
 
     try {
       await markAllNotificationsRead();
-      await loadNotifications();
+      await loadNotifications(false);
       toast.success("All notifications marked as read.");
     } catch (error) {
       toast.error(getApiErrorMessage(error, "Could not mark notifications as read."));
@@ -123,7 +142,7 @@ export default function NotificationsPage() {
             Notification Center
           </h1>
           <p className="mt-2 max-w-2xl text-sm text-slate-400">
-            Track assignments, mentions and calendar invitations from your projects.
+            Track assignments, mentions, due-date reminders, AI risk alerts and calendar updates.
           </p>
         </div>
 
@@ -131,7 +150,7 @@ export default function NotificationsPage() {
           <Button
             variant="outline"
             className="border-slate-700 bg-slate-900 text-slate-200 hover:bg-slate-800"
-            onClick={loadNotifications}
+            onClick={() => loadNotifications()}
           >
             <RefreshCw className="mr-2 h-4 w-4" />
             Refresh

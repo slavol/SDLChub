@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
+  BellRing,
   CalendarClock,
   CalendarDays,
   CalendarPlus,
@@ -17,7 +18,9 @@ import {
   ListChecks,
   Loader2,
   MapPin,
+  Pencil,
   Plus,
+  Repeat,
   Trash2,
   UserRound,
   Users2,
@@ -37,7 +40,6 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -52,6 +54,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { UserAvatar } from "@/components/user-avatar";
 import { useProjectPermissions } from "@/hooks/use-project-permissions";
+import { useRealtimeEvent } from "@/hooks/use-realtime-event";
 import { getApiErrorMessage } from "@/lib/api-error";
 import { cn } from "@/lib/utils";
 import {
@@ -59,7 +62,9 @@ import {
   CalendarEventType,
   createProjectCalendarEvent,
   deleteCalendarEvent,
+  deleteCalendarEventSeries,
   getProjectCalendarEvents,
+  updateProjectCalendarEvent,
 } from "@/services/calendar";
 import {
   getMyProjects,
@@ -68,10 +73,13 @@ import {
   ProjectMember,
 } from "@/services/project";
 import { getProjectTasks, Task, TaskPriority, TaskStatus } from "@/services/task";
+import { getProjectSprints, Sprint } from "@/services/sprint";
+import { generateDueTaskReminders } from "@/services/notification";
 import { useAuthStore } from "@/store/use-auth-store";
 import { useProjectStore } from "@/store/use-project-store";
 
-type CalendarView = "month" | "week" | "agenda";
+type CalendarView = "month" | "week" | "day" | "agenda";
+type RecurrenceMode = "none" | "daily" | "weekdays" | "weekly";
 type CalendarFeedItem =
   | {
       id: string;
@@ -87,6 +95,14 @@ type CalendarFeedItem =
       date: Date;
       title: string;
       event: CalendarEvent;
+    }
+  | {
+      id: string;
+      kind: "sprint";
+      date: Date;
+      title: string;
+      sprint: Sprint;
+      milestone: "START" | "END";
     };
 
 const eventTypes: { value: CalendarEventType; label: string }[] = [
@@ -97,6 +113,13 @@ const eventTypes: { value: CalendarEventType; label: string }[] = [
   { value: "RETRO", label: "Retro" },
   { value: "FOCUS", label: "Focus" },
   { value: "OTHER", label: "Other" },
+];
+
+const recurrenceOptions: { value: RecurrenceMode; label: string; description: string }[] = [
+  { value: "none", label: "Does not repeat", description: "Create a single event." },
+  { value: "daily", label: "Daily", description: "Repeat every day until the selected date." },
+  { value: "weekdays", label: "Weekdays", description: "Repeat Monday through Friday." },
+  { value: "weekly", label: "Weekly", description: "Repeat on the same weekday." },
 ];
 
 const taskStatusClass: Record<TaskStatus, string> = {
@@ -142,6 +165,26 @@ function formatMonth(date: Date) {
 
 function formatTime(date: Date) {
   return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
+function toInputDate(date: Date) {
+  return dateKey(date);
+}
+
+function toInputTime(date: Date) {
+  const hours = String(date.getHours()).padStart(2, "0");
+  const minutes = String(date.getMinutes()).padStart(2, "0");
+  return `${hours}:${minutes}`;
+}
+
+function addDays(date: Date, days: number) {
+  const next = new Date(date);
+  next.setDate(next.getDate() + days);
+  return next;
+}
+
+function combineDateAndTime(date: Date, time: string) {
+  return `${toInputDate(date)}T${time}:00`;
 }
 
 function formatDateTime(date: Date) {
@@ -194,15 +237,41 @@ function attendeeNames(event: CalendarEvent, memberMap: Map<number, ProjectMembe
     .filter(Boolean);
 }
 
+function feedItemTone(item: CalendarFeedItem) {
+  if (item.kind === "task") {
+    return "border border-emerald-500/20 bg-emerald-500/10 text-emerald-200";
+  }
+
+  if (item.kind === "sprint") {
+    return item.milestone === "START"
+      ? "border border-indigo-500/20 bg-indigo-500/10 text-indigo-200"
+      : "border border-emerald-500/20 bg-emerald-500/10 text-emerald-200";
+  }
+
+  return eventTypeClass[item.event.event_type] || eventTypeClass.OTHER;
+}
+
+function feedItemLabel(item: CalendarFeedItem) {
+  if (item.kind === "task") return item.task.key;
+  if (item.kind === "sprint") return `SPRINT ${item.milestone}`;
+  return item.event.event_type;
+}
+
 function CalendarItemCard({
   item,
   memberMap,
+  onEditEvent,
   onDeleteEvent,
+  onDeleteSeries,
+  canEditEvent,
   canDeleteEvent,
 }: {
   item: CalendarFeedItem;
   memberMap: Map<number, ProjectMember>;
+  onEditEvent: (event: CalendarEvent) => void;
   onDeleteEvent: (event: CalendarEvent) => void;
+  onDeleteSeries: (event: CalendarEvent) => void;
+  canEditEvent: (event: CalendarEvent) => boolean;
   canDeleteEvent: (event: CalendarEvent) => boolean;
 }) {
   if (item.kind === "task") {
@@ -236,27 +305,92 @@ function CalendarItemCard({
     );
   }
 
+  if (item.kind === "sprint") {
+    const tone =
+      item.milestone === "START"
+        ? "border-indigo-500/25 bg-indigo-500/10 text-indigo-200"
+        : "border-emerald-500/25 bg-emerald-500/10 text-emerald-200";
+
+    return (
+      <div className="rounded-2xl border border-slate-800 bg-slate-950/80 p-4">
+        <div className="mb-3 flex flex-wrap items-center gap-2">
+          <Badge variant="outline" className={cn("border text-[10px]", tone)}>
+            SPRINT {item.milestone}
+          </Badge>
+          {item.sprint.is_active && (
+            <Badge variant="outline" className="border-blue-500/25 bg-blue-500/10 text-[10px] text-blue-200">
+              ACTIVE
+            </Badge>
+          )}
+        </div>
+        <p className="line-clamp-2 text-sm font-semibold text-white">{item.title}</p>
+        {item.sprint.goal && (
+          <p className="mt-2 line-clamp-2 text-xs leading-5 text-slate-500">
+            {item.sprint.goal}
+          </p>
+        )}
+        <p className="mt-3 flex items-center gap-1.5 text-xs text-slate-500">
+          <CalendarClock className="h-3.5 w-3.5" />
+          {formatDateTime(item.date)}
+        </p>
+      </div>
+    );
+  }
+
   const names = attendeeNames(item.event, memberMap);
 
   return (
     <div className="rounded-2xl border border-slate-800 bg-slate-950/80 p-4">
       <div className="mb-3 flex items-start justify-between gap-3">
-        <Badge
-          variant="outline"
-          className={cn("border text-[10px]", eventTypeClass[item.event.event_type] || eventTypeClass.OTHER)}
-        >
-          {item.event.event_type}
-        </Badge>
-        {canDeleteEvent(item.event) && (
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7 text-slate-500 hover:bg-red-950/30 hover:text-red-300"
-            onClick={() => onDeleteEvent(item.event)}
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge
+            variant="outline"
+            className={cn("border text-[10px]", eventTypeClass[item.event.event_type] || eventTypeClass.OTHER)}
           >
-            <Trash2 className="h-3.5 w-3.5" />
-          </Button>
-        )}
+            {item.event.event_type}
+          </Badge>
+          {item.event.recurrence_series_id && (
+            <Badge variant="outline" className="border-cyan-500/25 bg-cyan-500/10 text-[10px] text-cyan-200">
+              SERIES
+            </Badge>
+          )}
+        </div>
+        <div className="flex items-center gap-1">
+          {canEditEvent(item.event) && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 text-slate-500 hover:bg-blue-950/30 hover:text-blue-300"
+              onClick={() => onEditEvent(item.event)}
+            >
+              <Pencil className="h-3.5 w-3.5" />
+            </Button>
+          )}
+          {canDeleteEvent(item.event) && (
+            <>
+              {item.event.recurrence_series_id && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 text-slate-500 hover:bg-cyan-950/30 hover:text-cyan-300"
+                  title="Delete entire series"
+                  onClick={() => onDeleteSeries(item.event)}
+                >
+                  <Repeat className="h-3.5 w-3.5" />
+                </Button>
+              )}
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7 text-slate-500 hover:bg-red-950/30 hover:text-red-300"
+                title="Delete this event"
+                onClick={() => onDeleteEvent(item.event)}
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </Button>
+            </>
+          )}
+        </div>
       </div>
 
       <p className="line-clamp-2 text-sm font-semibold text-white">{item.title}</p>
@@ -316,6 +450,7 @@ export default function CalendarPage() {
   const [members, setMembers] = useState<ProjectMember[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [events, setEvents] = useState<CalendarEvent[]>([]);
+  const [sprints, setSprints] = useState<Sprint[]>([]);
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState<CalendarView>("month");
   const [cursor, setCursor] = useState(() => new Date());
@@ -325,8 +460,11 @@ export default function CalendarPage() {
   const [onlyMine, setOnlyMine] = useState(false);
 
   const [eventDialogOpen, setEventDialogOpen] = useState(false);
+  const [editingEvent, setEditingEvent] = useState<CalendarEvent | null>(null);
   const [creatingEvent, setCreatingEvent] = useState(false);
+  const [generatingReminders, setGeneratingReminders] = useState(false);
   const [eventToDelete, setEventToDelete] = useState<CalendarEvent | null>(null);
+  const [deleteEntireSeries, setDeleteEntireSeries] = useState(false);
   const [deletingEvent, setDeletingEvent] = useState(false);
 
   const [title, setTitle] = useState("");
@@ -337,10 +475,13 @@ export default function CalendarPage() {
   const [meetingUrl, setMeetingUrl] = useState("");
   const [location, setLocation] = useState("");
   const [description, setDescription] = useState("");
+  const [recurrenceMode, setRecurrenceMode] = useState<RecurrenceMode>("none");
+  const [recurrenceUntil, setRecurrenceUntil] = useState("");
   const [selectedAttendees, setSelectedAttendees] = useState<number[]>([]);
 
   const { can } = useProjectPermissions(project?.id || currentProject?.id);
   const canCreateCalendarEvent = can("CALENDAR_CREATE");
+  const canUpdateCalendarEvent = can("CALENDAR_UPDATE");
   const canDeleteCalendarEvent = can("CALENDAR_DELETE");
 
   const memberMap = useMemo(
@@ -348,8 +489,8 @@ export default function CalendarPage() {
     [members]
   );
 
-  const loadCalendar = useCallback(async () => {
-    setLoading(true);
+  const loadCalendar = useCallback(async (showLoader = true) => {
+    if (showLoader) setLoading(true);
 
     try {
       let selectedProject = currentProject;
@@ -372,35 +513,52 @@ export default function CalendarPage() {
         return;
       }
 
-      const [projectMembers, projectTasks, projectEvents] = await Promise.all([
+      const usesSprints = selectedProject.methodology !== "KANBAN";
+      const [projectMembers, projectTasks, projectEvents, projectSprints] = await Promise.all([
         getProjectMembers(selectedProject.id),
         getProjectTasks(selectedProject.id, "backlog"),
         getProjectCalendarEvents(selectedProject.id),
+        usesSprints ? getProjectSprints(selectedProject.id) : Promise.resolve([]),
       ]);
 
       setMembers(projectMembers);
       setTasks(projectTasks);
       setEvents(projectEvents);
+      setSprints(projectSprints);
 
-      if (selectedAttendees.length === 0 && currentUser?.id) {
-        setSelectedAttendees([currentUser.id]);
+      if (currentUser?.id) {
+        setSelectedAttendees((current) =>
+          current.length === 0 ? [currentUser.id] : current
+        );
       }
     } catch (error: unknown) {
       toast.error(getApiErrorMessage(error, "Could not load calendar."));
     } finally {
-      setLoading(false);
+      if (showLoader) setLoading(false);
     }
-  }, [currentProject, currentUser?.id, selectedAttendees.length, setCurrentProject]);
+  }, [currentProject, currentUser?.id, setCurrentProject]);
 
   useEffect(() => {
     loadCalendar();
   }, [loadCalendar]);
 
+  useRealtimeEvent((message) => {
+    if (!project?.id || (message.project_id && message.project_id !== project.id)) return;
+
+    if (
+      message.type === "calendar.changed" ||
+      message.type === "task.changed" ||
+      message.type === "sprint.changed"
+    ) {
+      loadCalendar(false);
+    }
+  }, [project?.id, loadCalendar]);
+
   useEffect(() => {
-    if (eventDialogOpen) {
+    if (eventDialogOpen && !editingEvent) {
       setEventDate(selectedDate);
     }
-  }, [eventDialogOpen, selectedDate]);
+  }, [editingEvent, eventDialogOpen, selectedDate]);
 
   const feedItems = useMemo<CalendarFeedItem[]>(() => {
     const taskItems: CalendarFeedItem[] = tasks
@@ -435,8 +593,38 @@ export default function CalendarPage() {
       })
       .filter(Boolean) as CalendarFeedItem[];
 
-    return [...taskItems, ...eventItems].sort((a, b) => a.date.getTime() - b.date.getTime());
-  }, [events, memberMap, tasks]);
+    const sprintItems: CalendarFeedItem[] = sprints.flatMap((sprint) => {
+      const items: CalendarFeedItem[] = [];
+      const startDate = parseDate(sprint.start_date);
+      const endDate = parseDate(sprint.end_date);
+
+      if (startDate) {
+        items.push({
+          id: `sprint-${sprint.id}-start`,
+          kind: "sprint",
+          date: startDate,
+          title: `${sprint.name} starts`,
+          sprint,
+          milestone: "START",
+        });
+      }
+
+      if (endDate) {
+        items.push({
+          id: `sprint-${sprint.id}-end`,
+          kind: "sprint",
+          date: endDate,
+          title: `${sprint.name} ends`,
+          sprint,
+          milestone: "END",
+        });
+      }
+
+      return items;
+    });
+
+    return [...taskItems, ...eventItems, ...sprintItems].sort((a, b) => a.date.getTime() - b.date.getTime());
+  }, [events, memberMap, sprints, tasks]);
 
   const filteredItems = useMemo(() => {
     const selectedMemberId = memberFilter === "all" ? null : Number(memberFilter);
@@ -445,12 +633,15 @@ export default function CalendarPage() {
     return feedItems.filter((item) => {
       if (typeFilter === "tasks" && item.kind !== "task") return false;
       if (typeFilter === "events" && item.kind !== "event") return false;
+      if (typeFilter === "sprints" && item.kind !== "sprint") return false;
       if (
-        !["all", "tasks", "events"].includes(typeFilter) &&
+        !["all", "tasks", "events", "sprints"].includes(typeFilter) &&
         (item.kind !== "event" || item.event.event_type !== typeFilter)
       ) {
         return false;
       }
+
+      if (item.kind === "sprint") return true;
 
       if (selectedMemberId) {
         if (item.kind === "task") return item.task.assignee_id === selectedMemberId;
@@ -489,6 +680,21 @@ export default function CalendarPage() {
     setSelectedDate(dateKey(today));
   };
 
+  const applyDailyStandupPreset = () => {
+    const until = addDays(new Date(`${eventDate}T12:00:00`), 14);
+
+    if (!title.trim()) {
+      setTitle("Daily Standup");
+    }
+
+    setEventType("DAILY");
+    setStartTime("09:15");
+    setEndTime("09:30");
+    setRecurrenceMode("weekdays");
+    setRecurrenceUntil(toInputDate(until));
+    setSelectedAttendees(members.map((member) => member.user.id));
+  };
+
   const toggleAttendee = (userId: number) => {
     setSelectedAttendees((current) =>
       current.includes(userId)
@@ -506,37 +712,100 @@ export default function CalendarPage() {
     setMeetingUrl("");
     setLocation("");
     setDescription("");
+    setRecurrenceMode("none");
+    setRecurrenceUntil("");
     setSelectedAttendees(currentUser?.id ? [currentUser.id] : []);
+    setEditingEvent(null);
   };
 
-  const handleCreateEvent = async () => {
-    if (!project || !title.trim()) return;
+  const fillEventForm = (event: CalendarEvent) => {
+    const startsAt = parseDate(event.starts_at) || new Date();
+    const endsAt = parseDate(event.ends_at) || startsAt;
 
+    setTitle(event.title);
+    setEventType(event.event_type as CalendarEventType);
+    setEventDate(toInputDate(startsAt));
+    setStartTime(toInputTime(startsAt));
+    setEndTime(toInputTime(endsAt));
+    setMeetingUrl(event.meeting_url || "");
+    setLocation(event.location || "");
+    setDescription(event.description || "");
+    setRecurrenceMode("none");
+    setRecurrenceUntil("");
+    setSelectedAttendees(event.attendee_ids || []);
+  };
+
+  const openCreateEventDialog = () => {
     if (!canCreateCalendarEvent) {
       toast.error("You do not have permission to create calendar events.");
       return;
     }
 
-    const startsAt = `${eventDate}T${startTime}:00`;
-    const endsAt = `${eventDate}T${endTime}:00`;
+    resetEventForm();
+    setEventDate(selectedDate);
+    setEventDialogOpen(true);
+  };
+
+  const openEditEventDialog = (event: CalendarEvent) => {
+    if (!(canUpdateCalendarEvent || event.created_by_id === currentUser?.id)) {
+      toast.error("You do not have permission to edit this calendar event.");
+      return;
+    }
+
+    setEditingEvent(event);
+    fillEventForm(event);
+    setEventDialogOpen(true);
+  };
+
+  const handleSaveEvent = async () => {
+    if (!project || !title.trim()) return;
+
+    if (!editingEvent && !canCreateCalendarEvent) {
+      toast.error("You do not have permission to create calendar events.");
+      return;
+    }
+
+    if (editingEvent && !(canUpdateCalendarEvent || editingEvent.created_by_id === currentUser?.id)) {
+      toast.error("You do not have permission to edit this calendar event.");
+      return;
+    }
 
     setCreatingEvent(true);
     try {
-      await createProjectCalendarEvent(project.id, {
+      const payload = {
         title: title.trim(),
         description: description.trim() || null,
         event_type: eventType,
-        starts_at: startsAt,
-        ends_at: endsAt,
+        starts_at: combineDateAndTime(new Date(`${eventDate}T12:00:00`), startTime),
+        ends_at: combineDateAndTime(new Date(`${eventDate}T12:00:00`), endTime),
         location: location.trim() || null,
         meeting_url: meetingUrl.trim() || null,
         attendee_ids: selectedAttendees,
-      });
+      };
 
-      toast.success("Calendar event created");
+      if (editingEvent) {
+        await updateProjectCalendarEvent(editingEvent.id, payload);
+      } else {
+        await createProjectCalendarEvent(project.id, {
+          ...payload,
+          recurrence_mode: recurrenceMode,
+          recurrence_until:
+            recurrenceMode === "none"
+              ? null
+              : combineDateAndTime(new Date(`${recurrenceUntil || eventDate}T12:00:00`), endTime),
+        });
+      }
+
+      toast.success(
+        editingEvent
+          ? "Calendar event updated"
+          : recurrenceMode === "none"
+            ? "Calendar event created"
+            : "Recurring event series created"
+      );
       setEventDialogOpen(false);
       resetEventForm();
-      await loadCalendar();
+      await loadCalendar(false);
     } catch (error: unknown) {
       toast.error(getApiErrorMessage(error, "Could not create calendar event."));
     } finally {
@@ -549,14 +818,43 @@ export default function CalendarPage() {
 
     setDeletingEvent(true);
     try {
-      await deleteCalendarEvent(eventToDelete.id);
-      toast.success("Calendar event deleted");
+      if (deleteEntireSeries && eventToDelete.recurrence_series_id) {
+        const result = await deleteCalendarEventSeries(eventToDelete.id);
+        toast.success(`${result.deleted} event${result.deleted === 1 ? "" : "s"} deleted`);
+      } else {
+        await deleteCalendarEvent(eventToDelete.id);
+        toast.success("Calendar event deleted");
+      }
       setEventToDelete(null);
-      await loadCalendar();
+      setDeleteEntireSeries(false);
+      await loadCalendar(false);
     } catch (error: unknown) {
       toast.error(getApiErrorMessage(error, "Could not delete calendar event."));
     } finally {
       setDeletingEvent(false);
+    }
+  };
+
+  const openDeleteSeriesDialog = (event: CalendarEvent) => {
+    setDeleteEntireSeries(true);
+    setEventToDelete(event);
+  };
+
+  const handleGenerateReminders = async () => {
+    if (!project) return;
+
+    setGeneratingReminders(true);
+    try {
+      const result = await generateDueTaskReminders(project.id);
+      toast.success(
+        result.created > 0
+          ? `${result.created} reminder${result.created === 1 ? "" : "s"} created`
+          : "No new due-date reminders needed"
+      );
+    } catch (error: unknown) {
+      toast.error(getApiErrorMessage(error, "Could not generate reminders."));
+    } finally {
+      setGeneratingReminders(false);
     }
   };
 
@@ -607,38 +905,69 @@ export default function CalendarPage() {
                 Today
               </Button>
 
+              <Button
+                variant="outline"
+                className="border-slate-700 bg-slate-950/60 text-slate-200 hover:bg-slate-900 disabled:cursor-not-allowed disabled:opacity-60"
+                disabled={generatingReminders}
+                onClick={handleGenerateReminders}
+              >
+                {generatingReminders ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <BellRing className="mr-2 h-4 w-4" />
+                )}
+                Reminders
+              </Button>
+
               <Dialog
                 open={eventDialogOpen}
                 onOpenChange={(open) => {
-                  if (open && !canCreateCalendarEvent) {
-                    toast.error("You do not have permission to create calendar events.");
-                    return;
-                  }
-
                   setEventDialogOpen(open);
+
+                  if (!open) {
+                    resetEventForm();
+                  }
                 }}
               >
-                <DialogTrigger asChild>
-                  <Button
-                    className="bg-blue-600 hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
-                    disabled={!canCreateCalendarEvent}
-                    title={!canCreateCalendarEvent ? "You do not have permission to create calendar events." : undefined}
-                  >
-                    <CalendarPlus className="mr-2 h-4 w-4" />
-                    New Event
-                  </Button>
-                </DialogTrigger>
+                <Button
+                  type="button"
+                  className="bg-blue-600 hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+                  disabled={!canCreateCalendarEvent}
+                  title={!canCreateCalendarEvent ? "You do not have permission to create calendar events." : undefined}
+                  onClick={openCreateEventDialog}
+                >
+                  <CalendarPlus className="mr-2 h-4 w-4" />
+                  New Event
+                </Button>
                 <DialogContent className="max-h-[92vh] overflow-y-auto border-slate-800 bg-slate-950 text-slate-50 sm:max-w-2xl">
                   <DialogHeader>
-                    <DialogTitle>Create calendar event</DialogTitle>
+                    <DialogTitle>
+                      {editingEvent ? "Edit calendar event" : "Create calendar event"}
+                    </DialogTitle>
                     <DialogDescription className="text-slate-400">
-                      Schedule meetings, ceremonies or focus sessions with project members.
+                      {editingEvent
+                        ? "Update the event details, attendees and meeting information."
+                        : "Schedule meetings, ceremonies or focus sessions with project members."}
                     </DialogDescription>
                   </DialogHeader>
 
                   <div className="grid gap-5 py-2">
                     <div className="space-y-2">
-                      <Label>Title</Label>
+                      <div className="flex items-center justify-between gap-3">
+                        <Label>Title</Label>
+                        {!editingEvent && (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="h-8 border-slate-700 bg-slate-900 text-xs text-slate-300 hover:bg-slate-800"
+                            onClick={applyDailyStandupPreset}
+                          >
+                            <Repeat className="mr-1.5 h-3.5 w-3.5" />
+                            Daily Standup preset
+                          </Button>
+                        )}
+                      </div>
                       <Input
                         value={title}
                         onChange={(event) => setTitle(event.target.value)}
@@ -731,6 +1060,52 @@ export default function CalendarPage() {
                       />
                     </div>
 
+                    {!editingEvent && (
+                      <div className="rounded-2xl border border-slate-800 bg-slate-900/70 p-4">
+                        <div className="mb-4 flex items-center gap-2">
+                          <Repeat className="h-4 w-4 text-blue-300" />
+                          <div>
+                            <Label>Repeat</Label>
+                            <p className="text-xs text-slate-500">
+                              Create a persistent recurring series for ceremonies like Daily Standup.
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="grid gap-4 md:grid-cols-[1fr_180px]">
+                          <Select
+                            value={recurrenceMode}
+                            onValueChange={(value) => setRecurrenceMode(value as RecurrenceMode)}
+                          >
+                            <SelectTrigger className="h-11 border-slate-700 bg-slate-950">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent className="border-slate-800 bg-slate-950 text-slate-200">
+                              {recurrenceOptions.map((option) => (
+                                <SelectItem key={option.value} value={option.value}>
+                                  {option.label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+
+                          <Input
+                            type="date"
+                            value={recurrenceUntil}
+                            disabled={recurrenceMode === "none"}
+                            onChange={(event) => setRecurrenceUntil(event.target.value)}
+                            className="h-11 border-slate-700 bg-slate-950 disabled:opacity-50"
+                            min={eventDate}
+                          />
+                        </div>
+
+                        <p className="mt-3 text-xs text-slate-500">
+                          {recurrenceOptions.find((option) => option.value === recurrenceMode)?.description}
+                          {recurrenceMode !== "none" && " The series is stored on the backend, up to 60 occurrences."}
+                        </p>
+                      </div>
+                    )}
+
                     <div className="space-y-3">
                       <div className="flex items-center justify-between gap-3">
                         <Label>Attendees</Label>
@@ -778,22 +1153,28 @@ export default function CalendarPage() {
                   </div>
 
                   <DialogFooter>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      className="text-slate-400 hover:text-white"
-                      onClick={() => setEventDialogOpen(false)}
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        className="text-slate-400 hover:text-white"
+                        onClick={() => setEventDialogOpen(false)}
                     >
                       Cancel
                     </Button>
                     <Button
                       type="button"
-                      disabled={creatingEvent || !title.trim() || !canCreateCalendarEvent}
+                      disabled={
+                        creatingEvent ||
+                        !title.trim() ||
+                        (editingEvent
+                          ? !(canUpdateCalendarEvent || editingEvent.created_by_id === currentUser?.id)
+                          : !canCreateCalendarEvent)
+                      }
                       className="bg-blue-600 hover:bg-blue-700"
-                      onClick={handleCreateEvent}
+                      onClick={handleSaveEvent}
                     >
                       {creatingEvent ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Plus className="mr-2 h-4 w-4" />}
-                      Create Event
+                      {editingEvent ? "Save Changes" : "Create Event"}
                     </Button>
                   </DialogFooter>
                 </DialogContent>
@@ -809,6 +1190,13 @@ export default function CalendarPage() {
             <p className="mt-1 text-2xl font-semibold text-white">{events.length}</p>
           </div>
           <div className="rounded-2xl border border-slate-800 bg-slate-950/75 p-4">
+            <CalendarClock className="mb-3 h-5 w-5 text-indigo-300" />
+            <p className="text-sm text-slate-500">Sprint milestones</p>
+            <p className="mt-1 text-2xl font-semibold text-white">
+              {sprints.filter((sprint) => sprint.start_date || sprint.end_date).length}
+            </p>
+          </div>
+          <div className="rounded-2xl border border-slate-800 bg-slate-950/75 p-4">
             <ListChecks className="mb-3 h-5 w-5 text-emerald-300" />
             <p className="text-sm text-slate-500">Task deadlines</p>
             <p className="mt-1 text-2xl font-semibold text-white">
@@ -819,11 +1207,6 @@ export default function CalendarPage() {
             <AlertTriangle className="mb-3 h-5 w-5 text-rose-300" />
             <p className="text-sm text-slate-500">Overdue</p>
             <p className="mt-1 text-2xl font-semibold text-white">{overdueTasks.length}</p>
-          </div>
-          <div className="rounded-2xl border border-slate-800 bg-slate-950/75 p-4">
-            <Users2 className="mb-3 h-5 w-5 text-violet-300" />
-            <p className="text-sm text-slate-500">Members</p>
-            <p className="mt-1 text-2xl font-semibold text-white">{members.length}</p>
           </div>
         </div>
       </section>
@@ -869,6 +1252,9 @@ export default function CalendarPage() {
                       </TabsTrigger>
                       <TabsTrigger value="week" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white">
                         Week
+                      </TabsTrigger>
+                      <TabsTrigger value="day" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white">
+                        Day
                       </TabsTrigger>
                       <TabsTrigger value="agenda" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white">
                         Agenda
@@ -929,12 +1315,10 @@ export default function CalendarPage() {
                                 key={item.id}
                                 className={cn(
                                   "truncate rounded-lg px-2 py-1 text-[11px]",
-                                  item.kind === "task"
-                                    ? "bg-emerald-500/10 text-emerald-200"
-                                    : "bg-blue-500/10 text-blue-200"
+                                  feedItemTone(item)
                                 )}
                               >
-                                {item.kind === "task" ? item.task.key : item.event.event_type} · {item.title}
+                                {feedItemLabel(item)} · {item.title}
                               </div>
                             ))}
                             {dayItems.length > 3 && (
@@ -979,9 +1363,7 @@ export default function CalendarPage() {
                                 key={item.id}
                                 className={cn(
                                   "rounded-xl px-3 py-2 text-xs",
-                                  item.kind === "task"
-                                    ? "border border-emerald-500/20 bg-emerald-500/10 text-emerald-100"
-                                    : "border border-blue-500/20 bg-blue-500/10 text-blue-100"
+                                  feedItemTone(item)
                                 )}
                               >
                                 <p className="font-medium">{formatTime(item.date)}</p>
@@ -1000,6 +1382,51 @@ export default function CalendarPage() {
                   </div>
                 </TabsContent>
 
+                <TabsContent value="day" className="mt-0">
+                  <div className="rounded-2xl border border-slate-800 bg-slate-950/50 p-4">
+                    <div className="mb-4 flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
+                      <div>
+                        <p className="text-sm text-slate-500">Selected day</p>
+                        <h2 className="text-xl font-semibold text-white">
+                          {new Date(`${selectedDate}T12:00:00`).toLocaleDateString([], {
+                            weekday: "long",
+                            month: "long",
+                            day: "numeric",
+                            year: "numeric",
+                          })}
+                        </h2>
+                      </div>
+                      <Badge variant="outline" className="w-fit border-slate-700 bg-slate-900 text-slate-300">
+                        {selectedDayItems.length} items
+                      </Badge>
+                    </div>
+
+                    <div className="grid gap-3 lg:grid-cols-2">
+                      {selectedDayItems.map((item) => (
+                        <CalendarItemCard
+                          key={item.id}
+                          item={item}
+                          memberMap={memberMap}
+                          onEditEvent={openEditEventDialog}
+                          onDeleteEvent={setEventToDelete}
+                          onDeleteSeries={openDeleteSeriesDialog}
+                          canEditEvent={(event) => canUpdateCalendarEvent || event.created_by_id === currentUser?.id}
+                          canDeleteEvent={(event) => canDeleteCalendarEvent || event.created_by_id === currentUser?.id}
+                        />
+                      ))}
+                    </div>
+
+                    {selectedDayItems.length === 0 && (
+                      <div className="rounded-2xl border border-dashed border-slate-800 bg-slate-950/70 p-8 text-center">
+                        <p className="font-medium text-slate-300">No items for this day</p>
+                        <p className="mt-1 text-sm text-slate-500">
+                          Select another day or create a team event.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </TabsContent>
+
                 <TabsContent value="agenda" className="mt-0">
                   <div className="space-y-3">
                     {filteredItems.map((item) => (
@@ -1007,7 +1434,10 @@ export default function CalendarPage() {
                         key={item.id}
                         item={item}
                         memberMap={memberMap}
+                        onEditEvent={openEditEventDialog}
                         onDeleteEvent={setEventToDelete}
+                        onDeleteSeries={openDeleteSeriesDialog}
+                        canEditEvent={(event) => canUpdateCalendarEvent || event.created_by_id === currentUser?.id}
                         canDeleteEvent={(event) => canDeleteCalendarEvent || event.created_by_id === currentUser?.id}
                       />
                     ))}
@@ -1047,8 +1477,11 @@ export default function CalendarPage() {
                   key={item.id}
                   item={item}
                   memberMap={memberMap}
+                  onEditEvent={openEditEventDialog}
                   onDeleteEvent={setEventToDelete}
-                        canDeleteEvent={(event) => canDeleteCalendarEvent || event.created_by_id === currentUser?.id}
+                  onDeleteSeries={openDeleteSeriesDialog}
+                  canEditEvent={(event) => canUpdateCalendarEvent || event.created_by_id === currentUser?.id}
+                  canDeleteEvent={(event) => canDeleteCalendarEvent || event.created_by_id === currentUser?.id}
                 />
               ))}
 
@@ -1104,6 +1537,7 @@ export default function CalendarPage() {
                     <SelectItem value="all">Everything</SelectItem>
                     <SelectItem value="tasks">Task deadlines</SelectItem>
                     <SelectItem value="events">Calendar events</SelectItem>
+                    <SelectItem value="sprints">Sprint milestones</SelectItem>
                     {eventTypes.map((type) => (
                       <SelectItem key={type.value} value={type.value}>
                         {type.label}
@@ -1142,12 +1576,10 @@ export default function CalendarPage() {
                       variant="outline"
                       className={cn(
                         "border text-[10px]",
-                        item.kind === "task"
-                          ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-300"
-                          : eventTypeClass[item.event.event_type] || eventTypeClass.OTHER
+                        feedItemTone(item)
                       )}
                     >
-                      {item.kind === "task" ? "TASK" : item.event.event_type}
+                      {feedItemLabel(item)}
                     </Badge>
                     <span className="text-xs text-slate-500">{formatDateTime(item.date)}</span>
                   </div>
@@ -1167,10 +1599,21 @@ export default function CalendarPage() {
 
       <ConfirmDialog
         open={eventToDelete !== null}
-        onOpenChange={(open) => !open && setEventToDelete(null)}
-        title="Delete calendar event?"
-        description="This removes the event from the team calendar. Task deadlines are not affected."
-        confirmLabel="Delete Event"
+        onOpenChange={(open) => {
+          if (!open) {
+            setEventToDelete(null);
+            setDeleteEntireSeries(false);
+          }
+        }}
+        title={eventToDelete?.recurrence_series_id ? "Delete recurring event?" : "Delete calendar event?"}
+        description={
+          eventToDelete?.recurrence_series_id
+            ? deleteEntireSeries
+              ? "This removes every event from this recurring series. Task deadlines are not affected."
+              : "This removes only this occurrence from the recurring series."
+            : "This removes the event from the team calendar. Task deadlines are not affected."
+        }
+        confirmLabel={deleteEntireSeries ? "Delete Series" : "Delete Event"}
         destructive
         loading={deletingEvent}
         onConfirm={handleDeleteEvent}

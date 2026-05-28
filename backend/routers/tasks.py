@@ -8,13 +8,16 @@ from backend.database.session import get_db
 from backend.models.project import (
     Project,
     ProjectMember,
+    ProjectTeam,
     Sprint,
     Subtask,
     Task,
     TaskAuditLog,
     TaskComment,
+    TaskStatus,
 )
 from backend.models.user import User
+from backend.realtime import broadcast_project_event
 from backend.routers.auth import get_current_user
 from backend.schemas.task import (
     SubtaskCreate,
@@ -29,7 +32,8 @@ from backend.schemas.task import (
     TaskOut,
     TaskUpdate,
 )
-from backend.services.ai_service import generate_task_metadata
+from backend.services.documentation_service import enum_value, upsert_task_documentation_page
+from backend.services.ai_service import estimate_story_points, generate_task_metadata, refine_task_spec
 from backend.utils.permissions import check_project_permission, require_project_permission
 from backend.utils.notifications import notify_comment_mentions, notify_task_assigned
 
@@ -41,6 +45,15 @@ class AIRequest(BaseModel):
     title: str
     priority: str
     context: str = "Software Development"
+    project_id: int | None = None
+
+
+class AISpecRefineRequest(BaseModel):
+    title: str
+    description: str | None = None
+    priority: str = "MEDIUM"
+    context: str = "Software Development"
+    project_id: int | None = None
 
 
 class ProjectActivityOut(BaseModel):
@@ -136,14 +149,96 @@ def ensure_sprint_belongs_to_project(
         )
 
 
+def ensure_task_workflow_matches_methodology(
+    project: Project,
+    story_points: int | None = None,
+    sprint_id: int | None = None,
+):
+    if project.methodology != "KANBAN":
+        return
+
+    if sprint_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Kanban projects do not use sprint planning.",
+        )
+
+    if story_points is not None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Kanban projects do not use story point estimation.",
+        )
+
+
+def ensure_team_belongs_to_project(
+    db: Session,
+    project_id: int,
+    team_id: int | None,
+):
+    if not team_id:
+        return
+
+    team = db.query(ProjectTeam).filter(
+        ProjectTeam.id == team_id,
+        ProjectTeam.project_id == project_id,
+    ).first()
+
+    if not team:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Team does not belong to this project.",
+        )
+
+
 # Static routes first, before dynamic /{task_id}.
 @router.post("/ai-generate")
-def generate_task_ai(req: AIRequest, current_user: User = Depends(get_current_user)):
+def generate_task_ai(
+    req: AIRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    if req.project_id:
+        require_project_permission(db, current_user.id, req.project_id, "AI_USE")
+
     try:
         description = generate_task_metadata(req.title, req.priority, req.context)
         return {"description": description}
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@router.post("/ai-refine")
+def refine_task_ai(
+    req: AISpecRefineRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    if req.project_id:
+        require_project_permission(db, current_user.id, req.project_id, "AI_USE")
+
+    return refine_task_spec(
+        title=req.title,
+        description=req.description,
+        priority=req.priority,
+        context=req.context,
+    )
+
+
+@router.post("/ai-estimate")
+def estimate_task_ai(
+    req: AISpecRefineRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    if req.project_id:
+        require_project_permission(db, current_user.id, req.project_id, "AI_USE")
+
+    return estimate_story_points(
+        title=req.title,
+        description=req.description,
+        priority=req.priority,
+        context=req.context,
+    )
 
 
 @router.get("/project/{project_id}", response_model=List[TaskOut])
@@ -277,6 +372,12 @@ def create_task(
 
     ensure_assignee_is_project_member(db, task_in.project_id, task_in.assignee_id)
     ensure_sprint_belongs_to_project(db, task_in.project_id, task_in.sprint_id)
+    ensure_team_belongs_to_project(db, task_in.project_id, task_in.team_id)
+    ensure_task_workflow_matches_methodology(
+        project,
+        story_points=task_in.story_points,
+        sprint_id=task_in.sprint_id,
+    )
 
     count = db.query(Task).filter(Task.project_id == task_in.project_id).count()
     task_key = f"{project.key}-{count + 1}"
@@ -290,6 +391,7 @@ def create_task(
         due_date=task_in.due_date,
         project_id=task_in.project_id,
         assignee_id=task_in.assignee_id,
+        team_id=task_in.team_id,
         sprint_id=task_in.sprint_id,
     )
 
@@ -306,12 +408,40 @@ def create_task(
         new_value=new_task.title,
     )
 
+    for subtask_title in task_in.subtasks[:20]:
+        clean_title = subtask_title.strip()
+        if not clean_title:
+            continue
+
+        subtask = Subtask(
+            task_id=new_task.id,
+            title=clean_title,
+            created_by_id=current_user.id,
+            is_done=False,
+        )
+        db.add(subtask)
+        db.flush()
+        add_audit_log(
+            db,
+            task_id=new_task.id,
+            actor_id=current_user.id,
+            action="SUBTASK_CREATED",
+            field="subtask",
+            old_value=None,
+            new_value=clean_title,
+        )
+
     db.commit()
     db.refresh(new_task)
 
     notify_task_assigned(db, new_task, current_user)
     db.commit()
     db.refresh(new_task)
+    broadcast_project_event(
+        new_task.project_id,
+        "task.changed",
+        {"action": "created", "task_id": new_task.id, "task_key": new_task.key},
+    )
 
     return new_task
 
@@ -349,6 +479,9 @@ def update_task(
 
     update_data = task_in.model_dump(exclude_unset=True)
     assignment_notification_needed = False
+    status_changed_to_done = False
+    documentation_generated = False
+    documentation_page_id = None
     general_update_fields = {"title", "description", "priority", "due_date", "story_points", "sprint_id"}
 
     if any(field in update_data for field in general_update_fields):
@@ -357,10 +490,19 @@ def update_task(
     if "assignee_id" in update_data:
         require_project_permission(db, current_user.id, task.project_id, "TASK_ASSIGN")
 
+    if "team_id" in update_data:
+        require_project_permission(db, current_user.id, task.project_id, "TASK_ASSIGN")
+
     if "status" in update_data:
         require_project_permission(db, current_user.id, task.project_id, "TASK_MOVE")
 
     if "story_points" in update_data and update_data["story_points"] != task.story_points:
+        if task.project.methodology == "KANBAN" and update_data["story_points"] is not None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Kanban projects do not use story point estimation.",
+            )
+
         if not is_tech_admin:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
@@ -381,6 +523,7 @@ def update_task(
     if "sprint_id" in update_data:
         raw_sprint_id = update_data["sprint_id"]
         new_sprint_id = raw_sprint_id if raw_sprint_id and raw_sprint_id > 0 else None
+        ensure_task_workflow_matches_methodology(task.project, sprint_id=new_sprint_id)
         ensure_sprint_belongs_to_project(db, task.project_id, new_sprint_id)
 
         if new_sprint_id != task.sprint_id:
@@ -413,6 +556,23 @@ def update_task(
             task.assignee_id = new_assignee_id
             assignment_notification_needed = True
 
+    if "team_id" in update_data:
+        raw_team_id = update_data["team_id"]
+        new_team_id = raw_team_id if raw_team_id and raw_team_id > 0 else None
+        ensure_team_belongs_to_project(db, task.project_id, new_team_id)
+
+        if new_team_id != task.team_id:
+            add_audit_log(
+                db,
+                task.id,
+                current_user.id,
+                "TASK_UPDATED",
+                "team_id",
+                task.team_id,
+                new_team_id,
+            )
+            task.team_id = new_team_id
+
     if "due_date" in update_data and update_data["due_date"] != task.due_date:
         add_audit_log(
             db,
@@ -426,8 +586,13 @@ def update_task(
         task.due_date = update_data["due_date"]
 
     if "status" in update_data and update_data["status"] != task.status:
+        old_status = enum_value(task.status)
+        new_status = enum_value(update_data["status"])
         add_audit_log(db, task.id, current_user.id, "TASK_UPDATED", "status", task.status, update_data["status"])
         task.status = update_data["status"]
+
+        if old_status != TaskStatus.DONE.value and new_status == TaskStatus.DONE.value:
+            status_changed_to_done = True
 
     if "priority" in update_data and update_data["priority"] != task.priority:
         add_audit_log(db, task.id, current_user.id, "TASK_UPDATED", "priority", task.priority, update_data["priority"])
@@ -449,6 +614,20 @@ def update_task(
         )
         task.description = update_data["description"]
 
+    if status_changed_to_done:
+        documentation_page = upsert_task_documentation_page(db, task, current_user.id)
+        documentation_generated = True
+        documentation_page_id = documentation_page.id
+        add_audit_log(
+            db,
+            task.id,
+            current_user.id,
+            "DOCUMENTATION_GENERATED",
+            "documentation_page_id",
+            None,
+            documentation_page_id,
+        )
+
     db.commit()
     db.refresh(task)
 
@@ -456,6 +635,23 @@ def update_task(
         notify_task_assigned(db, task, current_user)
         db.commit()
         db.refresh(task)
+
+    broadcast_project_event(
+        task.project_id,
+        "task.changed",
+        {"action": "updated", "task_id": task.id, "task_key": task.key},
+    )
+
+    if documentation_generated:
+        broadcast_project_event(
+            task.project_id,
+            "documentation.changed",
+            {
+                "action": "auto_generated",
+                "page_id": documentation_page_id,
+                "task_id": task.id,
+            },
+        )
 
     return task
 
@@ -484,6 +680,11 @@ def create_subtask(
 
     db.commit()
     db.refresh(subtask)
+    broadcast_project_event(
+        task.project_id,
+        "task.changed",
+        {"action": "subtask_created", "task_id": task.id, "task_key": task.key},
+    )
     return subtask
 
 
@@ -516,6 +717,11 @@ def update_subtask(
 
     db.commit()
     db.refresh(subtask)
+    broadcast_project_event(
+        task.project_id,
+        "task.changed",
+        {"action": "subtask_updated", "task_id": task.id, "task_key": task.key},
+    )
     return subtask
 
 
@@ -546,6 +752,11 @@ def create_comment(
     notify_comment_mentions(db, task, comment, current_user)
     db.commit()
     db.refresh(comment)
+    broadcast_project_event(
+        task.project_id,
+        "task.changed",
+        {"action": "comment_created", "task_id": task.id, "task_key": task.key},
+    )
 
     return comment
 
@@ -582,6 +793,11 @@ def update_comment(
 
     db.commit()
     db.refresh(comment)
+    broadcast_project_event(
+        task.project_id,
+        "task.changed",
+        {"action": "comment_updated", "task_id": task.id, "task_key": task.key},
+    )
     return comment
 
 
@@ -615,6 +831,11 @@ def delete_comment(
     add_audit_log(db, task.id, current_user.id, "COMMENT_DELETED", "comment", old_body, None)
 
     db.commit()
+    broadcast_project_event(
+        task.project_id,
+        "task.changed",
+        {"action": "comment_deleted", "task_id": task.id, "task_key": task.key},
+    )
     return {"message": "Comment deleted"}
 
 

@@ -27,6 +27,8 @@ export interface Task {
     assignee_id?: number;
     assignee_name?: string | null;
     assignee_avatar_url?: string | null;
+    team_id?: number | null;
+    team_name?: string | null;
     project_id: number;
     sprint_id?: number | null;
     created_at?: string;
@@ -102,7 +104,26 @@ export interface CreateTaskDto {
     due_date?: string | null;
     project_id: number;
     assignee_id?: number;
+    team_id?: number | null;
     sprint_id?: number | null;
+    subtasks?: string[];
+}
+
+export interface RefinedTaskSpec {
+    user_story: string;
+    acceptance_criteria: string[];
+    suggested_subtasks: string[];
+    technical_notes: string;
+    markdown: string;
+    source?: string;
+}
+
+export interface StoryPointEstimate {
+    story_points: number;
+    confidence: number;
+    reasoning: string;
+    risk_factors: string[];
+    source?: string;
 }
 
 // --- API CALLS ---
@@ -153,14 +174,47 @@ export const deleteTaskComment = async (taskId: number, commentId: number): Prom
     await api.delete(`/tasks/${taskId}/comments/${commentId}`);
 };
 
-export const generateTaskDescription = async (title: string, priority: string): Promise<string> => {
+export const generateTaskDescription = async (title: string, priority: string, projectId?: number): Promise<string> => {
     // ATENȚIE AICI: URL-ul trebuie să fie /tasks/ai-generate
     const response = await api.post("/tasks/ai-generate", {
         title,
         priority,
-        context: "Software Engineering Project"
+        context: "Software Engineering Project",
+        project_id: projectId,
     });
     return response.data.description;
+};
+
+export const refineTaskSpec = async (
+    title: string,
+    description: string | undefined,
+    priority: string,
+    projectId?: number
+): Promise<RefinedTaskSpec> => {
+    const response = await api.post("/tasks/ai-refine", {
+        title,
+        description,
+        priority,
+        context: "Software Engineering Project",
+        project_id: projectId,
+    });
+    return response.data;
+};
+
+export const estimateTaskStoryPoints = async (
+    title: string,
+    description: string | undefined,
+    priority: string,
+    projectId?: number
+): Promise<StoryPointEstimate> => {
+    const response = await api.post("/tasks/ai-estimate", {
+        title,
+        description,
+        priority,
+        context: "Software Engineering Project",
+        project_id: projectId,
+    });
+    return response.data;
 };
 
 

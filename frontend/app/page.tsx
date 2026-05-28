@@ -4,12 +4,12 @@ import { useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/store/use-auth-store";
+import { BrandMark } from "@/components/brand-mark";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
   ArrowRight,
   GitPullRequest,
-  LayoutDashboard,
   KanbanSquare,
   Sparkles,
   BarChart,
@@ -54,9 +54,7 @@ export default function Home() {
       <header className="fixed top-0 z-50 w-full border-b border-white/5 bg-[#030712]/60 backdrop-blur-xl">
         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
           <div className="flex items-center gap-2">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-blue-600 to-indigo-600 shadow-lg shadow-blue-500/20">
-              <LayoutDashboard className="h-4 w-4 text-white" />
-            </div>
+            <BrandMark className="h-8 w-8 rounded-lg" markClassName="h-5 w-5" />
             <span className="text-xl font-bold tracking-tight text-white">SDLC Hub</span>
           </div>
           <div className="flex items-center gap-4">
@@ -115,7 +113,7 @@ export default function Home() {
                   <div className="h-3 w-3 rounded-full bg-green-500/80"></div>
                 </div>
                 <div className="mx-auto flex items-center rounded-md bg-white/5 px-3 py-1 text-xs text-slate-400">
-                  <LayoutDashboard className="mr-2 h-3 w-3" /> SDLC Hub - Active Sprint
+                  <BrandMark className="mr-2 h-4 w-4 rounded" markClassName="h-3 w-3" /> SDLC Hub - Active Sprint
                 </div>
               </div>
               <div className="flex flex-1 overflow-hidden">
@@ -249,9 +247,7 @@ export default function Home() {
           <div className="grid grid-cols-2 gap-8 md:grid-cols-4 lg:grid-cols-5 mb-12">
             <div className="col-span-2 lg:col-span-2">
               <div className="flex items-center gap-2 mb-4">
-                <div className="flex h-6 w-6 items-center justify-center rounded bg-blue-600">
-                  <LayoutDashboard className="h-3 w-3 text-white" />
-                </div>
+                <BrandMark className="h-6 w-6 rounded" markClassName="h-4 w-4" />
                 <span className="text-lg font-bold text-white">SDLC Hub</span>
               </div>
               <p className="text-sm text-slate-400 max-w-xs mb-6">

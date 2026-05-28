@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { getMyProjects } from "@/services/project";
 import { getProjectTasks, updateTask, Task } from "@/services/task";
@@ -13,6 +13,7 @@ import { Input } from "@/components/ui/input";
 import { CreateTaskDialog } from "@/components/dashboard/create-task-dialog";
 import { UserAvatar } from "@/components/user-avatar";
 import { useProjectPermissions } from "@/hooks/use-project-permissions";
+import { useRealtimeEvent } from "@/hooks/use-realtime-event";
 import {
     Loader2,
     ChevronRight,
@@ -22,6 +23,7 @@ import {
     CalendarClock,
     CircleDot,
     Flag,
+    KanbanSquare,
     PlayCircle,
     UserRound
 } from "lucide-react";
@@ -191,6 +193,7 @@ export default function BacklogPage() {
     const [tasks, setTasks] = useState<Task[]>([]);
     const [sprints, setSprints] = useState<Sprint[]>([]);
     const [loading, setLoading] = useState(true);
+    const [isKanbanFlow, setIsKanbanFlow] = useState(false);
 
     const [newSprintName, setNewSprintName] = useState("");
     const [newSprintGoal, setNewSprintGoal] = useState("");
@@ -203,8 +206,9 @@ export default function BacklogPage() {
     const canStartSprint = can("SPRINT_START");
     const canPlanTasks = can("TASK_UPDATE");
 
-    useEffect(() => {
-        const init = async () => {
+    const loadBacklog = useCallback(
+        async (showLoader = true) => {
+            if (showLoader) setLoading(true);
             try {
                 let project = currentProject;
 
@@ -221,6 +225,15 @@ export default function BacklogPage() {
                     const pid = project.id;
                     setProjectId(pid);
 
+                    if (project.methodology === "KANBAN") {
+                        setIsKanbanFlow(true);
+                        setTasks([]);
+                        setSprints([]);
+                        return;
+                    }
+
+                    setIsKanbanFlow(false);
+
                     const [remoteTasks, remoteSprints] = await Promise.all([
                         getProjectTasks(pid, "backlog"),
                         getProjectSprints(pid)
@@ -235,10 +248,21 @@ export default function BacklogPage() {
             } finally {
                 setLoading(false);
             }
-        };
+        },
+        [currentProject, setCurrentProject]
+    );
 
-        init();
-    }, [currentProject, setCurrentProject]);
+    useEffect(() => {
+        loadBacklog();
+    }, [loadBacklog]);
+
+    useRealtimeEvent((message) => {
+        if (!projectId || (message.project_id && message.project_id !== projectId)) return;
+
+        if (message.type === "task.changed" || message.type === "sprint.changed") {
+            loadBacklog(false);
+        }
+    }, [projectId, loadBacklog]);
 
     const handleCreateSprint = async () => {
         if (!canCreateSprint) return;
@@ -303,6 +327,41 @@ export default function BacklogPage() {
     const activeSprint = sprints.find((sprint) => sprint.is_active);
 
     if (loading) return <div className="p-10 flex justify-center"><Loader2 className="animate-spin text-blue-500" /></div>;
+
+    if (isKanbanFlow) {
+        return (
+            <div className="mx-auto flex min-h-full max-w-5xl items-center justify-center p-6 text-slate-50 md:p-8">
+                <section className="w-full rounded-3xl border border-slate-800 bg-slate-900/80 p-8 shadow-2xl shadow-slate-950/25">
+                    <div className="flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
+                        <div className="flex items-start gap-4">
+                            <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl border border-blue-500/25 bg-blue-500/10 text-blue-200">
+                                <KanbanSquare className="h-7 w-7" />
+                            </div>
+                            <div>
+                                <Badge className="mb-3 border-blue-500/25 bg-blue-500/10 text-blue-200">
+                                    Kanban flow
+                                </Badge>
+                                <h1 className="text-3xl font-semibold tracking-tight text-white">
+                                    Backlog is disabled for Kanban
+                                </h1>
+                                <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-400">
+                                    This project uses continuous flow. Work is planned directly on the board,
+                                    without sprint planning or a separate backlog.
+                                </p>
+                            </div>
+                        </div>
+
+                        <Button asChild className="h-11 rounded-xl bg-blue-600 text-white hover:bg-blue-500">
+                            <Link href="/dashboard/board">
+                                <KanbanSquare className="mr-2 h-4 w-4" />
+                                Open Board
+                            </Link>
+                        </Button>
+                    </div>
+                </section>
+            </div>
+        );
+    }
 
     return (
         <div className="mx-auto max-w-7xl space-y-8 p-6 text-slate-50 md:p-8">

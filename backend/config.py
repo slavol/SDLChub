@@ -55,6 +55,11 @@ class Settings(BaseSettings):
     # GitHub
     github_webhook_secret: str | None = None
 
+    # Background jobs
+    enable_notification_scheduler: bool = True
+    notification_scheduler_interval_seconds: int = 900
+    notification_scheduler_initial_delay_seconds: int = 10
+
     # CORS
     cors_origins: str = "http://localhost:3000,http://127.0.0.1:3000"
 

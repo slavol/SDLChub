@@ -20,6 +20,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { useRealtimeEvent } from "@/hooks/use-realtime-event";
 import { getApiErrorMessage } from "@/lib/api-error";
 import { cn } from "@/lib/utils";
 import {
@@ -125,8 +126,8 @@ export default function DocumentationPageRoute() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
-  const loadDocumentation = useCallback(async () => {
-    setLoading(true);
+  const loadDocumentation = useCallback(async (showLoader = true) => {
+    if (showLoader) setLoading(true);
 
     try {
       let selectedProject = currentProject;
@@ -174,13 +175,23 @@ export default function DocumentationPageRoute() {
     } catch (error) {
       toast.error(getApiErrorMessage(error, "Could not load documentation."));
     } finally {
-      setLoading(false);
+      if (showLoader) setLoading(false);
     }
   }, [currentProject, setCurrentProject]);
 
   useEffect(() => {
     loadDocumentation();
   }, [loadDocumentation]);
+
+  useRealtimeEvent((message) => {
+    if (message.type === "documentation.changed" && message.project_id === project?.id) {
+      loadDocumentation(false);
+    }
+
+    if (message.type === "task.changed" && message.project_id === project?.id) {
+      loadDocumentation(false);
+    }
+  }, [loadDocumentation, project?.id]);
 
   const selectedTask = useMemo(
     () => doneTasks.find((task) => String(task.id) === selectedDoneTaskId),
@@ -354,7 +365,7 @@ export default function DocumentationPageRoute() {
           <Button
             variant="outline"
             className="border-slate-700 bg-slate-900 text-slate-200 hover:bg-slate-800"
-            onClick={loadDocumentation}
+            onClick={() => loadDocumentation()}
           >
             <RefreshCw className="mr-2 h-4 w-4" />
             Refresh

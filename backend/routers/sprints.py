@@ -8,8 +8,10 @@ from sqlalchemy.orm import Session
 from backend.database.session import get_db
 from backend.models.project import Project, Sprint, Task, TaskStatus
 from backend.models.user import User
+from backend.realtime import broadcast_project_event
 from backend.routers.auth import get_current_user
 from backend.schemas.sprint import SprintOut
+from backend.services.ai_service import generate_release_notes
 from backend.utils.permissions import check_project_permission, require_project_permission
 
 
@@ -71,6 +73,11 @@ def create_sprint(
     db.add(new_sprint)
     db.commit()
     db.refresh(new_sprint)
+    broadcast_project_event(
+        new_sprint.project_id,
+        "sprint.changed",
+        {"action": "created", "sprint_id": new_sprint.id},
+    )
     return new_sprint
 
 
@@ -125,6 +132,11 @@ def start_sprint(
         sprint.start_date = datetime.utcnow()
 
     db.commit()
+    broadcast_project_event(
+        sprint.project_id,
+        "sprint.changed",
+        {"action": "started", "sprint_id": sprint.id},
+    )
 
     return {"message": "Sprint started successfully", "sprint": sprint.name}
 
@@ -165,8 +177,57 @@ def complete_sprint(
         sprint.end_date = datetime.utcnow()
 
     db.commit()
+    broadcast_project_event(
+        sprint.project_id,
+        "sprint.changed",
+        {"action": "completed", "sprint_id": sprint.id, "moved_count": moved_count},
+    )
 
     return {
         "message": f"Sprint completed. {moved_count} unfinished tasks moved to backlog.",
         "sprint": sprint.name,
     }
+
+
+@router.post("/{sprint_id}/release-notes")
+def generate_sprint_release_notes(
+    sprint_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    sprint = db.query(Sprint).filter(Sprint.id == sprint_id).first()
+    if not sprint:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Sprint not found")
+
+    check_project_permission(db, current_user.id, sprint.project_id)
+    require_project_permission(db, current_user.id, sprint.project_id, "AI_USE")
+
+    tasks = db.query(Task).filter(Task.sprint_id == sprint.id).all()
+    completed_tasks = [
+        {
+            "key": task.key,
+            "title": task.title,
+            "priority": task.priority.value if hasattr(task.priority, "value") else str(task.priority),
+            "story_points": task.story_points,
+        }
+        for task in tasks
+        if task.status == TaskStatus.DONE
+    ]
+    unfinished_tasks = [
+        {
+            "key": task.key,
+            "title": task.title,
+            "status": task.status.value if hasattr(task.status, "value") else str(task.status),
+            "priority": task.priority.value if hasattr(task.priority, "value") else str(task.priority),
+        }
+        for task in tasks
+        if task.status != TaskStatus.DONE
+    ]
+
+    return generate_release_notes(
+        sprint_name=sprint.name,
+        sprint_goal=sprint.goal,
+        completed_tasks=completed_tasks,
+        unfinished_tasks=unfinished_tasks,
+        context="Software sprint release notes for SDLC Hub project management",
+    )

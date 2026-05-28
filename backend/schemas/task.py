@@ -26,8 +26,10 @@ class TaskCreate(BaseModel):
     story_points: Optional[int] = None
     due_date: Optional[datetime] = None
     assignee_id: Optional[int] = None
+    team_id: Optional[int] = None
     project_id: int
     sprint_id: Optional[int] = None
+    subtasks: List[str] = Field(default_factory=list)
 
 
 class TaskUpdate(BaseModel):
@@ -38,6 +40,7 @@ class TaskUpdate(BaseModel):
     story_points: Optional[int] = None
     due_date: Optional[datetime] = None
     assignee_id: Optional[int] = None
+    team_id: Optional[int] = None
     sprint_id: Optional[int] = None
 
 
@@ -53,6 +56,8 @@ class TaskOut(BaseModel):
     assignee_id: Optional[int]
     assignee_name: Optional[str] = None
     assignee_avatar_url: Optional[str] = None
+    team_id: Optional[int] = None
+    team_name: Optional[str] = None
     project_id: int
     sprint_id: Optional[int]
     created_at: datetime

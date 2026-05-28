@@ -11,6 +11,7 @@ from pydantic import BaseModel, EmailStr # <--- Importuri necesare
 from backend.database.session import get_db
 from backend.models.user import User
 from backend.models.project import Invitation, Project, ProjectMember
+from backend.realtime import broadcast_project_event, broadcast_user_event
 from backend.schemas.auth import (
     AccountPasswordUpdateRequest,
     AccountUpdateRequest,
@@ -43,6 +44,33 @@ from backend.utils.email import (
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/login")
 
+
+def broadcast_user_profile_changed(db: Session, user: User) -> None:
+    payload = {
+        "user_id": user.id,
+        "full_name": user.full_name,
+        "email": user.email,
+        "avatar_url": user.avatar_url,
+    }
+
+    broadcast_user_event(user.id, "user.updated", payload)
+
+    project_ids = {
+        row[0]
+        for row in db.query(ProjectMember.project_id)
+        .filter(ProjectMember.user_id == user.id)
+        .all()
+    }
+    owned_project_ids = {
+        row[0]
+        for row in db.query(Project.id)
+        .filter(Project.owner_id == user.id)
+        .all()
+    }
+
+    for project_id in project_ids | owned_project_ids:
+        broadcast_project_event(project_id, "user.updated", payload)
+
 # --- ENDPOINTS ---
 
 @router.post("/register")
@@ -54,11 +82,14 @@ async def register(
     if existing_user:
         raise HTTPException(status_code=400, detail="Email already registered")
     
+    is_first_user = db.query(User.id).first() is None
+
     new_user = User(
         email=user_data.email,
         full_name=user_data.full_name,
         hashed_password=get_password_hash(user_data.password),
-        is_active=False 
+        is_active=False,
+        is_global_admin=is_first_user,
     )
     db.add(new_user)
     db.commit()
@@ -338,6 +369,7 @@ def update_current_user(
 
     db.commit()
     db.refresh(current_user)
+    broadcast_user_profile_changed(db, current_user)
     return current_user
 
 
@@ -379,6 +411,7 @@ async def upload_current_user_avatar(
     current_user.avatar_url = f"/uploads/avatars/{filename}"
     db.commit()
     db.refresh(current_user)
+    broadcast_user_profile_changed(db, current_user)
 
     return current_user
 

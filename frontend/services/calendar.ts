@@ -20,6 +20,9 @@ export interface CalendarEvent {
   location?: string | null;
   meeting_url?: string | null;
   attendee_ids: number[];
+  recurrence_series_id?: string | null;
+  recurrence_mode?: "none" | "daily" | "weekdays" | "weekly" | string;
+  recurrence_until?: string | null;
   created_by_id: number;
   created_by_name?: string | null;
   created_at: string;
@@ -35,7 +38,11 @@ export interface CalendarEventCreate {
   location?: string | null;
   meeting_url?: string | null;
   attendee_ids: number[];
+  recurrence_mode?: "none" | "daily" | "weekdays" | "weekly" | string;
+  recurrence_until?: string | null;
 }
+
+export type CalendarEventUpdate = Partial<CalendarEventCreate>;
 
 export const getProjectCalendarEvents = async (
   projectId: number,
@@ -53,9 +60,24 @@ export const createProjectCalendarEvent = async (
   return response.data;
 };
 
+export const updateProjectCalendarEvent = async (
+  eventId: number,
+  data: CalendarEventUpdate
+): Promise<CalendarEvent> => {
+  const response = await api.put(`/calendar/${eventId}`, data);
+  return response.data;
+};
+
 export const deleteCalendarEvent = async (
   eventId: number
 ): Promise<{ message: string }> => {
   const response = await api.delete(`/calendar/${eventId}`);
+  return response.data;
+};
+
+export const deleteCalendarEventSeries = async (
+  eventId: number
+): Promise<{ message: string; deleted: number }> => {
+  const response = await api.delete(`/calendar/${eventId}/series`);
   return response.data;
 };

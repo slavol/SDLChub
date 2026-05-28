@@ -1,3 +1,4 @@
+from backend.models.admin import HttpErrorLog, SupportTicket, SupportTicketComment
 from backend.models.user import User
 from backend.models.notification import Notification
 from backend.models.documentation import DocumentationPage
@@ -8,6 +9,7 @@ from backend.models.project import (
     Project,
     ProjectAuditLog,
     ProjectMember,
+    ProjectTeam,
     Role,
     Sprint,
     Subtask,
@@ -18,9 +20,13 @@ from backend.models.project import (
 
 __all__ = [
     "User",
+    "SupportTicket",
+    "SupportTicketComment",
+    "HttpErrorLog",
     "Project",
     "ProjectAuditLog",
     "ProjectMember",
+    "ProjectTeam",
     "Role",
     "Invitation",
     "Task",

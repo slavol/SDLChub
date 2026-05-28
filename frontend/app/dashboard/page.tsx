@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import type { ElementType } from "react";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Activity,
@@ -27,6 +27,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useRealtimeEvent } from "@/hooks/use-realtime-event";
 import {
   getMyProjects,
   getProjectDashboard,
@@ -319,9 +320,9 @@ export default function DashboardPage() {
   // State pentru Activitate (închis by default)
   const [isActivityExpanded, setIsActivityExpanded] = useState(false);
 
-  useEffect(() => {
-    const loadDashboard = async () => {
-      setLoading(true);
+  const loadDashboard = useCallback(
+    async (showLoader = true) => {
+      if (showLoader) setLoading(true);
 
       try {
         let selectedProject = currentProject;
@@ -348,10 +349,26 @@ export default function DashboardPage() {
       } finally {
         setLoading(false);
       }
-    };
+    },
+    [currentProject, setCurrentProject]
+  );
 
+  useEffect(() => {
     loadDashboard();
-  }, [currentProject, setCurrentProject]);
+  }, [loadDashboard]);
+
+  useRealtimeEvent((message) => {
+    if (!project?.id || (message.project_id && message.project_id !== project.id)) return;
+
+    if (
+      message.type === "task.changed" ||
+      message.type === "sprint.changed" ||
+      message.type === "calendar.changed" ||
+      message.type === "user.updated"
+    ) {
+      loadDashboard(false);
+    }
+  }, [project?.id, loadDashboard]);
 
   const metrics = useMemo(
     () =>

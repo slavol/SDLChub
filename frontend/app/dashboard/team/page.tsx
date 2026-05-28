@@ -1,10 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Crown,
+  GitBranch,
   Loader2,
   Mail,
+  Network,
   Plus,
   RefreshCw,
   Search,
@@ -12,6 +14,7 @@ import {
   Trash2,
   UserPlus,
   Users,
+  Wifi,
   XCircle,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -23,6 +26,7 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { UserAvatar } from "@/components/user-avatar";
+import { useRealtimeEvent } from "@/hooks/use-realtime-event";
 import { hasProjectPermission } from "@/lib/project-permissions";
 import {
   Select,
@@ -35,21 +39,27 @@ import { Textarea } from "@/components/ui/textarea";
 import { getApiErrorMessage } from "@/lib/api-error";
 import {
   cancelProjectInvitation,
+  createProjectTeam,
+  deleteProjectTeam,
   createProjectRole,
   deleteProjectRole,
   getMyProjects,
   getProjectInvitations,
   getProjectMembers,
   getProjectRoles,
+  getProjectTeams,
   inviteProjectMember,
   PendingInvitation,
   ProjectMember,
+  ProjectTeam,
   ProjectRoleWithPermissions,
   removeProjectMember,
   resendProjectInvitation,
+  updateProjectMemberTeam,
   updateProjectMemberRole,
 } from "@/services/project";
 import { useAuthStore } from "@/store/use-auth-store";
+import { usePresenceStore } from "@/store/use-presence-store";
 import { useProjectStore } from "@/store/use-project-store";
 
 const DEFAULT_ROLE_PERMISSIONS: Record<string, boolean> = {
@@ -58,6 +68,7 @@ const DEFAULT_ROLE_PERMISSIONS: Record<string, boolean> = {
   TASK_ASSIGN: true,
   TASK_COMMENT: true,
   TASK_MOVE: true,
+  TEAM_MANAGE: false,
   SPRINT_CREATE: false,
   SPRINT_START: false,
   SPRINT_CLOSE: false,
@@ -77,6 +88,7 @@ function roleBadgeClass(role?: string | null) {
 
 type TeamConfirmAction =
   | { type: "deleteRole"; role: ProjectRoleWithPermissions }
+  | { type: "deleteTeam"; team: ProjectTeam }
   | { type: "removeMember"; membership: ProjectMember }
   | { type: "cancelInvite"; invitationId: number };
 
@@ -90,6 +102,7 @@ export default function TeamPage() {
 
   const [members, setMembers] = useState<ProjectMember[]>([]);
   const [roles, setRoles] = useState<ProjectRoleWithPermissions[]>([]);
+  const [teams, setTeams] = useState<ProjectTeam[]>([]);
   const [invitations, setInvitations] = useState<PendingInvitation[]>([]);
 
   const [inviteEmail, setInviteEmail] = useState("");
@@ -97,6 +110,9 @@ export default function TeamPage() {
 
   const [newRoleName, setNewRoleName] = useState("");
   const [newRoleDescription, setNewRoleDescription] = useState("");
+  const [newTeamName, setNewTeamName] = useState("");
+  const [newTeamDescription, setNewTeamDescription] = useState("");
+  const [newTeamParentId, setNewTeamParentId] = useState("root");
 
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState("all");
@@ -104,8 +120,18 @@ export default function TeamPage() {
   const [loading, setLoading] = useState(true);
   const [inviting, setInviting] = useState(false);
   const [creatingRole, setCreatingRole] = useState(false);
+  const [creatingTeam, setCreatingTeam] = useState(false);
   const [confirmAction, setConfirmAction] = useState<TeamConfirmAction | null>(null);
   const [confirmLoading, setConfirmLoading] = useState(false);
+  const onlineUserIds = usePresenceStore((state) =>
+    projectId ? state.onlineByProject[projectId] || [] : []
+  );
+
+  const onlineUserIdSet = useMemo(() => new Set(onlineUserIds), [onlineUserIds]);
+  const onlineMembersCount = useMemo(
+    () => members.filter((member) => onlineUserIdSet.has(member.user.id)).length,
+    [members, onlineUserIdSet]
+  );
 
   const myMembership = useMemo(
     () => members.find((member) => member.user.id === currentUser?.id),
@@ -132,6 +158,12 @@ export default function TeamPage() {
     myMembership,
     "ROLE_MANAGE"
   );
+  const canManageTeams = hasProjectPermission(
+    currentProject,
+    currentUser,
+    myMembership,
+    "TEAM_MANAGE"
+  );
   const pendingInvites = useMemo(
     () => invitations.filter((invite) => invite.status === "PENDING"),
     [invitations]
@@ -155,6 +187,26 @@ export default function TeamPage() {
     return usage;
   }, [pendingInvites, roles]);
 
+  const teamNameById = useMemo(() => {
+    const names: Record<number, string> = {};
+    for (const team of teams) names[team.id] = team.name;
+    return names;
+  }, [teams]);
+
+  const rootTeams = useMemo(
+    () => teams.filter((team) => !team.parent_id),
+    [teams]
+  );
+
+  const childTeamsByParent = useMemo(() => {
+    const children: Record<number, ProjectTeam[]> = {};
+    for (const team of teams) {
+      if (!team.parent_id) continue;
+      children[team.parent_id] = [...(children[team.parent_id] || []), team];
+    }
+    return children;
+  }, [teams]);
+
   const filteredMembers = useMemo(() => {
     const q = search.trim().toLowerCase();
 
@@ -174,8 +226,8 @@ export default function TeamPage() {
     });
   }, [members, roleFilter, search]);
 
-  const loadData = async () => {
-    setLoading(true);
+  const loadData = useCallback(async (showLoader = true) => {
+    if (showLoader) setLoading(true);
 
     try {
       let selectedProject = currentProject;
@@ -198,18 +250,20 @@ export default function TeamPage() {
       setProjectOwnerId(selectedProject.owner_id);
       setProjectName(selectedProject.name);
 
-      const [remoteMembers, remoteRoles] = await Promise.all([
+      const [remoteMembers, remoteRoles, remoteTeams] = await Promise.all([
         getProjectMembers(selectedProject.id),
         getProjectRoles(selectedProject.id),
+        getProjectTeams(selectedProject.id),
       ]);
 
       setMembers(remoteMembers);
       setRoles(remoteRoles);
+      setTeams(remoteTeams);
 
-      if (!inviteRoleId && remoteRoles.length > 0) {
+      if (remoteRoles.length > 0) {
         const defaultRole =
           remoteRoles.find((role) => role.name !== "Project Admin") || remoteRoles[0];
-        setInviteRoleId(String(defaultRole.id));
+        setInviteRoleId((current) => current || String(defaultRole.id));
       }
 
       try {
@@ -221,14 +275,21 @@ export default function TeamPage() {
     } catch (error: unknown) {
       toast.error(getApiErrorMessage(error, "Could not load team data."));
     } finally {
-      setLoading(false);
+      if (showLoader) setLoading(false);
     }
-  };
+  }, [currentProject, setCurrentProject]);
 
   useEffect(() => {
     loadData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentProject?.id, currentUser?.id]);
+  }, [loadData, currentUser?.id]);
+
+  useRealtimeEvent((message) => {
+    if (!projectId || (message.project_id && message.project_id !== projectId)) return;
+
+    if (message.type === "user.updated" || message.type === "project.changed") {
+      loadData(false);
+    }
+  }, [loadData, projectId]);
 
   const handleInvite = async () => {
     if (!projectId || !inviteEmail.trim() || !inviteRoleId) return;
@@ -242,7 +303,7 @@ export default function TeamPage() {
 
       setInviteEmail("");
       toast.success("Invitation sent");
-      await loadData();
+      await loadData(false);
     } catch (error: unknown) {
       toast.error(getApiErrorMessage(error, "Could not send invitation."));
     } finally {
@@ -269,6 +330,60 @@ export default function TeamPage() {
       toast.error(getApiErrorMessage(error, "Could not create role."));
     } finally {
       setCreatingRole(false);
+    }
+  };
+
+  const handleCreateTeam = async () => {
+    if (!projectId || !newTeamName.trim()) return;
+
+    setCreatingTeam(true);
+    try {
+      await createProjectTeam(projectId, {
+        name: newTeamName.trim(),
+        description: newTeamDescription.trim() || null,
+        parent_id: newTeamParentId === "root" ? null : Number(newTeamParentId),
+      });
+
+      setNewTeamName("");
+      setNewTeamDescription("");
+      setNewTeamParentId("root");
+      toast.success("Team created");
+      await loadData(false);
+    } catch (error: unknown) {
+      toast.error(getApiErrorMessage(error, "Could not create team."));
+    } finally {
+      setCreatingTeam(false);
+    }
+  };
+
+  const handleDeleteTeam = (team: ProjectTeam) => {
+    if (!projectId) return;
+    setConfirmAction({ type: "deleteTeam", team });
+  };
+
+  const executeDeleteTeam = async (team: ProjectTeam) => {
+    try {
+      await deleteProjectTeam(team.id);
+      toast.success("Team deleted");
+      await loadData(false);
+    } catch (error: unknown) {
+      toast.error(getApiErrorMessage(error, "Could not delete team."));
+    }
+  };
+
+  const handleChangeMemberTeam = async (membershipId: number, teamId: string) => {
+    if (!projectId) return;
+
+    try {
+      await updateProjectMemberTeam(
+        projectId,
+        membershipId,
+        teamId === "none" ? null : Number(teamId)
+      );
+      toast.success("Team assignment updated");
+      await loadData(false);
+    } catch (error: unknown) {
+      toast.error(getApiErrorMessage(error, "Could not update member team."));
     }
   };
 
@@ -364,6 +479,14 @@ export default function TeamPage() {
       };
     }
 
+    if (confirmAction.type === "deleteTeam") {
+      return {
+        title: `Delete team "${confirmAction.team.name}"?`,
+        description: "Members, tasks and child teams will be detached, but they will not be deleted.",
+        confirmLabel: "Delete Team",
+      };
+    }
+
     if (confirmAction.type === "removeMember") {
       return {
         title: "Remove member?",
@@ -386,6 +509,8 @@ export default function TeamPage() {
     try {
       if (confirmAction.type === "deleteRole") {
         await executeDeleteRole(confirmAction.role);
+      } else if (confirmAction.type === "deleteTeam") {
+        await executeDeleteTeam(confirmAction.team);
       } else if (confirmAction.type === "removeMember") {
         await executeRemoveMember(confirmAction.membership);
       } else {
@@ -449,7 +574,7 @@ export default function TeamPage() {
           </div>
         </section>
 
-        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
           <Card className="border-slate-800 bg-slate-900 text-slate-50">
             <CardContent className="flex items-center gap-4 p-5">
               <div className="rounded-2xl bg-blue-500/10 p-3 text-blue-300">
@@ -464,12 +589,36 @@ export default function TeamPage() {
 
           <Card className="border-slate-800 bg-slate-900 text-slate-50">
             <CardContent className="flex items-center gap-4 p-5">
+              <div className="rounded-2xl bg-emerald-500/10 p-3 text-emerald-300">
+                <Wifi className="h-5 w-5" />
+              </div>
+              <div>
+                <p className="text-sm text-slate-400">Online now</p>
+                <p className="text-2xl font-bold">{onlineMembersCount}</p>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="border-slate-800 bg-slate-900 text-slate-50">
+            <CardContent className="flex items-center gap-4 p-5">
               <div className="rounded-2xl bg-purple-500/10 p-3 text-purple-300">
                 <Shield className="h-5 w-5" />
               </div>
               <div>
                 <p className="text-sm text-slate-400">Roles</p>
                 <p className="text-2xl font-bold">{roles.length}</p>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="border-slate-800 bg-slate-900 text-slate-50">
+            <CardContent className="flex items-center gap-4 p-5">
+              <div className="rounded-2xl bg-cyan-500/10 p-3 text-cyan-300">
+                <Network className="h-5 w-5" />
+              </div>
+              <div>
+                <p className="text-sm text-slate-400">Teams</p>
+                <p className="text-2xl font-bold">{teams.length}</p>
               </div>
             </CardContent>
           </Card>
@@ -497,6 +646,128 @@ export default function TeamPage() {
               </div>
             </CardContent>
           </Card>
+        </section>
+
+        <section className="rounded-3xl border border-slate-800 bg-slate-900 p-5 text-slate-50">
+          <div className="mb-5 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-cyan-200">
+                <Network className="h-4 w-4" />
+                Team hierarchy
+              </div>
+              <h2 className="text-xl font-bold text-white">Project organization</h2>
+              <p className="mt-1 text-sm leading-6 text-slate-500">
+                Structure members into teams and subteams, then assign work to the right delivery group.
+              </p>
+            </div>
+          </div>
+
+          {canManageTeams && (
+            <div className="mb-5 grid gap-3 rounded-2xl border border-slate-800 bg-slate-950/70 p-4 lg:grid-cols-[1fr_1fr_220px_auto]">
+              <Input
+                value={newTeamName}
+                onChange={(event) => setNewTeamName(event.target.value)}
+                placeholder="Team name"
+                className="h-11 border-slate-700 bg-slate-950"
+              />
+              <Input
+                value={newTeamDescription}
+                onChange={(event) => setNewTeamDescription(event.target.value)}
+                placeholder="Short description"
+                className="h-11 border-slate-700 bg-slate-950"
+              />
+              <Select value={newTeamParentId} onValueChange={setNewTeamParentId}>
+                <SelectTrigger className="h-11 border-slate-700 bg-slate-950">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="border-slate-800 bg-slate-900 text-slate-200">
+                  <SelectItem value="root">Root team</SelectItem>
+                  {teams.map((team) => (
+                    <SelectItem key={team.id} value={String(team.id)}>
+                      {team.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Button
+                onClick={handleCreateTeam}
+                disabled={creatingTeam || !newTeamName.trim()}
+                className="h-11 bg-cyan-600 hover:bg-cyan-700"
+              >
+                {creatingTeam ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Plus className="mr-2 h-4 w-4" />}
+                Add team
+              </Button>
+            </div>
+          )}
+
+          <div className="grid gap-3 lg:grid-cols-2">
+            {rootTeams.map((team) => (
+              <div key={team.id} className="rounded-2xl border border-slate-800 bg-slate-950 p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <GitBranch className="h-4 w-4 text-cyan-300" />
+                      <p className="font-semibold text-white">{team.name}</p>
+                    </div>
+                    <p className="mt-1 text-sm leading-6 text-slate-500">
+                      {team.description || "No description"}
+                    </p>
+                  </div>
+                  {canManageTeams && (
+                    <Button
+                      variant="ghost"
+                      className="text-slate-500 hover:bg-red-950/30 hover:text-red-400"
+                      onClick={() => handleDeleteTeam(team)}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  )}
+                </div>
+
+                <div className="mt-4 grid grid-cols-2 gap-3">
+                  <div className="rounded-xl border border-slate-800 bg-slate-900 p-3">
+                    <p className="text-xs text-slate-500">Members</p>
+                    <p className="mt-1 text-lg font-bold text-white">{team.member_count}</p>
+                  </div>
+                  <div className="rounded-xl border border-slate-800 bg-slate-900 p-3">
+                    <p className="text-xs text-slate-500">Assigned tasks</p>
+                    <p className="mt-1 text-lg font-bold text-white">{team.task_count}</p>
+                  </div>
+                </div>
+
+                {(childTeamsByParent[team.id] || []).length > 0 && (
+                  <div className="mt-4 space-y-2 border-l border-slate-800 pl-3">
+                    {childTeamsByParent[team.id].map((child) => (
+                      <div key={child.id} className="flex items-center justify-between rounded-xl border border-slate-800 bg-slate-900 px-3 py-2">
+                        <div>
+                          <p className="text-sm font-semibold text-slate-100">{child.name}</p>
+                          <p className="text-xs text-slate-500">
+                            {child.member_count} members · {child.task_count} tasks
+                          </p>
+                        </div>
+                        {canManageTeams && (
+                          <Button
+                            variant="ghost"
+                            className="h-8 w-8 p-0 text-slate-500 hover:bg-red-950/30 hover:text-red-400"
+                            onClick={() => handleDeleteTeam(child)}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
+
+            {teams.length === 0 && (
+              <div className="rounded-2xl border border-dashed border-slate-800 bg-slate-950/70 p-8 text-center lg:col-span-2">
+                <Network className="mx-auto mb-3 h-8 w-8 text-slate-600" />
+                <p className="text-sm text-slate-500">No teams created yet.</p>
+              </div>
+            )}
+          </div>
         </section>
 
         <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_400px]">
@@ -581,6 +852,7 @@ export default function TeamPage() {
                 {filteredMembers.map((member) => {
                   const isSelf = member.user.id === currentUser?.id;
                   const isOwner = member.user.id === projectOwnerId;
+                  const isOnline = onlineUserIdSet.has(member.user.id);
                   const roleName = member.role?.name || "Member";
 
                   return (
@@ -589,13 +861,22 @@ export default function TeamPage() {
                       className="flex flex-col gap-4 rounded-2xl border border-slate-800 bg-slate-950 p-4 md:flex-row md:items-center md:justify-between"
                     >
                       <div className="flex min-w-0 items-center gap-4">
-                        <UserAvatar
-                          name={member.user.full_name}
-                          email={member.user.email}
-                          src={member.user.avatar_url}
-                          className="h-11 w-11 shrink-0 rounded-2xl border-slate-800"
-                          fallbackClassName="text-sm font-bold"
-                        />
+                        <div className="relative shrink-0">
+                          <UserAvatar
+                            name={member.user.full_name}
+                            email={member.user.email}
+                            src={member.user.avatar_url}
+                            className="h-11 w-11 rounded-2xl border-slate-800"
+                            fallbackClassName="text-sm font-bold"
+                          />
+                          <span
+                            className={
+                              isOnline
+                                ? "absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 rounded-full border-2 border-slate-950 bg-emerald-400"
+                                : "absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 rounded-full border-2 border-slate-950 bg-slate-700"
+                            }
+                          />
+                        </div>
 
                         <div className="min-w-0">
                           <div className="flex flex-wrap items-center gap-2">
@@ -612,12 +893,40 @@ export default function TeamPage() {
                                 You
                               </Badge>
                             )}
+                            {isOnline && (
+                              <Badge className="bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/10">
+                                Online
+                              </Badge>
+                            )}
                           </div>
                           <p className="mt-1 truncate text-sm text-slate-500">{member.user.email}</p>
                         </div>
                       </div>
 
                       <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                        {canManageTeams ? (
+                          <Select
+                            value={member.team?.id ? String(member.team.id) : "none"}
+                            onValueChange={(value) => handleChangeMemberTeam(member.membership_id, value)}
+                          >
+                            <SelectTrigger className="w-full border-slate-700 bg-slate-900 sm:w-[190px]">
+                              <SelectValue placeholder="No team" />
+                            </SelectTrigger>
+                            <SelectContent className="border-slate-800 bg-slate-900 text-slate-200">
+                              <SelectItem value="none">No team</SelectItem>
+                              {teams.map((team) => (
+                                <SelectItem key={team.id} value={String(team.id)}>
+                                  {team.parent_id ? `${teamNameById[team.parent_id] || "Team"} / ${team.name}` : team.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        ) : member.team ? (
+                          <Badge variant="outline" className="border-cyan-500/30 bg-cyan-500/10 text-cyan-300">
+                            {member.team.name}
+                          </Badge>
+                        ) : null}
+
                         {canManageRoles && !isOwner ? (
                           <Select
                             value={member.role?.id ? String(member.role.id) : ""}

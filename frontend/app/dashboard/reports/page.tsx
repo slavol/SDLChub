@@ -11,6 +11,7 @@ import {
   Gauge,
   Loader2,
   RefreshCw,
+  Sparkles,
   Timer,
 } from "lucide-react";
 import {
@@ -20,6 +21,8 @@ import {
   BarChart,
   CartesianGrid,
   Cell,
+  Line,
+  LineChart,
   Pie,
   PieChart,
   ResponsiveContainer,
@@ -42,6 +45,7 @@ import {
   ProjectReportsOverview,
   ReportDistributionPoint,
 } from "@/services/project";
+import { generateSprintReleaseNotes, SprintReleaseNotes } from "@/services/sprint";
 import { useProjectStore } from "@/store/use-project-store";
 
 const CHART_COLORS = [
@@ -58,6 +62,13 @@ function formatPercent(value: number) {
 
 function formatStatus(value: string) {
   return value.replace("_", " ");
+}
+
+function formatShortDate(value: string) {
+  return new Intl.DateTimeFormat("en", {
+    month: "short",
+    day: "numeric",
+  }).format(new Date(value));
 }
 
 function EmptyChart({ message }: { message: string }) {
@@ -155,6 +166,8 @@ export default function ReportsPage() {
   const [report, setReport] = useState<ProjectReportsOverview | null>(null);
   const [loading, setLoading] = useState(true);
   const [exportingPdf, setExportingPdf] = useState(false);
+  const [generatingNotes, setGeneratingNotes] = useState(false);
+  const [releaseNotes, setReleaseNotes] = useState<SprintReleaseNotes | null>(null);
 
   const loadReports = useCallback(async () => {
     setLoading(true);
@@ -218,6 +231,22 @@ export default function ReportsPage() {
     }
   };
 
+  const handleGenerateReleaseNotes = async () => {
+    const latestSprint = report?.velocity?.[report.velocity.length - 1];
+    if (!latestSprint) return;
+
+    setGeneratingNotes(true);
+    try {
+      const notes = await generateSprintReleaseNotes(latestSprint.sprint_id);
+      setReleaseNotes(notes);
+      toast.success("Release notes generated.");
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, "Could not generate release notes."));
+    } finally {
+      setGeneratingNotes(false);
+    }
+  };
+
   const velocityData = useMemo(
     () =>
       (report?.velocity || []).map((item) => ({
@@ -248,6 +277,9 @@ export default function ReportsPage() {
   const priorityDistribution = report?.priority_distribution || [];
   const statusAge = report?.status_age || [];
   const statusChanges = report?.status_change_counts || [];
+  const sprintBurndown = report?.sprint_burndown || [];
+  const cumulativeFlow = report?.cumulative_flow || [];
+  const leadTimeDistribution = report?.lead_time_distribution || [];
 
   if (loading) {
     return (
@@ -284,13 +316,13 @@ export default function ReportsPage() {
         <div>
           <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-blue-500/20 bg-blue-500/10 px-3 py-1 text-xs font-medium text-blue-200">
             <BarChart3 className="h-3.5 w-3.5" />
-            Reports v1
+            Reports v2
           </div>
           <h1 className="text-3xl font-bold tracking-tight text-white">
             Delivery reports for {project.name}
           </h1>
           <p className="mt-2 max-w-2xl text-sm text-slate-400">
-            Track velocity, completion, bottlenecks and delivery health using tasks, sprints and audit logs.
+            Track velocity, burndown, cumulative flow, lead time, bottlenecks and delivery health using tasks, sprints and audit logs.
           </p>
         </div>
 
@@ -316,8 +348,44 @@ export default function ReportsPage() {
             )}
             Export PDF
           </Button>
+
+          <Button
+            variant="outline"
+            className="w-fit border-slate-700 bg-slate-900 text-slate-200 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+            onClick={handleGenerateReleaseNotes}
+            disabled={generatingNotes || !report.velocity.length}
+          >
+            {generatingNotes ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <Sparkles className="mr-2 h-4 w-4" />
+            )}
+            Release Notes
+          </Button>
         </div>
       </div>
+
+      {releaseNotes && (
+        <Card className="mb-6 border-blue-500/20 bg-blue-500/10">
+          <CardContent className="p-5">
+            <div className="mb-4 flex flex-col justify-between gap-3 md:flex-row md:items-start">
+              <div>
+                <div className="mb-2 flex items-center gap-2">
+                  <Sparkles className="h-5 w-5 text-blue-300" />
+                  <h2 className="text-lg font-semibold text-white">Generated release notes</h2>
+                </div>
+                <p className="text-sm leading-6 text-blue-100/80">{releaseNotes.summary}</p>
+              </div>
+              <Badge className="w-fit border-blue-500/30 bg-blue-500/10 text-blue-200">
+                {releaseNotes.source || "ai"}
+              </Badge>
+            </div>
+            <pre className="max-h-80 overflow-auto whitespace-pre-wrap rounded-2xl border border-slate-800 bg-slate-950/80 p-4 text-sm leading-6 text-slate-200">
+              {releaseNotes.markdown}
+            </pre>
+          </CardContent>
+        </Card>
+      )}
 
       <div className="mb-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <MetricCard
@@ -437,6 +505,133 @@ export default function ReportsPage() {
             </div>
           ) : (
             <EmptyChart message="No active sprint data available." />
+          )}
+        </ChartCard>
+
+        <ChartCard
+          title="Sprint burndown"
+          description="Remaining story points against the ideal line for the active sprint."
+        >
+          {sprintBurndown.length > 0 && sprintBurndown.some((item) => item.remaining_points > 0 || item.done_points > 0) ? (
+            <div className="h-[300px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={sprintBurndown}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(148, 163, 184, 0.15)" />
+                  <XAxis
+                    dataKey="date"
+                    stroke="#94a3b8"
+                    tickLine={false}
+                    axisLine={false}
+                    tickFormatter={formatShortDate}
+                  />
+                  <YAxis stroke="#94a3b8" tickLine={false} axisLine={false} allowDecimals={false} />
+                  <Tooltip
+                    cursor={false}
+                    labelFormatter={(value) => formatShortDate(String(value ?? ""))}
+                    contentStyle={{
+                      background: "#020617",
+                      border: "1px solid #1e293b",
+                      borderRadius: "12px",
+                      color: "#e2e8f0",
+                    }}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="remaining_points"
+                    name="Remaining"
+                    stroke="var(--chart-5)"
+                    strokeWidth={3}
+                    dot={false}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="ideal_remaining"
+                    name="Ideal"
+                    stroke="var(--chart-2)"
+                    strokeDasharray="6 6"
+                    strokeWidth={2}
+                    dot={false}
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          ) : (
+            <EmptyChart message="No active sprint date range available." />
+          )}
+        </ChartCard>
+
+        <ChartCard
+          title="Cumulative flow"
+          description="Historical workflow shape reconstructed from task status audit logs."
+        >
+          {cumulativeFlow.length > 0 ? (
+            <div className="h-[300px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={cumulativeFlow}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(148, 163, 184, 0.15)" />
+                  <XAxis
+                    dataKey="date"
+                    stroke="#94a3b8"
+                    tickLine={false}
+                    axisLine={false}
+                    tickFormatter={formatShortDate}
+                  />
+                  <YAxis stroke="#94a3b8" tickLine={false} axisLine={false} allowDecimals={false} />
+                  <Tooltip
+                    cursor={false}
+                    labelFormatter={(value) => formatShortDate(String(value ?? ""))}
+                    contentStyle={{
+                      background: "#020617",
+                      border: "1px solid #1e293b",
+                      borderRadius: "12px",
+                      color: "#e2e8f0",
+                    }}
+                  />
+                  <Area type="monotone" dataKey="TODO" stackId="1" stroke="var(--chart-2)" fill="var(--chart-2)" fillOpacity={0.45} />
+                  <Area type="monotone" dataKey="IN_PROGRESS" stackId="1" stroke="var(--chart-1)" fill="var(--chart-1)" fillOpacity={0.45} />
+                  <Area type="monotone" dataKey="REVIEW" stackId="1" stroke="var(--chart-4)" fill="var(--chart-4)" fillOpacity={0.45} />
+                  <Area type="monotone" dataKey="DONE" stackId="1" stroke="var(--chart-3)" fill="var(--chart-3)" fillOpacity={0.45} />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          ) : (
+            <EmptyChart message="No historical flow data yet." />
+          )}
+        </ChartCard>
+
+        <ChartCard
+          title="Lead time by priority"
+          description="Average days from task creation to Done, grouped by priority."
+        >
+          {leadTimeDistribution.some((item) => item.tasks > 0) ? (
+            <div className="h-[300px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={leadTimeDistribution}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(148, 163, 184, 0.15)" />
+                  <XAxis
+                    dataKey="name"
+                    stroke="#94a3b8"
+                    tickLine={false}
+                    axisLine={false}
+                    tickFormatter={formatStatus}
+                  />
+                  <YAxis stroke="#94a3b8" tickLine={false} axisLine={false} allowDecimals />
+                  <Tooltip
+                    cursor={false}
+                    contentStyle={{
+                      background: "#020617",
+                      border: "1px solid #1e293b",
+                      borderRadius: "12px",
+                      color: "#e2e8f0",
+                    }}
+                    labelFormatter={(value) => formatStatus(String(value ?? ""))}
+                  />
+                  <Bar dataKey="value" name="Avg days" fill="var(--chart-1)" radius={[8, 8, 0, 0]} activeBar={false} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          ) : (
+            <EmptyChart message="No completed tasks for lead time yet." />
           )}
         </ChartCard>
 
@@ -596,7 +791,7 @@ export default function ReportsPage() {
           <h2 className="text-lg font-semibold text-white">What this report includes</h2>
         </div>
         <p className="text-sm leading-6 text-slate-400">
-          Velocity uses closed sprints and completed story points. Cycle time is approximated from task creation to the first audit event where the task reached Done. Bottleneck age uses the latest status change audit event, or task creation when no audit event exists.
+          Velocity uses closed sprints and completed story points. Burndown and cumulative flow are reconstructed from sprint dates, task status and audit logs. Lead time is approximated from task creation to the first audit event where the task reached Done.
         </p>
       </div>
     </div>

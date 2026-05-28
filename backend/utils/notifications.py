@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+from datetime import datetime, timedelta
 from typing import Iterable
 
 from sqlalchemy.orm import Session
@@ -9,6 +10,15 @@ from sqlalchemy.orm import Session
 from backend.models.notification import Notification
 from backend.models.project import CalendarEvent, ProjectMember, Task, TaskComment
 from backend.models.user import User
+from backend.realtime import broadcast_user_event
+
+
+def enum_value(value) -> str:
+    if value is None:
+        return ""
+    if hasattr(value, "value"):
+        return str(value.value)
+    return str(value)
 
 
 def create_notification(
@@ -38,7 +48,201 @@ def create_notification(
         metadata_json=json.dumps(metadata or {}),
     )
     db.add(notification)
+    db.flush()
+    broadcast_user_event(
+        user_id,
+        "notification.created",
+        {
+            "id": notification.id,
+            "project_id": project_id,
+            "task_id": task_id,
+            "notification_type": notification_type,
+            "title": title,
+            "link_url": link_url,
+        },
+    )
     return notification
+
+
+def notification_exists_recently(
+    db: Session,
+    *,
+    user_id: int,
+    notification_type: str,
+    task_id: int | None = None,
+    project_id: int | None = None,
+    since: datetime | None = None,
+    metadata_contains: str | None = None,
+) -> bool:
+    query = db.query(Notification).filter(
+        Notification.user_id == user_id,
+        Notification.type == notification_type,
+    )
+
+    if task_id is not None:
+        query = query.filter(Notification.task_id == task_id)
+
+    if project_id is not None:
+        query = query.filter(Notification.project_id == project_id)
+
+    if since is not None:
+        query = query.filter(Notification.created_at >= since)
+
+    if metadata_contains is not None:
+        query = query.filter(Notification.metadata_json.contains(metadata_contains))
+
+    return query.first() is not None
+
+
+def _calendar_attendee_ids(event: CalendarEvent) -> list[int]:
+    try:
+        values = json.loads(event.attendee_ids or "[]")
+    except Exception:
+        values = []
+
+    attendee_ids: list[int] = []
+    for value in values:
+        try:
+            attendee_ids.append(int(value))
+        except (TypeError, ValueError):
+            continue
+
+    if not attendee_ids and event.created_by_id:
+        attendee_ids.append(event.created_by_id)
+
+    return attendee_ids
+
+
+def generate_due_task_reminders(
+    db: Session,
+    *,
+    user_id: int | None = None,
+    project_id: int | None = None,
+    now: datetime | None = None,
+    due_soon_days: int = 2,
+    dedupe_hours: int = 20,
+) -> int:
+    current_time = now or datetime.utcnow()
+    due_soon_limit = current_time + timedelta(days=due_soon_days)
+    dedupe_since = current_time - timedelta(hours=dedupe_hours)
+
+    query = db.query(Task).filter(Task.assignee_id.isnot(None))
+
+    if user_id is not None:
+        query = query.filter(Task.assignee_id == user_id)
+
+    if project_id is not None:
+        query = query.filter(Task.project_id == project_id)
+
+    tasks = query.all()
+    created = 0
+
+    for task in tasks:
+        if enum_value(task.status) == "DONE" or not task.due_date or not task.assignee_id:
+            continue
+
+        due_date = task.due_date.replace(tzinfo=None) if task.due_date.tzinfo else task.due_date
+
+        if due_date < current_time:
+            notification_type = "TASK_OVERDUE"
+            title = f"{task.key} is overdue"
+            message = f"{task.title} was due on {due_date.strftime('%Y-%m-%d')}."
+        elif due_date <= due_soon_limit:
+            notification_type = "TASK_DUE_SOON"
+            title = f"{task.key} is due soon"
+            message = f"{task.title} is due on {due_date.strftime('%Y-%m-%d')}."
+        else:
+            continue
+
+        if notification_exists_recently(
+            db,
+            user_id=task.assignee_id,
+            notification_type=notification_type,
+            task_id=task.id,
+            since=dedupe_since,
+        ):
+            continue
+
+        notification = create_notification(
+            db,
+            user_id=task.assignee_id,
+            notification_type=notification_type,
+            title=title,
+            message=message,
+            project_id=task.project_id,
+            task_id=task.id,
+            link_url=f"/dashboard/tasks/{task.id}",
+            metadata={
+                "task_key": task.key,
+                "due_date": due_date.isoformat(),
+                "generated_by": "scheduler" if user_id is None else "manual",
+            },
+        )
+
+        if notification:
+            created += 1
+
+    return created
+
+
+def generate_calendar_event_reminders(
+    db: Session,
+    *,
+    now: datetime | None = None,
+    lookahead_minutes: int = 30,
+    dedupe_hours: int = 20,
+) -> int:
+    current_time = now or datetime.utcnow()
+    starts_before = current_time + timedelta(minutes=lookahead_minutes)
+    dedupe_since = current_time - timedelta(hours=dedupe_hours)
+
+    events = (
+        db.query(CalendarEvent)
+        .filter(CalendarEvent.starts_at >= current_time)
+        .filter(CalendarEvent.starts_at <= starts_before)
+        .all()
+    )
+    created = 0
+
+    for event in events:
+        starts_at = event.starts_at.replace(tzinfo=None) if event.starts_at.tzinfo else event.starts_at
+        minutes_until = max(0, round((starts_at - current_time).total_seconds() / 60))
+
+        for attendee_id in set(_calendar_attendee_ids(event)):
+            if notification_exists_recently(
+                db,
+                user_id=attendee_id,
+                notification_type="CALENDAR_REMINDER",
+                project_id=event.project_id,
+                since=dedupe_since,
+                metadata_contains=f'"event_id": {event.id}',
+            ):
+                continue
+
+            notification = create_notification(
+                db,
+                user_id=attendee_id,
+                notification_type="CALENDAR_REMINDER",
+                title=f"{event.title} starts soon",
+                message=(
+                    f"{event.title} starts in {minutes_until} minutes."
+                    if minutes_until
+                    else f"{event.title} starts now."
+                ),
+                project_id=event.project_id,
+                task_id=None,
+                link_url="/dashboard/calendar",
+                metadata={
+                    "event_id": event.id,
+                    "starts_at": starts_at.isoformat(),
+                    "generated_by": "scheduler",
+                },
+            )
+
+            if notification:
+                created += 1
+
+    return created
 
 
 def notify_task_assigned(db: Session, task: Task, actor: User) -> None:

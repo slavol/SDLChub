@@ -15,6 +15,7 @@ class Project(Base):
     key = Column(String, unique=True, index=True)
     description = Column(String, nullable=True)
     methodology = Column(String, default="SCRUM")
+    workflow_config = Column(Text, nullable=True)
     owner_id = Column(Integer, ForeignKey("users.id")) # <--- Asta exista deja
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
@@ -25,6 +26,7 @@ class Project(Base):
     members = relationship("ProjectMember", back_populates="project")
     invitations = relationship("Invitation", back_populates="project")
     roles = relationship("Role", back_populates="project")
+    teams = relationship("ProjectTeam", back_populates="project")
     tasks = relationship("Task", back_populates="project")
     sprints = relationship("Sprint", back_populates="project")
     calendar_events = relationship("CalendarEvent", back_populates="project", cascade="all, delete-orphan")
@@ -38,11 +40,13 @@ class ProjectMember(Base):
     user_id = Column(Integer, ForeignKey("users.id"))
     project_id = Column(Integer, ForeignKey("projects.id"))
     role_id = Column(Integer, ForeignKey("roles.id"), nullable=True)
+    team_id = Column(Integer, ForeignKey("project_teams.id"), nullable=True)
     joined_at = Column(DateTime(timezone=True), server_default=func.now())
 
     user = relationship("User", back_populates="memberships")
     project = relationship("Project", back_populates="members")
     role = relationship("Role")
+    team = relationship("ProjectTeam", back_populates="members")
 
 class Role(Base):
     __tablename__ = "roles"
@@ -55,6 +59,25 @@ class Role(Base):
     permissions = Column(String, default="{}") 
 
     project = relationship("Project", back_populates="roles")
+
+
+class ProjectTeam(Base):
+    __tablename__ = "project_teams"
+    __table_args__ = {'extend_existing': True}
+
+    id = Column(Integer, primary_key=True, index=True)
+    project_id = Column(Integer, ForeignKey("projects.id"))
+    parent_id = Column(Integer, ForeignKey("project_teams.id"), nullable=True)
+    name = Column(String)
+    description = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    project = relationship("Project", back_populates="teams")
+    parent = relationship("ProjectTeam", remote_side=[id], back_populates="children")
+    children = relationship("ProjectTeam", back_populates="parent")
+    members = relationship("ProjectMember", back_populates="team")
+    tasks = relationship("Task", back_populates="team")
 
 class Invitation(Base):
     __tablename__ = "invitations"
@@ -117,6 +140,7 @@ class Task(Base):
     project_id = Column(Integer, ForeignKey("projects.id"))
     assignee_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     sprint_id = Column(Integer, ForeignKey("sprints.id"), nullable=True)
+    team_id = Column(Integer, ForeignKey("project_teams.id"), nullable=True)
     
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
@@ -124,6 +148,7 @@ class Task(Base):
     project = relationship("Project", back_populates="tasks")
     assignee = relationship("User", back_populates="assigned_tasks")
     sprint = relationship("Sprint", back_populates="tasks")
+    team = relationship("ProjectTeam", back_populates="tasks")
     subtasks = relationship("Subtask", back_populates="task", cascade="all, delete-orphan", order_by="Subtask.id")
     comments = relationship("TaskComment", back_populates="task", cascade="all, delete-orphan", order_by="TaskComment.created_at")
     audit_logs = relationship("TaskAuditLog", back_populates="task", cascade="all, delete-orphan", order_by="TaskAuditLog.created_at")
@@ -135,6 +160,10 @@ class Task(Base):
     @property
     def assignee_avatar_url(self):
         return self.assignee.avatar_url if self.assignee else None
+
+    @property
+    def team_name(self):
+        return self.team.name if self.team else None
 
 class Subtask(Base):
     __tablename__ = "subtasks"
@@ -216,6 +245,9 @@ class CalendarEvent(Base):
     location = Column(String, nullable=True)
     meeting_url = Column(String, nullable=True)
     attendee_ids = Column(Text, default="[]")
+    recurrence_series_id = Column(String, nullable=True, index=True)
+    recurrence_mode = Column(String, default="none")
+    recurrence_until = Column(DateTime, nullable=True)
     created_by_id = Column(Integer, ForeignKey("users.id"))
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())

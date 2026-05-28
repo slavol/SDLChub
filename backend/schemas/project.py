@@ -71,10 +71,23 @@ class RoleOut(BaseModel):
         from_attributes = True
 
 
+class ProjectTeamMiniOut(BaseModel):
+    id: int
+    project_id: int
+    parent_id: Optional[int] = None
+    name: str
+    description: Optional[str] = None
+    member_count: int = 0
+    task_count: int = 0
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+
+
 class ProjectMemberOut(BaseModel):
     membership_id: int
     user: UserOut
     role: Optional[RoleOut] = None
+    team: Optional[ProjectTeamMiniOut] = None
     joined_at: datetime
 
 

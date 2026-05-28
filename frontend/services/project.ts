@@ -8,9 +8,14 @@ export interface Project {
   key: string;
   description?: string | null;
   methodology: Methodology | string;
+  workflow_config?: ProjectWorkflowConfig | null;
   owner_id: number;
   created_at?: string;
   logo_url?: string | null;
+}
+
+export interface ProjectWorkflowConfig {
+  wip_limits?: Record<string, number | null>;
 }
 
 export interface AIRecommendationRequest {
@@ -60,6 +65,18 @@ export interface ProjectRole {
   permissions?: Record<string, boolean>;
 }
 
+export interface ProjectTeam {
+  id: number;
+  project_id: number;
+  parent_id?: number | null;
+  name: string;
+  description?: string | null;
+  member_count: number;
+  task_count: number;
+  created_at: string;
+  updated_at?: string | null;
+}
+
 export interface ProjectMember {
   membership_id: number;
   user: {
@@ -70,6 +87,7 @@ export interface ProjectMember {
     is_active: boolean;
   };
   role?: ProjectRole | null;
+  team?: ProjectTeam | null;
   joined_at: string;
 }
 
@@ -219,6 +237,14 @@ export const updateProjectSettings = async (
   return response.data;
 };
 
+export const updateProjectWorkflow = async (
+  projectId: number,
+  data: ProjectWorkflowConfig
+): Promise<Project> => {
+  const response = await api.put(`/projects/${projectId}/workflow`, data);
+  return response.data;
+};
+
 export const getMethodologyTransitionPreview = async (
   projectId: number,
   target: Methodology | string
@@ -316,6 +342,51 @@ export const removeProjectMember = async (
   membershipId: number
 ): Promise<{ message: string }> => {
   const response = await api.delete(`/projects/${projectId}/members/${membershipId}`);
+  return response.data;
+};
+
+export interface ProjectTeamPayload {
+  name: string;
+  description?: string | null;
+  parent_id?: number | null;
+}
+
+export const getProjectTeams = async (
+  projectId: number
+): Promise<ProjectTeam[]> => {
+  const response = await api.get(`/teams/project/${projectId}`);
+  return response.data;
+};
+
+export const createProjectTeam = async (
+  projectId: number,
+  data: ProjectTeamPayload
+): Promise<ProjectTeam> => {
+  const response = await api.post(`/teams/project/${projectId}`, data);
+  return response.data;
+};
+
+export const updateProjectTeam = async (
+  teamId: number,
+  data: Partial<ProjectTeamPayload>
+): Promise<ProjectTeam> => {
+  const response = await api.put(`/teams/${teamId}`, data);
+  return response.data;
+};
+
+export const deleteProjectTeam = async (teamId: number): Promise<{ message: string }> => {
+  const response = await api.delete(`/teams/${teamId}`);
+  return response.data;
+};
+
+export const updateProjectMemberTeam = async (
+  projectId: number,
+  membershipId: number,
+  teamId?: number | null
+): Promise<{ membership_id: number; team_id?: number | null }> => {
+  const response = await api.put(`/teams/project/${projectId}/members/${membershipId}`, {
+    team_id: teamId || null,
+  });
   return response.data;
 };
 
@@ -641,6 +712,27 @@ export interface ReportStatusAgePoint {
   max_age_days: number;
 }
 
+export interface ReportLeadTimePoint {
+  name: string;
+  value: number;
+  tasks: number;
+}
+
+export interface ReportCumulativeFlowPoint {
+  date: string;
+  TODO: number;
+  IN_PROGRESS: number;
+  REVIEW: number;
+  DONE: number;
+}
+
+export interface ReportSprintBurndownPoint {
+  date: string;
+  remaining_points: number;
+  done_points: number;
+  ideal_remaining: number;
+}
+
 export interface ProjectReportsOverview {
   project: Project;
   summary: {
@@ -662,6 +754,9 @@ export interface ProjectReportsOverview {
   priority_distribution: ReportDistributionPoint[];
   status_age: ReportStatusAgePoint[];
   status_change_counts: ReportDistributionPoint[];
+  lead_time_distribution: ReportLeadTimePoint[];
+  cumulative_flow: ReportCumulativeFlowPoint[];
+  sprint_burndown: ReportSprintBurndownPoint[];
   bottleneck?: ReportStatusAgePoint | null;
 }
 
@@ -681,4 +776,3 @@ export const downloadProjectStatusReportPdf = async (
 
   return response.data;
 };
-

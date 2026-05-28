@@ -16,6 +16,7 @@ from backend.models.project import Task, TaskAuditLog, TaskComment, TaskStatus
 from backend.models.user import User
 from backend.routers.auth import get_current_user
 from backend.schemas.github import GitHubEventOut
+from backend.services.documentation_service import upsert_task_documentation_page
 from backend.utils.permissions import check_project_permission
 
 
@@ -246,6 +247,15 @@ def _handle_pull_request(
             if old_status != TaskStatus.DONE.value:
                 task.status = TaskStatus.DONE
                 new_status = TaskStatus.DONE.value
+                documentation_page = upsert_task_documentation_page(db, task, None)
+                _add_audit_log(
+                    db,
+                    task,
+                    action="DOCUMENTATION_GENERATED",
+                    field="documentation_page_id",
+                    old_value=None,
+                    new_value=documentation_page.id,
+                )
 
         pr_label = f"PR #{number}" if number else "Pull request"
         summary = f"{pr_label} {action or 'updated'} for {task.key}: {title or 'Untitled PR'}"

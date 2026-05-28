@@ -17,6 +17,14 @@ export interface CreateSprintDto {
     end_date?: string | null;
 }
 
+export interface SprintReleaseNotes {
+    summary: string;
+    highlights: string[];
+    known_issues: string[];
+    markdown: string;
+    source?: string;
+}
+
 export const getProjectSprints = async (projectId: number): Promise<Sprint[]> => {
     const response = await api.get(`/sprints/project/${projectId}`);
     return response.data;
@@ -40,5 +48,12 @@ export const startSprint = async (sprintId: number): Promise<{ message: string; 
 
 export const completeSprint = async (sprintId: number): Promise<{ message: string; sprint: string }> => {
     const response = await api.post(`/sprints/${sprintId}/complete`);
+    return response.data;
+};
+
+export const generateSprintReleaseNotes = async (
+    sprintId: number
+): Promise<SprintReleaseNotes> => {
+    const response = await api.post(`/sprints/${sprintId}/release-notes`);
     return response.data;
 };

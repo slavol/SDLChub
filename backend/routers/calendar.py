@@ -1,5 +1,6 @@
 import json
-from datetime import datetime
+import uuid
+from datetime import datetime, timedelta
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -8,6 +9,7 @@ from sqlalchemy.orm import Session
 from backend.database.session import get_db
 from backend.models.project import CalendarEvent, ProjectMember
 from backend.models.user import User
+from backend.realtime import broadcast_project_event
 from backend.routers.auth import get_current_user
 from backend.schemas.calendar import CalendarEventCreate, CalendarEventOut, CalendarEventUpdate
 from backend.utils.permissions import check_project_permission, member_has_permission, require_project_permission
@@ -50,6 +52,9 @@ def _event_to_out(event: CalendarEvent) -> dict:
         "location": event.location,
         "meeting_url": event.meeting_url,
         "attendee_ids": _load_attendee_ids(event.attendee_ids),
+        "recurrence_series_id": event.recurrence_series_id,
+        "recurrence_mode": event.recurrence_mode or "none",
+        "recurrence_until": event.recurrence_until,
         "created_by_id": event.created_by_id,
         "created_by_name": event.created_by_name,
         "created_at": event.created_at,
@@ -63,6 +68,45 @@ def _validate_date_range(starts_at: datetime, ends_at: datetime) -> None:
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Event end time must be after the start time.",
         )
+
+
+def _build_recurring_starts(start: datetime, until: datetime | None, mode: str) -> list[datetime]:
+    normalized_mode = (mode or "none").lower()
+    if normalized_mode == "none":
+        return [start]
+
+    end_date = until or start
+    if end_date < start:
+        return [start]
+
+    dates: list[datetime] = []
+    cursor = start
+
+    while cursor <= end_date and len(dates) < 60:
+        weekday = cursor.weekday()
+
+        if normalized_mode == "daily":
+            dates.append(cursor)
+            cursor = cursor + timedelta(days=1)
+            continue
+
+        if normalized_mode == "weekdays":
+            if weekday < 5:
+                dates.append(cursor)
+            cursor = cursor + timedelta(days=1)
+            continue
+
+        if normalized_mode == "weekly":
+            dates.append(cursor)
+            cursor = cursor + timedelta(days=7)
+            continue
+
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid recurrence mode.",
+        )
+
+    return dates or [start]
 
 
 def _ensure_attendees_are_members(db: Session, project_id: int, attendee_ids: List[int]) -> None:
@@ -129,26 +173,48 @@ def create_project_calendar_event(
     attendee_ids = set(event_in.attendee_ids)
     attendee_ids.add(current_user.id)
 
-    new_event = CalendarEvent(
-        project_id=project_id,
-        title=event_in.title.strip(),
-        description=event_in.description,
-        event_type=event_in.event_type,
-        starts_at=event_in.starts_at,
-        ends_at=event_in.ends_at,
-        location=event_in.location,
-        meeting_url=event_in.meeting_url,
-        attendee_ids=_dump_attendee_ids(list(attendee_ids)),
-        created_by_id=current_user.id,
-    )
+    recurrence_mode = (event_in.recurrence_mode or "none").lower()
+    duration = event_in.ends_at - event_in.starts_at
+    start_dates = _build_recurring_starts(event_in.starts_at, event_in.recurrence_until, recurrence_mode)
+    recurrence_series_id = str(uuid.uuid4()) if recurrence_mode != "none" and len(start_dates) > 1 else None
+    created_events: list[CalendarEvent] = []
 
-    db.add(new_event)
+    for start_date in start_dates:
+        event = CalendarEvent(
+            project_id=project_id,
+            title=event_in.title.strip(),
+            description=event_in.description,
+            event_type=event_in.event_type,
+            starts_at=start_date,
+            ends_at=start_date + duration,
+            location=event_in.location,
+            meeting_url=event_in.meeting_url,
+            attendee_ids=_dump_attendee_ids(list(attendee_ids)),
+            recurrence_series_id=recurrence_series_id,
+            recurrence_mode=recurrence_mode,
+            recurrence_until=event_in.recurrence_until if recurrence_mode != "none" else None,
+            created_by_id=current_user.id,
+        )
+        db.add(event)
+        created_events.append(event)
+
     db.commit()
+    new_event = created_events[0]
     db.refresh(new_event)
 
     notify_calendar_attendees(db, new_event, attendee_ids, current_user)
     db.commit()
     db.refresh(new_event)
+    broadcast_project_event(
+        new_event.project_id,
+        "calendar.changed",
+        {
+            "action": "created",
+            "event_id": new_event.id,
+            "recurrence_series_id": recurrence_series_id,
+            "created_count": len(created_events),
+        },
+    )
 
     return _event_to_out(new_event)
 
@@ -182,6 +248,9 @@ def update_calendar_event(
         new_attendee_ids = requested_attendee_ids - old_attendee_ids
         update_data["attendee_ids"] = _dump_attendee_ids(list(requested_attendee_ids))
 
+    update_data.pop("recurrence_mode", None)
+    update_data.pop("recurrence_until", None)
+
     for field, value in update_data.items():
         setattr(event, field, value)
 
@@ -192,6 +261,12 @@ def update_calendar_event(
         notify_calendar_attendees(db, event, new_attendee_ids, current_user)
         db.commit()
         db.refresh(event)
+
+    broadcast_project_event(
+        event.project_id,
+        "calendar.changed",
+        {"action": "updated", "event_id": event.id},
+    )
 
     return _event_to_out(event)
 
@@ -210,7 +285,53 @@ def delete_calendar_event(
     if not _can_manage_event(member, current_user, event, "CALENDAR_DELETE"):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Missing project permission: CALENDAR_DELETE.")
 
+    project_id = event.project_id
     db.delete(event)
     db.commit()
+    broadcast_project_event(
+        project_id,
+        "calendar.changed",
+        {"action": "deleted", "event_id": event_id},
+    )
 
     return {"message": "Calendar event deleted"}
+
+
+@router.delete("/{event_id}/series")
+def delete_calendar_event_series(
+    event_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    event = db.query(CalendarEvent).filter(CalendarEvent.id == event_id).first()
+    if not event:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Calendar event not found")
+
+    member = check_project_permission(db, current_user.id, event.project_id)
+    if not _can_manage_event(member, current_user, event, "CALENDAR_DELETE"):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Missing project permission: CALENDAR_DELETE.")
+
+    project_id = event.project_id
+    series_id = event.recurrence_series_id
+
+    if not series_id:
+        db.delete(event)
+        deleted = 1
+    else:
+        deleted = (
+            db.query(CalendarEvent)
+            .filter(
+                CalendarEvent.project_id == project_id,
+                CalendarEvent.recurrence_series_id == series_id,
+            )
+            .delete(synchronize_session=False)
+        )
+
+    db.commit()
+    broadcast_project_event(
+        project_id,
+        "calendar.changed",
+        {"action": "series_deleted", "event_id": event_id, "recurrence_series_id": series_id, "deleted": deleted},
+    )
+
+    return {"message": "Calendar event series deleted.", "deleted": deleted}

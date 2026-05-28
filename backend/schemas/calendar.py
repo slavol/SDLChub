@@ -13,6 +13,8 @@ class CalendarEventCreate(BaseModel):
     location: Optional[str] = None
     meeting_url: Optional[str] = None
     attendee_ids: List[int] = Field(default_factory=list)
+    recurrence_mode: str = "none"
+    recurrence_until: Optional[datetime] = None
 
 
 class CalendarEventUpdate(BaseModel):
@@ -24,6 +26,8 @@ class CalendarEventUpdate(BaseModel):
     location: Optional[str] = None
     meeting_url: Optional[str] = None
     attendee_ids: Optional[List[int]] = None
+    recurrence_mode: Optional[str] = None
+    recurrence_until: Optional[datetime] = None
 
 
 class CalendarEventOut(BaseModel):
@@ -37,6 +41,9 @@ class CalendarEventOut(BaseModel):
     location: Optional[str] = None
     meeting_url: Optional[str] = None
     attendee_ids: List[int] = Field(default_factory=list)
+    recurrence_series_id: Optional[str] = None
+    recurrence_mode: str = "none"
+    recurrence_until: Optional[datetime] = None
     created_by_id: int
     created_by_name: Optional[str] = None
     created_at: datetime

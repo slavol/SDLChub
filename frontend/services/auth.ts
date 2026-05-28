@@ -17,6 +17,7 @@ export interface AuthUser {
   full_name?: string;
   avatar_url?: string | null;
   is_active: boolean;
+  is_global_admin?: boolean;
 }
 
 export interface AccountProjectSummary {

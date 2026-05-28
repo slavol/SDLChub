@@ -19,6 +19,7 @@ import {
   Pencil,
   Plus,
   Save,
+  Sparkles,
   Trash2,
   UserRound,
   X,
@@ -48,19 +49,24 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { UserAvatar } from "@/components/user-avatar";
 import { useProjectPermissions } from "@/hooks/use-project-permissions";
+import { useRealtimeEvent } from "@/hooks/use-realtime-event";
 import { getApiErrorMessage } from "@/lib/api-error";
 import { cn } from "@/lib/utils";
 import {
   getProjectDetail,
   getProjectMembers,
+  getProjectTeams,
   Project,
   ProjectMember,
+  ProjectTeam,
 } from "@/services/project";
 import {
   createSubtask,
   createTaskComment,
   deleteTaskComment,
   getTaskDetail,
+  estimateTaskStoryPoints,
+  refineTaskSpec,
   TaskDetail,
   TaskPriority,
   TaskStatus,
@@ -142,6 +148,7 @@ export default function TaskDetailPage() {
   const [task, setTask] = useState<TaskDetail | null>(null);
   const [project, setProject] = useState<Project | null>(currentProject);
   const [members, setMembers] = useState<ProjectMember[]>([]);
+  const [teams, setTeams] = useState<ProjectTeam[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [newSubtaskTitle, setNewSubtaskTitle] = useState("");
@@ -150,6 +157,8 @@ export default function TaskDetailPage() {
   const [editingCommentBody, setEditingCommentBody] = useState("");
   const [commentToDelete, setCommentToDelete] = useState<number | null>(null);
   const [deletingComment, setDeletingComment] = useState(false);
+  const [aiWorking, setAiWorking] = useState(false);
+  const [aiSuggestedSubtasks, setAiSuggestedSubtasks] = useState<string[]>([]);
 
   const supportsStoryPoints = project?.methodology !== "KANBAN";
   const { can } = useProjectPermissions(task?.project_id || project?.id || currentProject?.id);
@@ -157,6 +166,7 @@ export default function TaskDetailPage() {
   const canAssignTask = can("TASK_ASSIGN");
   const canMoveTask = can("TASK_MOVE");
   const canComment = can("TASK_COMMENT");
+  const canUseAi = can("AI_USE");
   const canSaveTask = canUpdateTask || canAssignTask || canMoveTask;
 
   const completedSubtasks = useMemo(
@@ -170,22 +180,24 @@ export default function TaskDetailPage() {
 
   const assigneeName = task?.assignee_name || "Unassigned";
 
-  const loadTask = useCallback(async () => {
+  const loadTask = useCallback(async (showLoader = true) => {
     if (!taskId) return;
 
-    setLoading(true);
+    if (showLoader) setLoading(true);
     try {
       const data = await getTaskDetail(taskId);
       setTask(data);
 
-      const [projectMembers, detailProject] = await Promise.all([
+      const [projectMembers, projectTeams, detailProject] = await Promise.all([
         getProjectMembers(data.project_id).catch(() => []),
+        getProjectTeams(data.project_id).catch(() => []),
         currentProject?.id === data.project_id
           ? Promise.resolve(currentProject)
           : getProjectDetail(data.project_id).catch(() => null),
       ]);
 
       setMembers(projectMembers);
+      setTeams(projectTeams);
 
       if (detailProject) {
         setProject(detailProject);
@@ -197,13 +209,25 @@ export default function TaskDetailPage() {
     } catch (error: unknown) {
       toast.error(getApiErrorMessage(error, "Could not load task."));
     } finally {
-      setLoading(false);
+      if (showLoader) setLoading(false);
     }
   }, [currentProject, setCurrentProject, taskId]);
 
   useEffect(() => {
     loadTask();
   }, [loadTask]);
+
+  useRealtimeEvent((message) => {
+    const changedTaskId = Number(message.payload?.task_id || 0);
+
+    if (message.type === "task.changed" && changedTaskId === taskId) {
+      loadTask(false);
+    }
+
+    if (message.type === "user.updated" && task?.project_id && message.project_id === task.project_id) {
+      loadTask(false);
+    }
+  }, [loadTask, task?.project_id, taskId]);
 
   const patchLocalTask = (updates: Partial<TaskDetail>) => {
     setTask((current) => (current ? { ...current, ...updates } : current));
@@ -221,18 +245,92 @@ export default function TaskDetailPage() {
         priority: task.priority,
         status: task.status,
         assignee_id: task.assignee_id || 0,
+        team_id: task.team_id || 0,
         due_date: task.due_date,
         ...(supportsStoryPoints ? { story_points: task.story_points } : {}),
       };
 
       const updated = await updateTask(task.id, payload);
       patchLocalTask(updated);
-      await loadTask();
+      await loadTask(false);
       toast.success("Task saved");
     } catch (error: unknown) {
       toast.error(getApiErrorMessage(error, "Could not save task."));
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleRefineWithAi = async () => {
+    if (!task || !canUseAi || !canUpdateTask) return;
+
+    setAiWorking(true);
+    try {
+      const refined = await refineTaskSpec(
+        task.title,
+        task.description || "",
+        task.priority,
+        task.project_id
+      );
+
+      patchLocalTask({ description: refined.markdown });
+      setAiSuggestedSubtasks(refined.suggested_subtasks || []);
+      toast.success("AI refined the issue definition.");
+    } catch (error: unknown) {
+      toast.error(getApiErrorMessage(error, "Could not refine this task."));
+    } finally {
+      setAiWorking(false);
+    }
+  };
+
+  const handleEstimateWithAi = async () => {
+    if (!task || !supportsStoryPoints || !canUseAi || !canUpdateTask) return;
+
+    setAiWorking(true);
+    try {
+      const estimate = await estimateTaskStoryPoints(
+        task.title,
+        task.description || "",
+        task.priority,
+        task.project_id
+      );
+
+      patchLocalTask({ story_points: estimate.story_points });
+      toast.success(`AI estimate: ${estimate.story_points} story points`);
+    } catch (error: unknown) {
+      toast.error(getApiErrorMessage(error, "Could not estimate story points."));
+    } finally {
+      setAiWorking(false);
+    }
+  };
+
+  const handleApplyAiSubtasks = async () => {
+    if (!task || !canUpdateTask || aiSuggestedSubtasks.length === 0) return;
+
+    setAiWorking(true);
+    try {
+      const existingTitles = new Set(
+        task.subtasks.map((subtask) => subtask.title.trim().toLowerCase())
+      );
+      const nextSubtasks = aiSuggestedSubtasks
+        .map((subtask) => subtask.trim())
+        .filter((subtask) => subtask && !existingTitles.has(subtask.toLowerCase()))
+        .slice(0, 12);
+
+      if (nextSubtasks.length === 0) {
+        setAiSuggestedSubtasks([]);
+        toast.info("AI checklist already exists on this task.");
+        return;
+      }
+
+      await Promise.all(nextSubtasks.map((subtask) => createSubtask(task.id, subtask)));
+      setAiSuggestedSubtasks([]);
+      await loadTask(false);
+      toast.success(`${nextSubtasks.length} AI subtasks added`);
+    } catch (error: unknown) {
+      toast.error(getApiErrorMessage(error, "Could not add AI subtasks."));
+    } finally {
+      setAiWorking(false);
     }
   };
 
@@ -248,6 +346,18 @@ export default function TaskDetailPage() {
     });
   };
 
+  const handleTeamChange = (value: string) => {
+    if (!canAssignTask) return;
+
+    const teamId = value === "none" ? undefined : Number(value);
+    const team = teams.find((item) => item.id === teamId);
+
+    patchLocalTask({
+      team_id: teamId,
+      team_name: team?.name || null,
+    });
+  };
+
   const handleAddSubtask = async () => {
     if (!canUpdateTask) return;
     if (!task || !newSubtaskTitle.trim()) return;
@@ -255,7 +365,7 @@ export default function TaskDetailPage() {
     try {
       await createSubtask(task.id, newSubtaskTitle.trim());
       setNewSubtaskTitle("");
-      await loadTask();
+      await loadTask(false);
       toast.success("Subtask added");
     } catch (error: unknown) {
       toast.error(getApiErrorMessage(error, "Could not add subtask."));
@@ -268,7 +378,7 @@ export default function TaskDetailPage() {
 
     try {
       await updateSubtask(task.id, subtaskId, { is_done: !isDone });
-      await loadTask();
+      await loadTask(false);
     } catch (error: unknown) {
       toast.error(getApiErrorMessage(error, "Could not update subtask."));
     }
@@ -281,7 +391,7 @@ export default function TaskDetailPage() {
     try {
       await createTaskComment(task.id, newComment.trim());
       setNewComment("");
-      await loadTask();
+      await loadTask(false);
       toast.success("Comment added");
     } catch (error: unknown) {
       toast.error(getApiErrorMessage(error, "Could not add comment."));
@@ -303,7 +413,7 @@ export default function TaskDetailPage() {
       await updateTaskComment(task.id, editingCommentId, editingCommentBody.trim());
       setEditingCommentId(null);
       setEditingCommentBody("");
-      await loadTask();
+      await loadTask(false);
       toast.success("Comment updated");
     } catch (error: unknown) {
       toast.error(getApiErrorMessage(error, "Could not update comment."));
@@ -319,7 +429,7 @@ export default function TaskDetailPage() {
     try {
       await deleteTaskComment(task.id, commentToDelete);
       setCommentToDelete(null);
-      await loadTask();
+      await loadTask(false);
       toast.success("Comment deleted");
     } catch (error: unknown) {
       toast.error(getApiErrorMessage(error, "Could not delete comment."));
@@ -381,6 +491,14 @@ export default function TaskDetailPage() {
                 >
                   {project?.methodology || "Project"}
                 </Badge>
+                {task.team_name && (
+                  <Badge
+                    variant="outline"
+                    className="border-cyan-500/25 bg-cyan-500/10 text-cyan-200"
+                  >
+                    {task.team_name}
+                  </Badge>
+                )}
               </div>
 
               <h1 className="break-words text-3xl font-semibold tracking-tight text-white md:text-4xl">
@@ -404,6 +522,21 @@ export default function TaskDetailPage() {
               )}
               Save changes
             </Button>
+            {canUseAi && canUpdateTask && (
+              <Button
+                variant="outline"
+                onClick={handleRefineWithAi}
+                disabled={aiWorking}
+                className="border-slate-700 bg-slate-950/70 text-slate-200 hover:bg-slate-900"
+              >
+                {aiWorking ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <Sparkles className="mr-2 h-4 w-4" />
+                )}
+                AI refine
+              </Button>
+            )}
           </div>
         </div>
 
@@ -479,7 +612,24 @@ export default function TaskDetailPage() {
               </div>
 
               <div className="space-y-2">
-                <Label>Description</Label>
+                <div className="flex items-center justify-between gap-3">
+                  <Label>Description</Label>
+                  {canUseAi && canUpdateTask && (
+                    <button
+                      type="button"
+                      onClick={handleRefineWithAi}
+                      disabled={aiWorking}
+                      className="inline-flex items-center text-xs text-emerald-400 transition hover:text-emerald-300 disabled:opacity-50"
+                    >
+                      {aiWorking ? (
+                        <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                      ) : (
+                        <Sparkles className="mr-1 h-3 w-3" />
+                      )}
+                      Refine spec
+                    </button>
+                  )}
+                </div>
                 <Textarea
                   value={task.description || ""}
                   onChange={(event) =>
@@ -509,6 +659,42 @@ export default function TaskDetailPage() {
               </Badge>
             </CardHeader>
             <CardContent className="space-y-5 p-5">
+              {aiSuggestedSubtasks.length > 0 && (
+                <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 p-4">
+                  <div className="mb-3 flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
+                    <div>
+                      <p className="text-sm font-semibold text-emerald-100">
+                        AI suggested subtasks
+                      </p>
+                      <p className="mt-1 text-xs text-emerald-100/70">
+                        Apply these as real checklist items.
+                      </p>
+                    </div>
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={handleApplyAiSubtasks}
+                      disabled={aiWorking || !canUpdateTask}
+                      className="bg-emerald-600 hover:bg-emerald-700"
+                    >
+                      {aiWorking ? (
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      ) : (
+                        <Plus className="mr-2 h-4 w-4" />
+                      )}
+                      Apply checklist
+                    </Button>
+                  </div>
+                  <div className="grid gap-2 md:grid-cols-2">
+                    {aiSuggestedSubtasks.slice(0, 8).map((subtask) => (
+                      <div key={subtask} className="rounded-xl border border-emerald-400/15 bg-slate-950/50 px-3 py-2 text-xs text-emerald-50/85">
+                        {subtask}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               <div className="space-y-2">
                 <Progress
                   value={subtaskProgress}
@@ -777,7 +963,24 @@ export default function TaskDetailPage() {
 
               {supportsStoryPoints ? (
                 <div className="space-y-2">
-                  <Label>Story Points</Label>
+                  <div className="flex items-center justify-between gap-3">
+                    <Label>Story Points</Label>
+                    {canUseAi && canUpdateTask && (
+                      <button
+                        type="button"
+                        onClick={handleEstimateWithAi}
+                        disabled={aiWorking}
+                        className="inline-flex items-center text-xs text-blue-300 transition hover:text-blue-200 disabled:opacity-50"
+                      >
+                        {aiWorking ? (
+                          <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                        ) : (
+                          <Sparkles className="mr-1 h-3 w-3" />
+                        )}
+                        Estimate
+                      </button>
+                    )}
+                  </div>
                   <Input
                     type="number"
                     min="0"
@@ -849,6 +1052,27 @@ export default function TaskDetailPage() {
                           />
                           {member.user.full_name || member.user.email}
                         </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Delivery Team</Label>
+                <Select
+                  value={task.team_id ? String(task.team_id) : "none"}
+                  onValueChange={handleTeamChange}
+                  disabled={!canAssignTask}
+                >
+                  <SelectTrigger className="h-11 border-slate-700 bg-slate-950">
+                    <SelectValue placeholder="No team" />
+                  </SelectTrigger>
+                  <SelectContent className="border-slate-800 bg-slate-950 text-slate-200">
+                    <SelectItem value="none">No team</SelectItem>
+                    {teams.map((team) => (
+                      <SelectItem key={team.id} value={String(team.id)}>
+                        {team.name}
                       </SelectItem>
                     ))}
                   </SelectContent>

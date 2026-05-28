@@ -56,6 +56,7 @@ import {
   Project,
   ProjectMember,
   ProjectRoleWithPermissions,
+  updateProjectWorkflow,
   updateProjectSettings,
   updateRolePermissions,
 } from "@/services/project";
@@ -69,7 +70,7 @@ const PERMISSION_GROUPS = [
   },
   {
     title: "Team",
-    keys: ["MEMBER_INVITE", "MEMBER_REMOVE", "ROLE_MANAGE"],
+    keys: ["MEMBER_INVITE", "MEMBER_REMOVE", "ROLE_MANAGE", "TEAM_MANAGE"],
   },
   {
     title: "Tasks",
@@ -96,6 +97,7 @@ const PERMISSION_LABELS: Record<string, string> = {
   MEMBER_INVITE: "Invite members",
   MEMBER_REMOVE: "Remove members",
   ROLE_MANAGE: "Manage roles",
+  TEAM_MANAGE: "Manage teams",
   TASK_CREATE: "Create tasks",
   TASK_UPDATE: "Update tasks",
   TASK_DELETE: "Delete tasks",
@@ -116,6 +118,20 @@ const METHODOLOGY_HELP: Record<string, string> = {
   SCRUM: "Best for sprint planning, backlog grooming and regular delivery cycles.",
   KANBAN: "Best for continuous work, support, maintenance and flow-based delivery.",
   SCRUMBAN: "Best when you want Scrum planning with Kanban-style flexibility.",
+};
+
+const WIP_LIMIT_COLUMNS = [
+  { key: "TODO", label: "To Do", helper: "Intake lane" },
+  { key: "IN_PROGRESS", label: "In Progress", helper: "Active implementation" },
+  { key: "REVIEW", label: "Review", helper: "Code review / QA" },
+  { key: "DONE", label: "Done", helper: "Usually unlimited" },
+];
+
+const DEFAULT_WIP_LIMITS: Record<string, number | null> = {
+  TODO: null,
+  IN_PROGRESS: 3,
+  REVIEW: 2,
+  DONE: null,
 };
 
 function enabledPermissions(role: ProjectRoleWithPermissions) {
@@ -143,6 +159,7 @@ export default function SettingsPage() {
   const [projectName, setProjectName] = useState("");
   const [description, setDescription] = useState("");
   const [methodology, setMethodology] = useState("SCRUM");
+  const [wipLimits, setWipLimits] = useState<Record<string, number | null>>(DEFAULT_WIP_LIMITS);
   const [deleteKey, setDeleteKey] = useState("");
 
   const [selectedRoleId, setSelectedRoleId] = useState<string>("");
@@ -155,6 +172,7 @@ export default function SettingsPage() {
   const [transitionPreview, setTransitionPreview] = useState<MethodologyTransitionPreview | null>(null);
   const [loadingTransition, setLoadingTransition] = useState(false);
   const [applyingTransition, setApplyingTransition] = useState(false);
+  const [savingWorkflow, setSavingWorkflow] = useState(false);
 
   const isProjectOwner = project?.owner_id === currentUser?.id;
   const canManageSettings = hasProjectPermission(
@@ -213,6 +231,10 @@ export default function SettingsPage() {
       setProjectName(freshProject.name);
       setDescription(freshProject.description || "");
       setMethodology(freshProject.methodology);
+      setWipLimits({
+        ...DEFAULT_WIP_LIMITS,
+        ...(freshProject.workflow_config?.wip_limits || {}),
+      });
 
       if (!selectedRoleId && remoteRoles.length > 0) {
         setSelectedRoleId(String(remoteRoles[0].id));
@@ -293,6 +315,35 @@ export default function SettingsPage() {
       toast.error(getApiErrorMessage(error, "Could not change methodology."));
     } finally {
       setApplyingTransition(false);
+    }
+  };
+
+  const handleWipLimitChange = (key: string, value: string) => {
+    setWipLimits((current) => ({
+      ...current,
+      [key]: value === "" ? null : Math.max(0, Number(value)),
+    }));
+  };
+
+  const handleSaveWorkflow = async () => {
+    if (!canManageSettings || !project) return;
+
+    setSavingWorkflow(true);
+    try {
+      const updated = await updateProjectWorkflow(project.id, {
+        wip_limits: wipLimits,
+      });
+      setProject(updated);
+      setCurrentProject(updated);
+      setWipLimits({
+        ...DEFAULT_WIP_LIMITS,
+        ...(updated.workflow_config?.wip_limits || {}),
+      });
+      toast.success("Workflow limits saved");
+    } catch (error: unknown) {
+      toast.error(getApiErrorMessage(error, "Could not save workflow limits."));
+    } finally {
+      setSavingWorkflow(false);
     }
   };
 
@@ -538,6 +589,69 @@ export default function SettingsPage() {
               </CardContent>
             </Card>
 
+            {(methodology === "KANBAN" || methodology === "SCRUMBAN") && (
+              <Card className="border-slate-800 bg-slate-900 text-slate-50">
+                <CardHeader className="border-b border-slate-800">
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <Workflow className="h-5 w-5 text-cyan-300" />
+                    WIP limits
+                  </CardTitle>
+                </CardHeader>
+
+                <CardContent className="space-y-5 p-5">
+                  <div className="rounded-2xl border border-cyan-500/20 bg-cyan-500/10 p-4">
+                    <p className="font-semibold text-cyan-100">
+                      Flow control for {methodology}
+                    </p>
+                    <p className="mt-2 text-sm leading-6 text-cyan-100/75">
+                      Board columns will highlight when active work exceeds
+                      these limits. Leave a value empty for no limit.
+                    </p>
+                  </div>
+
+                  <div className="grid gap-4 md:grid-cols-2">
+                    {WIP_LIMIT_COLUMNS.map((column) => (
+                      <div
+                        key={column.key}
+                        className="rounded-2xl border border-slate-800 bg-slate-950 p-4"
+                      >
+                        <Label className="text-sm text-slate-300">
+                          {column.label}
+                        </Label>
+                        <p className="mt-1 text-xs text-slate-500">
+                          {column.helper}
+                        </p>
+                        <Input
+                          type="number"
+                          min="0"
+                          value={wipLimits[column.key] ?? ""}
+                          onChange={(event) =>
+                            handleWipLimitChange(column.key, event.target.value)
+                          }
+                          placeholder="No limit"
+                          className="mt-3 h-11 border-slate-700 bg-slate-900"
+                        />
+                      </div>
+                    ))}
+                  </div>
+
+                  <Button
+                    type="button"
+                    onClick={handleSaveWorkflow}
+                    disabled={!canManageSettings || savingWorkflow}
+                    className="h-11 bg-cyan-600 text-white hover:bg-cyan-500"
+                  >
+                    {savingWorkflow ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <Save className="mr-2 h-4 w-4" />
+                    )}
+                    Save WIP limits
+                  </Button>
+                </CardContent>
+              </Card>
+            )}
+
             <Card className="border-slate-800 bg-slate-900 text-slate-50">
               <CardHeader className="border-b border-slate-800">
                 <CardTitle className="flex items-center gap-2 text-base">
@@ -592,21 +706,30 @@ export default function SettingsPage() {
                   <div className="space-y-4">
                     {PERMISSION_GROUPS.map((group) => (
                       <div key={group.title} className="rounded-2xl border border-slate-800 bg-slate-950 p-4">
-                        <h3 className="mb-3 font-semibold text-white">{group.title}</h3>
+                        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                          <h3 className="font-semibold text-white">{group.title}</h3>
+                          {methodology === "KANBAN" && group.title === "Sprints" && (
+                            <Badge className="border-slate-700 bg-slate-900 text-slate-400">
+                              Disabled by Kanban
+                            </Badge>
+                          )}
+                        </div>
 
                         <div className="grid gap-3 md:grid-cols-2">
                           {group.keys.map((key) => {
                             const enabled = selectedRoleLocked || Boolean(selectedRole.permissions?.[key]);
                             const saving = savingPermission === key;
+                            const disabledByMethodology =
+                              methodology === "KANBAN" && group.title === "Sprints";
 
                             return (
                               <button
                                 key={key}
                                 type="button"
-                                disabled={!canManageRoles || selectedRoleLocked || savingPermission !== null}
+                                disabled={!canManageRoles || selectedRoleLocked || savingPermission !== null || disabledByMethodology}
                                 onClick={() => handleTogglePermission(key)}
                                 className={`flex items-center justify-between rounded-xl border p-3 text-left transition ${
-                                  enabled
+                                  enabled && !disabledByMethodology
                                     ? "border-blue-500/30 bg-blue-500/10 text-blue-100"
                                     : "border-slate-800 bg-slate-900 text-slate-400 hover:border-slate-700"
                                 } disabled:cursor-not-allowed disabled:opacity-75`}
@@ -623,7 +746,7 @@ export default function SettingsPage() {
                                 {saving ? (
                                   <Loader2 className="h-4 w-4 animate-spin" />
                                 ) : (
-                                  <span className={`h-3 w-3 rounded-full ${enabled ? "bg-blue-300" : "bg-slate-700"}`} />
+                                  <span className={`h-3 w-3 rounded-full ${enabled && !disabledByMethodology ? "bg-blue-300" : "bg-slate-700"}`} />
                                 )}
                               </button>
                             );

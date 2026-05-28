@@ -9,8 +9,9 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from backend.database.session import get_db
-from backend.models.project import Invitation, Project, ProjectMember, Role, Task, TaskAuditLog
+from backend.models.project import Invitation, Project, ProjectMember, ProjectTeam, Role, Task, TaskAuditLog
 from backend.models.user import User
+from backend.realtime import broadcast_project_event
 from backend.routers.auth import get_current_user
 from backend.schemas.project import (
     AIRequest,
@@ -36,6 +37,7 @@ PROJECT_ADMIN_PERMISSIONS = {
     "MEMBER_INVITE": True,
     "MEMBER_REMOVE": True,
     "ROLE_MANAGE": True,
+    "TEAM_MANAGE": True,
     "TASK_CREATE": True,
     "TASK_UPDATE": True,
     "TASK_DELETE": True,
@@ -59,6 +61,7 @@ DEFAULT_ROLE_PERMISSIONS = {
     "TASK_ASSIGN": True,
     "TASK_COMMENT": True,
     "TASK_MOVE": True,
+    "TEAM_MANAGE": False,
     "SPRINT_CREATE": False,
     "SPRINT_START": False,
     "SPRINT_CLOSE": False,
@@ -98,6 +101,17 @@ def serialize_member(member: ProjectMember) -> dict:
         "membership_id": member.id,
         "user": member.user,
         "role": _serialize_role(member.role) if member.role else None,
+        "team": {
+            "id": member.team.id,
+            "project_id": member.team.project_id,
+            "parent_id": member.team.parent_id,
+            "name": member.team.name,
+            "description": member.team.description,
+            "member_count": len(member.team.members or []),
+            "task_count": len(member.team.tasks or []),
+            "created_at": member.team.created_at,
+            "updated_at": member.team.updated_at,
+        } if member.team else None,
         "joined_at": member.joined_at,
     }
 
@@ -431,6 +445,10 @@ class UpdateRolePermissionsRequest(BaseModel):
     permissions: dict[str, bool]
 
 
+class WorkflowConfigUpdateRequest(BaseModel):
+    wip_limits: dict[str, int | None] | None = None
+
+
 def _parse_permissions(raw_permissions: str | None) -> dict:
     if not raw_permissions:
         return {}
@@ -441,6 +459,47 @@ def _parse_permissions(raw_permissions: str | None) -> dict:
         return {}
 
 
+DEFAULT_WORKFLOW_CONFIG = {
+    "wip_limits": {
+        "TODO": None,
+        "IN_PROGRESS": 3,
+        "REVIEW": 2,
+        "DONE": None,
+    }
+}
+
+
+def _parse_workflow_config(raw_config: str | None) -> dict:
+    config = json.loads(json.dumps(DEFAULT_WORKFLOW_CONFIG))
+    if not raw_config:
+        return config
+
+    try:
+        parsed = json.loads(raw_config)
+    except Exception:
+        return config
+
+    if not isinstance(parsed, dict):
+        return config
+
+    raw_limits = parsed.get("wip_limits")
+    if isinstance(raw_limits, dict):
+        for status_key in DEFAULT_WORKFLOW_CONFIG["wip_limits"]:
+            value = raw_limits.get(status_key)
+            if value is None or value == "":
+                config["wip_limits"][status_key] = None
+                continue
+
+            try:
+                normalized_value = int(value)
+            except (TypeError, ValueError):
+                continue
+
+            config["wip_limits"][status_key] = max(0, normalized_value)
+
+    return config
+
+
 def _serialize_project(project: Project) -> dict:
     return {
         "id": project.id,
@@ -448,6 +507,7 @@ def _serialize_project(project: Project) -> dict:
         "key": project.key,
         "description": project.description,
         "methodology": project.methodology,
+        "workflow_config": _parse_workflow_config(project.workflow_config),
         "owner_id": project.owner_id,
         "created_at": project.created_at,
     }
@@ -519,8 +579,8 @@ def _build_methodology_transition_preview(db: Session, project: Project, target_
         recommended_strategy = "flatten_to_flow"
 
         if active_sprint:
-            blockers.append(
-                f"Complete active sprint '{active_sprint.name}' before switching to Kanban."
+            warnings.append(
+                f"Active sprint '{active_sprint.name}' will be closed automatically. Unfinished work will move to continuous flow."
             )
 
         if future_sprints:
@@ -534,6 +594,8 @@ def _build_methodology_transition_preview(db: Session, project: Project, target_
             )
 
         actions.extend([
+            "The active sprint will be closed if one is currently running.",
+            "Unfinished sprint work will move back to flow without losing task history.",
             "Backlog and sprint planning will be hidden from navigation.",
             "Open work will be treated as continuous flow on the board.",
             "Sprint endpoints will reject new Kanban sprint operations.",
@@ -636,7 +698,19 @@ def apply_methodology_transition(
         }
 
     moved_to_flow_count = 0
+    closed_active_sprint_id = None
     if target_methodology == "KANBAN":
+        active_sprint = db.query(Sprint).filter(
+            Sprint.project_id == project_id,
+            Sprint.is_active == True,  # noqa: E712
+        ).first()
+
+        if active_sprint:
+            active_sprint.is_active = False
+            if active_sprint.end_date is None:
+                active_sprint.end_date = datetime.utcnow()
+            closed_active_sprint_id = active_sprint.id
+
         open_sprint_tasks = db.query(Task).filter(
             Task.project_id == project_id,
             Task.sprint_id.isnot(None),
@@ -653,6 +727,7 @@ def apply_methodology_transition(
         "strategy": data.strategy,
         "recommended_strategy": preview["recommended_strategy"],
         "moved_to_flow_count": moved_to_flow_count,
+        "closed_active_sprint_id": closed_active_sprint_id,
         "affected_counts": preview["affected_counts"],
         "warnings": preview["warnings"],
         "actions": preview["actions"],
@@ -672,6 +747,16 @@ def apply_methodology_transition(
 
     db.commit()
     db.refresh(project)
+    broadcast_project_event(
+        project.id,
+        "project.changed",
+        {
+            "action": "methodology_changed",
+            "project": _serialize_project(project),
+            "old_methodology": old_methodology,
+            "new_methodology": target_methodology,
+        },
+    )
 
     return {
         "project": _serialize_project(project),
@@ -998,27 +1083,77 @@ def update_project_settings(
         project.description = update_data["description"]
 
     if "methodology" in update_data and update_data["methodology"] is not None:
-        methodology = update_data["methodology"].upper()
-        if methodology not in {"SCRUM", "KANBAN", "SCRUMBAN"}:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid methodology.")
-
-        if methodology == "KANBAN":
-            active_sprint = db.query(Sprint).filter(
-                Sprint.project_id == project_id,
-                Sprint.is_active == True,  # noqa: E712
-            ).first()
-            if active_sprint:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Cannot switch to Kanban while a sprint is active.",
-                )
-
-        project.methodology = methodology
+        methodology = _normalize_methodology(update_data["methodology"])
+        if methodology != project.methodology:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Use the methodology transition endpoint to change workflow mode.",
+            )
 
     db.commit()
     db.refresh(project)
+    serialized_project = _serialize_project(project)
+    broadcast_project_event(
+        project.id,
+        "project.changed",
+        {"action": "settings_updated", "project": serialized_project},
+    )
 
-    return _serialize_project(project)
+    return serialized_project
+
+
+@router.put("/{project_id}/workflow")
+def update_project_workflow(
+    project_id: int,
+    data: WorkflowConfigUpdateRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    ensure_project_member(project_id, current_user.id, db)
+    require_project_permission(db, current_user.id, project_id, "SETTINGS_MANAGE")
+
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found.")
+
+    config = _parse_workflow_config(project.workflow_config)
+
+    if data.wip_limits is not None:
+        next_limits = config.get("wip_limits", {}).copy()
+        for status_key, value in data.wip_limits.items():
+            normalized_status = status_key.upper()
+            if normalized_status not in DEFAULT_WORKFLOW_CONFIG["wip_limits"]:
+                continue
+
+            if value is None:
+                next_limits[normalized_status] = None
+            else:
+                next_limits[normalized_status] = max(0, int(value))
+
+        config["wip_limits"] = next_limits
+
+    project.workflow_config = json.dumps(config)
+
+    db.add(
+        ProjectAuditLog(
+            project_id=project.id,
+            actor_id=current_user.id,
+            action="PROJECT_WORKFLOW_UPDATED",
+            field="workflow_config",
+            old_value=None,
+            new_value=project.workflow_config,
+        )
+    )
+    db.commit()
+    db.refresh(project)
+
+    serialized_project = _serialize_project(project)
+    broadcast_project_event(
+        project.id,
+        "project.changed",
+        {"action": "workflow_updated", "project": serialized_project},
+    )
+    return serialized_project
 
 
 @router.delete("/{project_id}")
@@ -1051,6 +1186,7 @@ def delete_project(
     db.query(Sprint).filter(Sprint.project_id == project_id).delete(synchronize_session=False)
     db.query(Invitation).filter(Invitation.project_id == project_id).delete(synchronize_session=False)
     db.query(ProjectMember).filter(ProjectMember.project_id == project_id).delete(synchronize_session=False)
+    db.query(ProjectTeam).filter(ProjectTeam.project_id == project_id).delete(synchronize_session=False)
     db.query(Role).filter(Role.project_id == project_id).delete(synchronize_session=False)
     db.delete(project)
 
@@ -1935,6 +2071,10 @@ def _report_chart_item(name: str, value: int) -> dict:
     return {"name": name, "value": value}
 
 
+def _report_average(values: list[float]) -> float:
+    return round(sum(values) / len(values), 2) if values else 0
+
+
 def _build_reports_overview(db: Session, project_id: int) -> dict:
     now = datetime.utcnow()
     week_end = now + timedelta(days=7)
@@ -2049,6 +2189,7 @@ def _build_reports_overview(db: Session, project_id: int) -> dict:
     done_date_by_task: dict[int, datetime] = {}
     last_status_change_by_task: dict[int, datetime] = {}
     status_change_counts: dict[str, int] = {status: 0 for status in status_order}
+    status_logs = []
 
     if task_ids:
         status_logs = (
@@ -2072,13 +2213,20 @@ def _build_reports_overview(db: Session, project_id: int) -> dict:
             if new_status == "DONE" and log.task_id not in done_date_by_task:
                 done_date_by_task[log.task_id] = log.created_at
 
+    status_logs_by_task: dict[int, list[TaskAuditLog]] = {}
+    for log in status_logs:
+        status_logs_by_task.setdefault(log.task_id, []).append(log)
+
     done_cycle_times = []
+    lead_times_by_priority: dict[str, list[float]] = {priority: [] for priority in priority_order}
     for task in tasks:
         if _report_enum_value(task.status) != "DONE":
             continue
 
         done_date = done_date_by_task.get(task.id) or task.updated_at or task.created_at
-        done_cycle_times.append(_report_days_between(task.created_at, done_date))
+        lead_time = _report_days_between(task.created_at, done_date)
+        done_cycle_times.append(lead_time)
+        lead_times_by_priority.setdefault(_report_enum_value(task.priority), []).append(lead_time)
 
     average_cycle_time_days = (
         round(sum(done_cycle_times) / len(done_cycle_times), 2)
@@ -2121,6 +2269,106 @@ def _build_reports_overview(db: Session, project_id: int) -> dict:
         else 0
     )
 
+    lead_time_distribution = [
+        {"name": "ALL", "value": _report_average(done_cycle_times), "tasks": len(done_cycle_times)}
+    ]
+    lead_time_distribution.extend(
+        {
+            "name": priority,
+            "value": _report_average(lead_times_by_priority.get(priority, [])),
+            "tasks": len(lead_times_by_priority.get(priority, [])),
+        }
+        for priority in priority_order
+    )
+
+    cumulative_flow = []
+    if tasks:
+        task_dates = [
+            _report_plain_date(task.created_at)
+            for task in tasks
+            if _report_plain_date(task.created_at)
+        ]
+        first_task_date = min(task_dates).date() if task_dates else now.date()
+        flow_start_date = max(first_task_date, (now - timedelta(days=13)).date())
+        flow_days = max(1, min(30, (now.date() - flow_start_date).days + 1))
+
+        for offset in range(flow_days):
+            current_day = flow_start_date + timedelta(days=offset)
+            day_end = datetime(
+                current_day.year,
+                current_day.month,
+                current_day.day,
+                23,
+                59,
+                59,
+                999999,
+            )
+            counts = {status: 0 for status in status_order}
+
+            for task in tasks:
+                created_at = _report_plain_date(task.created_at)
+                if not created_at or created_at > day_end:
+                    continue
+
+                status_at_day = "TODO"
+                for log in status_logs_by_task.get(task.id, []):
+                    log_date = _report_plain_date(log.created_at)
+                    if log_date and log_date <= day_end:
+                        status_at_day = str(log.new_value or status_at_day)
+                    else:
+                        break
+
+                counts[status_at_day] = counts.get(status_at_day, 0) + 1
+
+            cumulative_flow.append({"date": current_day.isoformat(), **counts})
+
+    sprint_burndown = []
+    if active_sprint and active_sprint.start_date and active_sprint.end_date:
+        sprint_tasks = [task for task in tasks if task.sprint_id == active_sprint.id]
+        sprint_total_points = sum(task.story_points or 0 for task in sprint_tasks)
+        start_date = _report_plain_date(active_sprint.start_date).date()
+        end_date = _report_plain_date(active_sprint.end_date).date()
+        burndown_days = max(1, min(60, (end_date - start_date).days + 1))
+
+        for offset in range(burndown_days):
+            current_day = start_date + timedelta(days=offset)
+            day_end = datetime(
+                current_day.year,
+                current_day.month,
+                current_day.day,
+                23,
+                59,
+                59,
+                999999,
+            )
+            done_points_at_day = 0
+
+            for task in sprint_tasks:
+                done_date = done_date_by_task.get(task.id)
+                if not done_date and _report_enum_value(task.status) == "DONE":
+                    done_date = task.updated_at or task.created_at
+
+                done_date = _report_plain_date(done_date)
+                if done_date and done_date <= day_end:
+                    done_points_at_day += task.story_points or 0
+
+            if burndown_days > 1:
+                ideal_remaining = round(
+                    sprint_total_points * ((burndown_days - 1 - offset) / (burndown_days - 1)),
+                    2,
+                )
+            else:
+                ideal_remaining = 0
+
+            sprint_burndown.append(
+                {
+                    "date": current_day.isoformat(),
+                    "remaining_points": max(0, sprint_total_points - done_points_at_day),
+                    "done_points": done_points_at_day,
+                    "ideal_remaining": ideal_remaining,
+                }
+            )
+
     return {
         "project": _serialize_project(project) if project else None,
         "summary": {
@@ -2151,6 +2399,9 @@ def _build_reports_overview(db: Session, project_id: int) -> dict:
             _report_chart_item(status, status_change_counts.get(status, 0))
             for status in status_order
         ],
+        "lead_time_distribution": lead_time_distribution,
+        "cumulative_flow": cumulative_flow,
+        "sprint_burndown": sprint_burndown,
         "bottleneck": bottleneck_status,
     }
 

@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { Gauge, Loader2, Plus, Sparkles, Users } from "lucide-react";
+import { BadgeCheck, CheckCircle2, Gauge, Loader2, Plus, Sparkles, Users } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -37,8 +37,17 @@ import {
 import { UserAvatar } from "@/components/user-avatar";
 
 // Asigură-te că generateTaskDescription este exportată din services/task
-import { createTask, Task, TaskPriority, generateTaskDescription } from "@/services/task";
-import { getProjectMembers, ProjectMember } from "@/services/project";
+import {
+  createTask,
+  estimateTaskStoryPoints,
+  generateTaskDescription,
+  refineTaskSpec,
+  StoryPointEstimate,
+  Task,
+  TaskPriority,
+  RefinedTaskSpec,
+} from "@/services/task";
+import { getProjectMembers, getProjectTeams, ProjectMember, ProjectTeam } from "@/services/project";
 
 // Schema de validare
 const formSchema = z.object({
@@ -48,6 +57,7 @@ const formSchema = z.object({
   story_points: z.string().optional(),
   due_date: z.string().optional(),
   assignee_id: z.string().optional(),
+  team_id: z.string().optional(),
 });
 
 interface CreateTaskDialogProps {
@@ -63,9 +73,14 @@ export function CreateTaskDialog({ projectId, sprintId, methodology, onTaskCreat
   
   // State nou pentru loading AI
   const [isAiLoading, setIsAiLoading] = useState(false);
+  const [isEstimateLoading, setIsEstimateLoading] = useState(false);
+  const [lastEstimate, setLastEstimate] = useState<StoryPointEstimate | null>(null);
+  const [lastRefinedSpec, setLastRefinedSpec] = useState<RefinedTaskSpec | null>(null);
+  const [createAiSubtasks, setCreateAiSubtasks] = useState(true);
   
   // State pentru membrii echipei
   const [members, setMembers] = useState<ProjectMember[]>([]);
+  const [teams, setTeams] = useState<ProjectTeam[]>([]);
   const [loadingMembers, setLoadingMembers] = useState(false);
   const supportsStoryPoints = methodology !== "KANBAN";
 
@@ -78,6 +93,7 @@ export function CreateTaskDialog({ projectId, sprintId, methodology, onTaskCreat
       story_points: "",
       due_date: "",
       assignee_id: "unassigned",
+      team_id: "none",
     },
   });
 
@@ -87,8 +103,12 @@ export function CreateTaskDialog({ projectId, sprintId, methodology, onTaskCreat
         const fetchMembers = async () => {
             setLoadingMembers(true);
             try {
-                const data = await getProjectMembers(projectId);
-                setMembers(data);
+                const [memberData, teamData] = await Promise.all([
+                  getProjectMembers(projectId),
+                  getProjectTeams(projectId),
+                ]);
+                setMembers(memberData);
+                setTeams(teamData);
             } catch (error) {
                 console.error("Failed to load members", error);
                 toast.error("Could not load team members");
@@ -113,7 +133,7 @@ export function CreateTaskDialog({ projectId, sprintId, methodology, onTaskCreat
     setIsAiLoading(true);
     try {
         // Apel către serviciul definit în services/task.ts
-        const aiDescription = await generateTaskDescription(title, priority);
+        const aiDescription = await generateTaskDescription(title, priority, projectId);
         
         // Actualizăm câmpul description
         form.setValue("description", aiDescription, { 
@@ -129,11 +149,74 @@ export function CreateTaskDialog({ projectId, sprintId, methodology, onTaskCreat
     }
   };
 
+  const handleRefineSpec = async () => {
+    const title = form.getValues("title");
+    const priority = form.getValues("priority");
+    const description = form.getValues("description");
+
+    if (!title || title.length < 3) {
+      toast.warning("Add a task title before asking AI to refine it.");
+      return;
+    }
+
+    setIsAiLoading(true);
+    try {
+      const refined = await refineTaskSpec(title, description, priority, projectId);
+      setLastRefinedSpec(refined);
+      form.setValue("description", refined.markdown, {
+        shouldValidate: true,
+        shouldDirty: true,
+      });
+      toast.success(
+        refined.source?.startsWith("fallback")
+          ? "Spec refined with local fallback."
+          : "Spec refined with AI."
+      );
+    } catch (error) {
+      console.error("AI refine error:", error);
+      toast.error("Could not refine the task spec.");
+    } finally {
+      setIsAiLoading(false);
+    }
+  };
+
+  const handleEstimateStoryPoints = async () => {
+    if (!supportsStoryPoints) return;
+
+    const title = form.getValues("title");
+    const priority = form.getValues("priority");
+    const description = form.getValues("description");
+
+    if (!title || title.length < 3) {
+      toast.warning("Add a task title before estimating story points.");
+      return;
+    }
+
+    setIsEstimateLoading(true);
+    try {
+      const estimate = await estimateTaskStoryPoints(title, description, priority, projectId);
+      setLastEstimate(estimate);
+      form.setValue("story_points", String(estimate.story_points), {
+        shouldValidate: true,
+        shouldDirty: true,
+      });
+      toast.success(`AI estimate: ${estimate.story_points} story points`);
+    } catch (error) {
+      console.error("AI estimate error:", error);
+      toast.error("Could not estimate story points.");
+    } finally {
+      setIsEstimateLoading(false);
+    }
+  };
+
   async function onSubmit(values: z.infer<typeof formSchema>) {
     setIsLoading(true);
     try {
       const assigneeId = values.assignee_id && values.assignee_id !== "unassigned" 
         ? parseInt(values.assignee_id) 
+        : undefined;
+      const teamId = values.team_id && values.team_id !== "none"
+        ? Number(values.team_id)
         : undefined;
       const storyPoints = supportsStoryPoints && values.story_points
         ? Number(values.story_points)
@@ -148,12 +231,21 @@ export function CreateTaskDialog({ projectId, sprintId, methodology, onTaskCreat
         due_date: dueDate,
         project_id: projectId,
         assignee_id: assigneeId, 
+        team_id: teamId,
         sprint_id: sprintId,
+        subtasks: createAiSubtasks
+          ? (lastRefinedSpec?.suggested_subtasks || [])
+              .map((item) => item.trim())
+              .filter(Boolean)
+              .slice(0, 20)
+          : [],
       });
       
       onTaskCreated(newTask);
       toast.success("Task created successfully");
       setOpen(false);
+      setLastEstimate(null);
+      setLastRefinedSpec(null);
       form.reset();
     } catch (error) {
       console.error(error);
@@ -242,6 +334,19 @@ export function CreateTaskDialog({ projectId, sprintId, methodology, onTaskCreat
                             />
                           </div>
                         </FormControl>
+                        <button
+                          type="button"
+                          onClick={handleEstimateStoryPoints}
+                          disabled={isEstimateLoading || isLoading}
+                          className="mt-2 inline-flex items-center text-xs text-blue-400 transition hover:text-blue-300 disabled:opacity-50"
+                        >
+                          {isEstimateLoading ? (
+                            <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                          ) : (
+                            <BadgeCheck className="mr-1 h-3 w-3" />
+                          )}
+                          Estimate
+                        </button>
                         <FormMessage />
                       </FormItem>
                     )}
@@ -289,6 +394,32 @@ export function CreateTaskDialog({ projectId, sprintId, methodology, onTaskCreat
 
             <FormField
               control={form.control}
+              name="team_id"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Delivery Team</FormLabel>
+                  <Select onValueChange={field.onChange} defaultValue={field.value}>
+                    <FormControl>
+                      <SelectTrigger className="h-11 border-slate-700 bg-slate-900">
+                        <SelectValue placeholder="No team" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent className="border-slate-800 bg-slate-900 text-slate-200">
+                      <SelectItem value="none">No team</SelectItem>
+                      {teams.map((team) => (
+                        <SelectItem key={team.id} value={String(team.id)}>
+                          {team.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
               name="due_date"
               render={({ field }) => (
                 <FormItem>
@@ -313,19 +444,34 @@ export function CreateTaskDialog({ projectId, sprintId, methodology, onTaskCreat
                 <FormItem>
                   <FormLabel className="flex justify-between items-center">
                       Description
-                      <button
+                      <div className="flex items-center gap-3">
+                        <button
                           type="button"
                           onClick={handleGenerateAI}
                           disabled={isAiLoading}
                           className="text-xs text-blue-400 flex items-center cursor-pointer hover:text-blue-300 transition disabled:opacity-50"
-                      >
+                        >
                           {isAiLoading ? (
                               <Loader2 className="w-3 h-3 mr-1 animate-spin" />
                           ) : (
                               <Sparkles className="w-3 h-3 mr-1" />
                           )}
                           {isAiLoading ? "Generating..." : "Generate with AI"}
-                      </button>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleRefineSpec}
+                          disabled={isAiLoading}
+                          className="text-xs text-emerald-400 flex items-center cursor-pointer hover:text-emerald-300 transition disabled:opacity-50"
+                        >
+                          {isAiLoading ? (
+                            <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                          ) : (
+                            <Sparkles className="w-3 h-3 mr-1" />
+                          )}
+                          Refine spec
+                        </button>
+                      </div>
                   </FormLabel>
                   <FormControl>
                     <Textarea 
@@ -338,6 +484,48 @@ export function CreateTaskDialog({ projectId, sprintId, methodology, onTaskCreat
                 </FormItem>
               )}
             />
+
+            {lastEstimate && supportsStoryPoints && (
+              <div className="rounded-2xl border border-blue-500/20 bg-blue-500/10 p-3 text-xs text-blue-100">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="font-semibold">
+                    Estimate confidence: {lastEstimate.confidence}%
+                  </span>
+                  <span className="rounded-full border border-blue-400/30 px-2 py-0.5">
+                    {lastEstimate.source || "ai"}
+                  </span>
+                </div>
+                <p className="mt-2 leading-5 text-blue-100/80">
+                  {lastEstimate.reasoning}
+                </p>
+              </div>
+            )}
+
+            {lastRefinedSpec?.suggested_subtasks?.length ? (
+              <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 p-3">
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2 text-sm font-semibold text-emerald-100">
+                    <CheckCircle2 className="h-4 w-4 text-emerald-300" />
+                    AI suggested checklist
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setCreateAiSubtasks((value) => !value)}
+                    className="rounded-full border border-emerald-400/30 px-2.5 py-1 text-xs text-emerald-100 transition hover:bg-emerald-500/10"
+                  >
+                    {createAiSubtasks ? "Will create subtasks" : "Text only"}
+                  </button>
+                </div>
+                <div className="space-y-2">
+                  {lastRefinedSpec.suggested_subtasks.slice(0, 6).map((subtask) => (
+                    <div key={subtask} className="flex items-start gap-2 text-xs leading-5 text-emerald-50/85">
+                      <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-300" />
+                      <span>{subtask}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
 
             <DialogFooter className="pt-2">
                <Button type="button" variant="ghost" onClick={() => setOpen(false)} className="text-slate-400 hover:text-white">Cancel</Button>

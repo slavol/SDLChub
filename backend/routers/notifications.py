@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -8,8 +8,10 @@ from backend.database.session import get_db
 from backend.models.notification import Notification
 from backend.models.project import ProjectMember, Task
 from backend.models.user import User
+from backend.realtime import broadcast_user_event
 from backend.routers.auth import get_current_user
 from backend.schemas.notification import NotificationOut
+from backend.utils.notifications import generate_due_task_reminders as generate_due_task_reminders_for_scope
 from backend.utils.permissions import check_project_permission, require_project_permission
 
 
@@ -63,6 +65,7 @@ def mark_all_notifications_read(
     )
 
     db.commit()
+    broadcast_user_event(current_user.id, "notification.read_all", {"updated": updated})
     return {"updated": updated}
 
 
@@ -121,64 +124,36 @@ def _create_notification(
         metadata_json=metadata_json or "{}",
     )
     db.add(notification)
+    db.flush()
+    broadcast_user_event(
+        user_id,
+        "notification.created",
+        {
+            "id": notification.id,
+            "project_id": project_id,
+            "task_id": task_id,
+            "notification_type": notification_type,
+            "title": title,
+            "link_url": link_url,
+        },
+    )
     return notification
 
 
 @router.post("/generate-reminders")
-def generate_due_task_reminders(
+def generate_due_task_reminders_endpoint(
     project_id: int | None = Query(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    now = datetime.utcnow()
-    due_soon_limit = now + timedelta(days=2)
-
-    query = db.query(Task).filter(Task.assignee_id == current_user.id)
-
     if project_id is not None:
         check_project_permission(db, current_user.id, project_id)
-        query = query.filter(Task.project_id == project_id)
 
-    tasks = query.all()
-    created = 0
-
-    for task in tasks:
-        if _enum_value(task.status) == "DONE" or not task.due_date:
-            continue
-
-        due_date = task.due_date.replace(tzinfo=None) if task.due_date.tzinfo else task.due_date
-
-        if due_date < now:
-            notification_type = "TASK_OVERDUE"
-            title = f"{task.key} is overdue"
-            message = f"{task.title} was due on {due_date.strftime('%Y-%m-%d')}."
-        elif due_date <= due_soon_limit:
-            notification_type = "TASK_DUE_SOON"
-            title = f"{task.key} is due soon"
-            message = f"{task.title} is due on {due_date.strftime('%Y-%m-%d')}."
-        else:
-            continue
-
-        if _notification_exists(
-            db,
-            user_id=current_user.id,
-            notification_type=notification_type,
-            task_id=task.id,
-        ):
-            continue
-
-        _create_notification(
-            db,
-            user_id=current_user.id,
-            notification_type=notification_type,
-            title=title,
-            message=message,
-            project_id=task.project_id,
-            task_id=task.id,
-            link_url=f"/dashboard/tasks/{task.id}",
-        )
-        created += 1
-
+    created = generate_due_task_reminders_for_scope(
+        db,
+        user_id=current_user.id,
+        project_id=project_id,
+    )
     db.commit()
     return {"created": created}
 
@@ -273,5 +248,6 @@ def mark_notification_read(
         notification.read_at = datetime.utcnow()
         db.commit()
         db.refresh(notification)
+        broadcast_user_event(current_user.id, "notification.read", {"id": notification.id})
 
     return notification

@@ -17,12 +17,15 @@ import {
   KanbanSquare,
   LayoutDashboard,
   LogOut,
+  MessageSquareWarning,
   PlusCircle,
   Settings,
+  ShieldCheck,
   Users,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { BrandMark } from "@/components/brand-mark";
 import { UserAvatar, resolveMediaUrl } from "@/components/user-avatar";
 import {
   DropdownMenu,
@@ -33,6 +36,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
+import { useRealtimeEvent } from "@/hooks/use-realtime-event";
 import { getMyProjects, Project } from "@/services/project";
 import { getUnreadNotificationCount } from "@/services/notification";
 import { useAuthStore } from "@/store/use-auth-store";
@@ -128,6 +132,18 @@ export function AppSidebar({ methodology, role, projectName }: SidebarProps) {
     };
   }, []);
 
+  useRealtimeEvent((message) => {
+    if (
+      message.type === "notification.created" ||
+      message.type === "notification.read" ||
+      message.type === "notification.read_all"
+    ) {
+      getUnreadNotificationCount()
+        .then(setUnreadNotifications)
+        .catch(() => setUnreadNotifications(0));
+    }
+  }, []);
+
   const activeProject = useMemo(() => {
     if (!currentProject) return null;
 
@@ -162,6 +178,7 @@ export function AppSidebar({ methodology, role, projectName }: SidebarProps) {
       ? [{ name: "Backlog", href: "/dashboard/backlog", icon: FileText }]
       : []),
     { name: "Team", href: "/dashboard/team", icon: Users },
+    { name: "Support", href: "/dashboard/support", icon: MessageSquareWarning },
     ...(isAdmin
       ? [{ name: "Settings", href: "/dashboard/settings", icon: Settings }]
       : []),
@@ -189,13 +206,16 @@ export function AppSidebar({ methodology, role, projectName }: SidebarProps) {
     <aside className="flex h-screen w-[272px] shrink-0 flex-col border-r border-slate-800 bg-slate-950 text-slate-200">
       <div className="border-b border-slate-800 px-4 py-4">
         <div className="flex items-center justify-between gap-3">
-          <div className="min-w-0">
-            <h2 className="truncate text-xl font-semibold leading-tight text-white">
-              SDLC Hub
-            </h2>
-            <p className="truncate text-xs text-slate-500">
-              Adaptive project workspace
-            </p>
+          <div className="flex min-w-0 items-center gap-3">
+            <BrandMark className="h-10 w-10 shrink-0 rounded-2xl" />
+            <div className="min-w-0">
+              <h2 className="truncate text-xl font-semibold leading-tight text-white">
+                SDLC Hub
+              </h2>
+              <p className="truncate text-xs text-slate-500">
+                Adaptive project workspace
+              </p>
+            </div>
           </div>
 
           <Link
@@ -364,6 +384,16 @@ export function AppSidebar({ methodology, role, projectName }: SidebarProps) {
             <p className="truncate text-xs text-slate-500">{user?.email}</p>
           </div>
         </Link>
+
+        {user?.is_global_admin && (
+          <Link
+            href="/admin"
+            className="mb-3 flex items-center gap-3 rounded-xl border border-blue-500/25 bg-blue-500/10 px-3 py-2.5 text-sm font-semibold text-blue-200 transition hover:border-blue-400/40 hover:bg-blue-500/15"
+          >
+            <ShieldCheck className="h-4 w-4" />
+            Global Admin Console
+          </Link>
+        )}
 
         <Button
           variant="ghost"

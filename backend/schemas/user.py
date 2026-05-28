@@ -20,6 +20,7 @@ class UserLogin(BaseModel):
 class UserOut(UserBase):
     id: int
     is_active: bool
+    is_global_admin: bool = False
 
     class Config:
         # Asta îi spune lui Pydantic să accepte obiecte SQLAlchemy
