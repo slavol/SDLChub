@@ -2,8 +2,13 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  Activity,
+  Archive,
+  ArchiveRestore,
+  AlertTriangle,
   Bot,
   CheckCircle2,
+  Download,
   FolderKanban,
   MessageSquare,
   RefreshCw,
@@ -12,6 +17,7 @@ import {
   ShieldCheck,
   Send,
   Ticket,
+  Trash2,
   UserCog,
   Users,
 } from "lucide-react";
@@ -20,6 +26,14 @@ import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { UserAvatar, resolveMediaUrl } from "@/components/user-avatar";
@@ -28,7 +42,13 @@ import {
   AdminOverview,
   AdminProject,
   AdminUser,
+  AiUsageLog,
   createSupportTicketComment,
+  deleteAdminProject,
+  deleteSupportTicket,
+  deleteSupportTicketComment,
+  downloadAdminCsv,
+  getAdminAiUsage,
   getAdminErrors,
   getAdminOverview,
   getAdminProjects,
@@ -36,6 +56,7 @@ import {
   getAdminUsers,
   HttpErrorLog,
   SupportTicket,
+  updateAdminProjectArchive,
   updateAdminTicket,
   updateAdminUser,
 } from "@/services/admin";
@@ -73,14 +94,14 @@ function MetricCard({
   detail: string;
 }) {
   return (
-    <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-5 shadow-xl shadow-slate-950/20">
+    <div className="rounded-xl border border-slate-800 bg-slate-950/80 p-4 shadow-xl shadow-slate-950/20">
       <div className="flex items-center justify-between gap-3">
-        <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-blue-500/25 bg-blue-500/10 text-blue-200">
+        <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-blue-500/25 bg-blue-500/10 text-blue-200">
           <Icon className="h-5 w-5" />
         </div>
-        <p className="text-3xl font-semibold text-white">{value}</p>
+        <p className="text-2xl font-semibold text-white">{value}</p>
       </div>
-      <div className="mt-4">
+      <div className="mt-3">
         <p className="text-sm font-semibold text-white">{label}</p>
         <p className="mt-1 text-sm text-slate-500">{detail}</p>
       </div>
@@ -96,11 +117,16 @@ export default function AdminConsolePage() {
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [tickets, setTickets] = useState<SupportTicket[]>([]);
   const [errors, setErrors] = useState<HttpErrorLog[]>([]);
+  const [aiUsage, setAiUsage] = useState<AiUsageLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
   const [ticketFilter, setTicketFilter] = useState("ALL");
   const [errorFilter, setErrorFilter] = useState("ALL");
+  const [projectStatusFilter, setProjectStatusFilter] = useState("ACTIVE");
   const [commentDrafts, setCommentDrafts] = useState<Record<number, string>>({});
+  const [projectToDelete, setProjectToDelete] = useState<AdminProject | null>(null);
+  const [deleteConfirmation, setDeleteConfirmation] = useState("");
+  const [projectActionId, setProjectActionId] = useState<number | null>(null);
 
   const loadAdminData = useCallback(async () => {
     setLoading(true);
@@ -111,12 +137,14 @@ export default function AdminConsolePage() {
         userData,
         ticketData,
         errorData,
+        aiUsageData,
       ] = await Promise.all([
         getAdminOverview(),
         getAdminProjects(),
         getAdminUsers(),
         getAdminTickets(),
         getAdminErrors(),
+        getAdminAiUsage(),
       ]);
 
       setOverview(overviewData);
@@ -124,6 +152,7 @@ export default function AdminConsolePage() {
       setUsers(userData);
       setTickets(ticketData);
       setErrors(errorData);
+      setAiUsage(aiUsageData);
     } catch (error: unknown) {
       toast.error(getApiErrorMessage(error, "Admin data could not be loaded."));
     } finally {
@@ -150,12 +179,17 @@ export default function AdminConsolePage() {
   const filteredProjects = useMemo(
     () =>
       projects.filter((project) => {
+        const statusMatches =
+          projectStatusFilter === "ALL" ||
+          (projectStatusFilter === "ACTIVE" && !project.is_archived) ||
+          (projectStatusFilter === "ARCHIVED" && project.is_archived);
+        if (!statusMatches) return false;
         if (!normalizedQuery) return true;
-        return `${project.name} ${project.key} ${project.owner_name || ""} ${project.owner_email || ""}`
+        return `${project.name} ${project.key} ${project.methodology} ${project.owner_name || ""} ${project.owner_email || ""}`
           .toLowerCase()
           .includes(normalizedQuery);
       }),
-    [normalizedQuery, projects]
+    [normalizedQuery, projectStatusFilter, projects]
   );
 
   const filteredTickets = useMemo(
@@ -192,8 +226,23 @@ export default function AdminConsolePage() {
     [errorFilter, errors, normalizedQuery]
   );
 
+  const filteredAiUsage = useMemo(
+    () =>
+      aiUsage.filter((item) => {
+        if (!normalizedQuery) return true;
+        return `${item.feature} ${item.source || ""} ${item.user_name || ""} ${item.project_name || ""}`
+          .toLowerCase()
+          .includes(normalizedQuery);
+      }),
+    [aiUsage, normalizedQuery]
+  );
+
   const globalAdmins = users.filter((user) => user.is_global_admin).length;
   const activeUsers = users.filter((user) => user.is_active).length;
+  const activeProjects = projects.filter((project) => !project.is_archived).length;
+  const archivedProjects = projects.length - activeProjects;
+  const criticalTickets = tickets.filter((ticket) => ticket.priority === "CRITICAL").length;
+  const serverErrors = errors.filter((error) => error.status_code >= 500).length;
   const ticketColumns = useMemo(
     () =>
       ticketStatuses.map((status) => ({
@@ -245,6 +294,30 @@ export default function AdminConsolePage() {
     }
   };
 
+  const handleDeleteTicket = async (ticket: SupportTicket) => {
+    try {
+      await deleteSupportTicket(ticket.id);
+      setTickets((current) => current.filter((item) => item.id !== ticket.id));
+      toast.success("Ticket deleted.");
+    } catch (error: unknown) {
+      toast.error(getApiErrorMessage(error, "Ticket could not be deleted."));
+    }
+  };
+
+  const handleDeleteTicketComment = async (
+    ticket: SupportTicket,
+    commentId: number
+  ) => {
+    try {
+      await deleteSupportTicketComment(ticket.id, commentId);
+      const refreshedTickets = await getAdminTickets();
+      setTickets(refreshedTickets);
+      toast.success("Comment deleted.");
+    } catch (error: unknown) {
+      toast.error(getApiErrorMessage(error, "Comment could not be deleted."));
+    }
+  };
+
   const handleUserUpdate = async (
     user: AdminUser,
     data: { is_active?: boolean; is_global_admin?: boolean }
@@ -260,30 +333,71 @@ export default function AdminConsolePage() {
     }
   };
 
+  const handleExport = async (kind: "projects" | "users" | "ai-usage") => {
+    try {
+      await downloadAdminCsv(kind);
+      toast.success("CSV export started.");
+    } catch (error: unknown) {
+      toast.error(getApiErrorMessage(error, "CSV export failed."));
+    }
+  };
+
+  const handleProjectArchive = async (project: AdminProject) => {
+    setProjectActionId(project.id);
+    try {
+      const updated = await updateAdminProjectArchive(
+        project.id,
+        !project.is_archived
+      );
+      setProjects((current) =>
+        current.map((item) => (item.id === updated.id ? updated : item))
+      );
+      toast.success(updated.is_archived ? "Project archived." : "Project restored.");
+    } catch (error: unknown) {
+      toast.error(getApiErrorMessage(error, "Project status could not be updated."));
+    } finally {
+      setProjectActionId(null);
+    }
+  };
+
+  const handleProjectDelete = async () => {
+    if (!projectToDelete) return;
+
+    setProjectActionId(projectToDelete.id);
+    try {
+      await deleteAdminProject(projectToDelete.id, deleteConfirmation);
+      setProjects((current) =>
+        current.filter((project) => project.id !== projectToDelete.id)
+      );
+      setProjectToDelete(null);
+      setDeleteConfirmation("");
+      toast.success("Project deleted.");
+    } catch (error: unknown) {
+      toast.error(getApiErrorMessage(error, "Project could not be deleted."));
+    } finally {
+      setProjectActionId(null);
+    }
+  };
+
   return (
-    <div className="mx-auto max-w-7xl space-y-6 p-6 text-slate-100 lg:p-8">
-      <section className="flex flex-col gap-4 border-b border-slate-800 pb-6 lg:flex-row lg:items-end lg:justify-between">
-        <div>
-          <div className="flex items-center gap-3">
-            <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-blue-500/25 bg-blue-500/10 text-blue-200">
+    <div className="mx-auto max-w-[1500px] space-y-5 p-5 text-slate-100 lg:p-6">
+      <section className="rounded-xl border border-slate-800 bg-slate-950/80 shadow-xl shadow-slate-950/20">
+        <div className="flex flex-col gap-4 border-b border-slate-800 p-5 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex items-center gap-4">
+            <div className="flex h-12 w-12 items-center justify-center rounded-xl border border-blue-500/25 bg-blue-500/10 text-blue-200">
               <ShieldCheck className="h-6 w-6" />
             </div>
             <div>
-              <p className="text-sm font-medium uppercase tracking-[0.22em] text-blue-300">
-                Platform Console
+              <p className="text-[11px] font-medium uppercase tracking-[0.22em] text-blue-300">
+                Platform Operations
               </p>
-              <h1 className="text-3xl font-semibold tracking-tight text-white">
-                Global Admin
+              <h1 className="text-2xl font-semibold tracking-tight text-white">
+                Global Admin Console
               </h1>
             </div>
           </div>
-          <p className="mt-3 max-w-2xl text-slate-400">
-            Consola separata pentru administrarea platformei: utilizatori,
-            proiecte, tichete de suport si erori aplicatie.
-          </p>
-        </div>
 
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
           <div className="relative">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
             <Input
@@ -301,6 +415,26 @@ export default function AdminConsolePage() {
             <RefreshCw className="mr-2 h-4 w-4" />
             Refresh
           </Button>
+          </div>
+        </div>
+
+        <div className="grid gap-3 p-4 md:grid-cols-4">
+          <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-3">
+            <p className="text-xs text-slate-500">Active projects</p>
+            <p className="mt-1 text-xl font-semibold text-white">{activeProjects}</p>
+          </div>
+          <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-3">
+            <p className="text-xs text-slate-500">Archived</p>
+            <p className="mt-1 text-xl font-semibold text-white">{archivedProjects}</p>
+          </div>
+          <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-3">
+            <p className="text-xs text-slate-500">Critical tickets</p>
+            <p className="mt-1 text-xl font-semibold text-white">{criticalTickets}</p>
+          </div>
+          <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-3">
+            <p className="text-xs text-slate-500">Server errors</p>
+            <p className="mt-1 text-xl font-semibold text-white">{serverErrors}</p>
+          </div>
         </div>
       </section>
 
@@ -315,7 +449,7 @@ export default function AdminConsolePage() {
           icon={FolderKanban}
           label="Projects"
           value={overview?.projects ?? "-"}
-          detail={`${overview?.tasks ?? 0} tasks total`}
+          detail={`${activeProjects} active, ${overview?.tasks ?? 0} tasks`}
         />
         <MetricCard
           icon={Ticket}
@@ -333,7 +467,7 @@ export default function AdminConsolePage() {
           icon={Bot}
           label="AI"
           value={overview?.ai_configured ? "On" : "Off"}
-          detail={`${overview?.ai_requests ?? 0} tracked requests`}
+          detail={`${overview?.ai_requests ?? 0} total · ${overview?.ai_requests_24h ?? 0} in 24h`}
         />
       </section>
 
@@ -348,9 +482,20 @@ export default function AdminConsolePage() {
               Administrare conturi, status si acces Global Admin.
             </p>
           </div>
-          <Badge className="w-fit border-blue-500/30 bg-blue-500/10 text-blue-200">
-            {filteredUsers.length} shown
-          </Badge>
+          <div className="flex flex-wrap gap-2">
+            <Badge className="w-fit border-blue-500/30 bg-blue-500/10 text-blue-200">
+              {filteredUsers.length} shown
+            </Badge>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => handleExport("users")}
+              className="rounded-lg border-slate-700 bg-slate-950 text-slate-300 hover:bg-slate-800 hover:text-white"
+            >
+              <Download className="mr-2 h-4 w-4 text-emerald-300" />
+              CSV
+            </Button>
+          </div>
         </div>
 
         <div className="divide-y divide-slate-800">
@@ -451,20 +596,55 @@ export default function AdminConsolePage() {
 
       <section
         id="projects"
-        className="rounded-2xl border border-slate-800 bg-slate-950/70 shadow-xl shadow-slate-950/20"
+        className="rounded-xl border border-slate-800 bg-slate-950/80 shadow-xl shadow-slate-950/20"
       >
-        <div className="border-b border-slate-800 p-5">
-          <h2 className="text-lg font-semibold text-white">Projects</h2>
-          <p className="mt-1 text-sm text-slate-500">
-            Workspace-uri create in platforma si incarcarea lor curenta.
-          </p>
+        <div className="flex flex-col gap-4 border-b border-slate-800 p-5 xl:flex-row xl:items-center xl:justify-between">
+          <div>
+            <h2 className="text-lg font-semibold text-white">Project Registry</h2>
+            <p className="mt-1 text-sm text-slate-500">
+              Workspaces, methodology state and destructive admin actions.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {["ACTIVE", "ARCHIVED", "ALL"].map((status) => (
+              <Button
+                key={status}
+                size="sm"
+                variant="outline"
+                onClick={() => setProjectStatusFilter(status)}
+                className={
+                  projectStatusFilter === status
+                    ? "rounded-lg border-blue-500 bg-blue-600 text-white hover:bg-blue-500"
+                    : "rounded-lg border-slate-700 bg-slate-950 text-slate-300 hover:bg-slate-800 hover:text-white"
+                }
+              >
+                {status}
+              </Button>
+            ))}
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => handleExport("projects")}
+              className="rounded-lg border-slate-700 bg-slate-950 text-slate-300 hover:bg-slate-800 hover:text-white"
+            >
+              <Download className="mr-2 h-4 w-4 text-blue-300" />
+              CSV
+            </Button>
+          </div>
         </div>
 
-        <div className="divide-y divide-slate-800">
+        <div className="overflow-x-auto">
+          <div className="grid min-w-[980px] grid-cols-[1.4fr_150px_150px_150px_220px] border-b border-slate-800 px-5 py-3 text-xs font-medium uppercase tracking-[0.14em] text-slate-600">
+            <span>Workspace</span>
+            <span>Method</span>
+            <span>Load</span>
+            <span>Created</span>
+            <span className="text-right">Actions</span>
+          </div>
           {filteredProjects.map((project) => (
             <div
               key={project.id}
-              className="grid gap-4 p-5 lg:grid-cols-[1fr_auto_auto]"
+              className="grid min-w-[980px] grid-cols-[1.4fr_150px_150px_150px_220px] items-center gap-4 border-b border-slate-800 px-5 py-4 last:border-b-0"
             >
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
@@ -474,9 +654,11 @@ export default function AdminConsolePage() {
                   <Badge className="border-blue-500/30 bg-blue-500/10 text-blue-200">
                     {project.key}
                   </Badge>
-                  <Badge className="border-slate-700 bg-slate-900 text-slate-300">
-                    {project.methodology}
-                  </Badge>
+                  {project.is_archived && (
+                    <Badge className="border-amber-500/30 bg-amber-500/10 text-amber-200">
+                      Archived
+                    </Badge>
+                  )}
                 </div>
                 <p className="mt-2 truncate text-sm text-slate-500">
                   Admin: {project.owner_name || "Unassigned"} ·{" "}
@@ -484,24 +666,52 @@ export default function AdminConsolePage() {
                 </p>
               </div>
 
-              <div className="grid grid-cols-2 gap-3 text-sm">
-                <div className="rounded-xl border border-slate-800 bg-slate-900/70 px-4 py-3">
-                  <p className="text-2xl font-semibold text-white">
-                    {project.members_count}
-                  </p>
-                  <p className="text-slate-500">members</p>
-                </div>
-                <div className="rounded-xl border border-slate-800 bg-slate-900/70 px-4 py-3">
-                  <p className="text-2xl font-semibold text-white">
-                    {project.tasks_count}
-                  </p>
-                  <p className="text-slate-500">tasks</p>
-                </div>
+              <Badge className="w-fit border-slate-700 bg-slate-900 text-slate-300">
+                {project.methodology}
+              </Badge>
+
+              <div className="text-sm text-slate-300">
+                <p className="font-semibold text-white">
+                  {project.tasks_count} tasks
+                </p>
+                <p className="text-xs text-slate-500">
+                  {project.members_count} members
+                </p>
               </div>
 
-              <p className="text-sm text-slate-500 lg:text-right">
+              <p className="text-sm text-slate-500">
                 {formatDate(project.created_at)}
               </p>
+
+              <div className="flex justify-end gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={projectActionId === project.id}
+                  className="rounded-lg border-slate-700 bg-slate-950 text-slate-300 hover:bg-slate-800 hover:text-white"
+                  onClick={() => handleProjectArchive(project)}
+                >
+                  {project.is_archived ? (
+                    <ArchiveRestore className="mr-2 h-4 w-4" />
+                  ) : (
+                    <Archive className="mr-2 h-4 w-4" />
+                  )}
+                  {project.is_archived ? "Restore" : "Archive"}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={projectActionId === project.id}
+                  className="rounded-lg border-red-500/30 bg-red-500/10 text-red-200 hover:bg-red-500/20 hover:text-white"
+                  onClick={() => {
+                    setProjectToDelete(project);
+                    setDeleteConfirmation("");
+                  }}
+                >
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  Delete
+                </Button>
+              </div>
             </div>
           ))}
 
@@ -606,30 +816,46 @@ export default function AdminConsolePage() {
                       comments · {formatDate(ticket.created_at)}
                     </div>
 
-                    {(ticket.comments || []).slice(-2).map((comment) => (
-                      <div
-                        key={comment.id}
-                        className={
-                          comment.is_admin_note
-                            ? "mt-3 rounded-xl border border-blue-500/25 bg-blue-500/10 p-3"
-                            : "mt-3 rounded-xl border border-slate-800 bg-slate-950/70 p-3"
-                        }
-                      >
-                        <div className="mb-1 flex items-center justify-between gap-2">
-                          <p className="truncate text-xs font-semibold text-white">
-                            {comment.author_name ||
-                              comment.author_email ||
-                              "User"}
-                          </p>
-                          <p className="shrink-0 text-[11px] text-slate-600">
-                            {formatDate(comment.created_at)}
-                          </p>
-                        </div>
-                        <p className="line-clamp-3 text-xs leading-5 text-slate-300">
-                          {comment.body}
-                        </p>
+                    {(ticket.comments || []).length > 0 && (
+                      <div className="mt-3 max-h-72 space-y-2 overflow-y-auto pr-1">
+                        {(ticket.comments || []).map((comment) => (
+                          <div
+                            key={comment.id}
+                            className={
+                              comment.is_admin_note
+                                ? "rounded-xl border border-blue-500/25 bg-blue-500/10 p-3"
+                                : "rounded-xl border border-slate-800 bg-slate-950/70 p-3"
+                            }
+                          >
+                            <div className="mb-1 flex items-center justify-between gap-2">
+                              <p className="truncate text-xs font-semibold text-white">
+                                {comment.author_name ||
+                                  comment.author_email ||
+                                  "User"}
+                              </p>
+                              <div className="flex shrink-0 items-center gap-2">
+                                <p className="text-[11px] text-slate-600">
+                                  {formatDate(comment.created_at)}
+                                </p>
+                                <button
+                                  type="button"
+                                  className="rounded-md p-1 text-slate-600 transition hover:bg-red-500/10 hover:text-red-300"
+                                  onClick={() =>
+                                    handleDeleteTicketComment(ticket, comment.id)
+                                  }
+                                  title="Delete comment"
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </button>
+                              </div>
+                            </div>
+                            <p className="whitespace-pre-wrap text-xs leading-5 text-slate-300">
+                              {comment.body}
+                            </p>
+                          </div>
+                        ))}
                       </div>
-                    ))}
+                    )}
 
                     <div className="mt-4 space-y-2">
                       <Textarea
@@ -688,6 +914,15 @@ export default function AdminConsolePage() {
                         </Button>
                       ))}
                     </div>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="mt-3 h-8 w-full rounded-lg border-red-500/30 bg-red-500/10 text-xs text-red-200 hover:bg-red-500/20 hover:text-white"
+                      onClick={() => handleDeleteTicket(ticket)}
+                    >
+                      <Trash2 className="mr-2 h-3.5 w-3.5" />
+                      Delete ticket
+                    </Button>
                   </div>
                 ))}
 
@@ -699,6 +934,76 @@ export default function AdminConsolePage() {
               </div>
             </div>
           ))}
+        </div>
+      </section>
+
+      <section
+        id="ai-usage"
+        className="rounded-2xl border border-slate-800 bg-slate-950/70 shadow-xl shadow-slate-950/20"
+      >
+        <div className="flex flex-col gap-3 border-b border-slate-800 p-5 md:flex-row md:items-center md:justify-between">
+          <div>
+            <h2 className="text-lg font-semibold text-white">AI Usage</h2>
+            <p className="mt-1 text-sm text-slate-500">
+              Cereri AI contorizate pentru audit si raportare licenta.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Badge className="w-fit border-violet-500/30 bg-violet-500/10 text-violet-200">
+              {filteredAiUsage.length} events
+            </Badge>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => handleExport("ai-usage")}
+              className="rounded-lg border-slate-700 bg-slate-950 text-slate-300 hover:bg-slate-800 hover:text-white"
+            >
+              <Download className="mr-2 h-4 w-4 text-violet-300" />
+              CSV
+            </Button>
+          </div>
+        </div>
+
+        <div className="divide-y divide-slate-800">
+          {filteredAiUsage.slice(0, 20).map((item) => (
+            <div
+              key={item.id}
+              className="grid gap-3 p-4 text-sm lg:grid-cols-[220px_1fr_160px_190px]"
+            >
+              <div className="flex items-center gap-2">
+                <Activity className="h-4 w-4 text-violet-300" />
+                <div className="min-w-0">
+                  <p className="truncate font-semibold text-white">
+                    {item.feature.replace("_", " ")}
+                  </p>
+                  <p className="text-xs text-slate-500">
+                    {item.provider} · {item.source || "unknown"}
+                  </p>
+                </div>
+              </div>
+              <p className="truncate text-slate-400">
+                {item.project_name || "No project"} · {item.user_name || "Unknown user"}
+              </p>
+              <Badge
+                className={
+                  item.status === "ERROR"
+                    ? "w-fit border-red-500/30 bg-red-500/10 text-red-200"
+                    : "w-fit border-emerald-500/30 bg-emerald-500/10 text-emerald-200"
+                }
+              >
+                {item.status}
+              </Badge>
+              <p className="text-slate-500 lg:text-right">
+                {formatDate(item.created_at)}
+              </p>
+            </div>
+          ))}
+
+          {!loading && filteredAiUsage.length === 0 && (
+            <div className="p-8 text-sm text-slate-500">
+              No AI usage has been recorded yet.
+            </div>
+          )}
         </div>
       </section>
 
@@ -775,6 +1080,80 @@ export default function AdminConsolePage() {
           )}
         </div>
       </section>
+
+      <Dialog
+        open={Boolean(projectToDelete)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setProjectToDelete(null);
+            setDeleteConfirmation("");
+          }
+        }}
+      >
+        <DialogContent className="border-slate-800 bg-slate-950 text-slate-100 sm:max-w-xl">
+          <DialogHeader>
+            <div className="mb-2 flex h-12 w-12 items-center justify-center rounded-xl border border-red-500/30 bg-red-500/10 text-red-200">
+              <AlertTriangle className="h-6 w-6" />
+            </div>
+            <DialogTitle className="text-white">Delete project permanently</DialogTitle>
+            <DialogDescription className="text-slate-400">
+              This removes the workspace, tasks, sprints, teams, calendar events,
+              documentation and GitHub history linked to this project. AI usage
+              rows are kept for audit, but detached from the deleted project.
+            </DialogDescription>
+          </DialogHeader>
+
+          {projectToDelete && (
+            <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-4">
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="truncate font-semibold text-white">
+                    {projectToDelete.name}
+                  </p>
+                  <p className="mt-1 text-sm text-slate-500">
+                    Type <span className="font-semibold text-red-200">{projectToDelete.key}</span> to confirm.
+                  </p>
+                </div>
+                <Badge className="border-red-500/30 bg-red-500/10 text-red-200">
+                  {projectToDelete.key}
+                </Badge>
+              </div>
+
+              <Input
+                value={deleteConfirmation}
+                onChange={(event) => setDeleteConfirmation(event.target.value)}
+                placeholder={projectToDelete.key}
+                className="mt-4 h-11 rounded-xl border-slate-700 bg-slate-950 text-slate-100 placeholder:text-slate-600"
+              />
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              className="rounded-xl border-slate-700 bg-slate-950 text-slate-300 hover:bg-slate-800 hover:text-white"
+              onClick={() => {
+                setProjectToDelete(null);
+                setDeleteConfirmation("");
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              className="rounded-xl bg-red-600 text-white hover:bg-red-500"
+              disabled={
+                !projectToDelete ||
+                deleteConfirmation.trim().toUpperCase() !== projectToDelete.key ||
+                projectActionId === projectToDelete?.id
+              }
+              onClick={handleProjectDelete}
+            >
+              <Trash2 className="mr-2 h-4 w-4" />
+              Delete project
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

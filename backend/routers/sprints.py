@@ -13,6 +13,7 @@ from backend.routers.auth import get_current_user
 from backend.schemas.sprint import SprintOut
 from backend.services.ai_service import generate_release_notes
 from backend.utils.permissions import check_project_permission, require_project_permission
+from backend.utils.ai_usage import record_ai_usage
 
 
 router = APIRouter(prefix="/sprints", tags=["Sprints"])
@@ -224,10 +225,18 @@ def generate_sprint_release_notes(
         if task.status != TaskStatus.DONE
     ]
 
-    return generate_release_notes(
+    result = generate_release_notes(
         sprint_name=sprint.name,
         sprint_goal=sprint.goal,
         completed_tasks=completed_tasks,
         unfinished_tasks=unfinished_tasks,
         context="Software sprint release notes for SDLC Hub project management",
     )
+    record_ai_usage(
+        db,
+        user_id=current_user.id,
+        project_id=sprint.project_id,
+        feature="RELEASE_NOTES",
+        source=result.get("source"),
+    )
+    return result

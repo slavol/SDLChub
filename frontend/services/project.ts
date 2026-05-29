@@ -9,6 +9,7 @@ export interface Project {
   description?: string | null;
   methodology: Methodology | string;
   workflow_config?: ProjectWorkflowConfig | null;
+  is_archived?: boolean;
   owner_id: number;
   created_at?: string;
   logo_url?: string | null;

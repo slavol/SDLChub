@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
-import { Loader2 } from "lucide-react";
+import { usePathname, useRouter } from "next/navigation";
+import { AlertTriangle, Archive, Loader2 } from "lucide-react";
 
 import { AppSidebar } from "@/components/dashboard/app-sidebar";
 import { RealtimeBridge } from "@/components/realtime/realtime-bridge";
@@ -16,6 +16,7 @@ export default function DashboardLayout({
   children: React.ReactNode;
 }) {
   const router = useRouter();
+  const pathname = usePathname();
   const currentUser = useAuthStore((state) => state.user);
   const { currentProject, setCurrentProject } = useProjectStore();
 
@@ -23,18 +24,31 @@ export default function DashboardLayout({
   const [projectName, setProjectName] = useState<string>("");
   const [role, setRole] = useState<string>("Member");
   const [loading, setLoading] = useState(true);
+  const isArchived = Boolean(currentProject?.is_archived);
+  const archivedReadOnly = isArchived && pathname !== "/dashboard/support";
 
   useEffect(() => {
     const loadProjectContext = async () => {
       try {
         let project = currentProject;
+        const projects = await getMyProjects();
 
         if (!project) {
-          const projects = await getMyProjects();
           project = projects[0] ?? null;
 
           if (project) {
             setCurrentProject(project);
+          }
+        } else {
+          const freshProject = projects.find((item) => item.id === project?.id);
+          if (
+            freshProject &&
+            (freshProject.is_archived !== project.is_archived ||
+              freshProject.methodology !== project.methodology ||
+              freshProject.name !== project.name)
+          ) {
+            project = freshProject;
+            setCurrentProject(freshProject);
           }
         }
 
@@ -83,7 +97,28 @@ export default function DashboardLayout({
       <AppSidebar methodology={methodology} role={role} projectName={projectName} />
 
       <main className="flex-1 overflow-y-auto bg-slate-950">
-        {children}
+        {isArchived && (
+          <div className="sticky top-0 z-40 border-b border-amber-500/25 bg-amber-950/80 px-6 py-3 text-amber-50 shadow-xl shadow-slate-950/25 backdrop-blur">
+            <div className="flex flex-wrap items-center gap-3">
+              <span className="flex h-9 w-9 items-center justify-center rounded-xl border border-amber-400/30 bg-amber-500/15">
+                <Archive className="h-4 w-4" />
+              </span>
+              <div className="min-w-0">
+                <p className="text-sm font-semibold">
+                  Project archived
+                </p>
+                <p className="text-xs text-amber-100/75">
+                  This workspace is available for review only. Editing, creation
+                  and workflow actions are disabled until a Global Admin restores it.
+                </p>
+              </div>
+              <AlertTriangle className="ml-auto h-4 w-4 text-amber-200" />
+            </div>
+          </div>
+        )}
+        <div className={archivedReadOnly ? "pointer-events-none opacity-60" : ""}>
+          {children}
+        </div>
       </main>
     </div>
   );

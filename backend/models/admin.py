@@ -73,3 +73,28 @@ class HttpErrorLog(Base):
     @property
     def user_name(self):
         return self.user.full_name if self.user else None
+
+
+class AiUsageLog(Base):
+    __tablename__ = "ai_usage_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    project_id = Column(Integer, ForeignKey("projects.id"), nullable=True)
+    feature = Column(String, nullable=False)
+    provider = Column(String, default="gemini", nullable=False)
+    source = Column(String, nullable=True)
+    status = Column(String, default="SUCCESS", nullable=False)
+    detail = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    user = relationship("User", foreign_keys=[user_id])
+    project = relationship("Project", foreign_keys=[project_id])
+
+    @property
+    def user_name(self):
+        return self.user.full_name if self.user else None
+
+    @property
+    def project_name(self):
+        return self.project.name if self.project else None

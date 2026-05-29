@@ -26,6 +26,7 @@ from backend.schemas.project import (
 from backend.services.ai_advisor import get_methodology_recommendation, get_role_suggestions
 from backend.utils.email import send_project_invitation_email
 from backend.utils.permissions import check_project_permission, parse_role_permissions, require_project_permission
+from backend.utils.ai_usage import record_ai_usage
 
 
 router = APIRouter(prefix="/projects", tags=["Projects"])
@@ -72,6 +73,8 @@ DEFAULT_ROLE_PERMISSIONS = {
     "CALENDAR_DELETE": False,
 }
 
+SPRINT_PERMISSION_KEYS = {"SPRINT_CREATE", "SPRINT_START", "SPRINT_CLOSE"}
+
 
 class JoinRequest(BaseModel):
     code: str
@@ -100,7 +103,7 @@ def serialize_member(member: ProjectMember) -> dict:
     return {
         "membership_id": member.id,
         "user": member.user,
-        "role": _serialize_role(member.role) if member.role else None,
+        "role": _serialize_role(member.role, member.project) if member.role else None,
         "team": {
             "id": member.team.id,
             "project_id": member.team.project_id,
@@ -222,17 +225,33 @@ def join_project(
 @router.post("/ai-recommend", response_model=AIResponse)
 def ask_ai_methodology(
     request: AIRequest,
+    db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    return get_methodology_recommendation(request.model_dump())
+    result = get_methodology_recommendation(request.model_dump())
+    record_ai_usage(
+        db,
+        user_id=current_user.id,
+        feature="METHODOLOGY_ADVISOR",
+        source="gemini" if result.get("confidence_score", 0) else "fallback",
+    )
+    return result
 
 
 @router.post("/ai-roles")
 def ask_ai_roles(
     request: AIRoleRequest,
+    db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    return get_role_suggestions(request.methodology, request.description)
+    result = get_role_suggestions(request.methodology, request.description)
+    record_ai_usage(
+        db,
+        user_id=current_user.id,
+        feature="ROLE_SUGGESTIONS",
+        source="gemini" if result.get("roles") else "fallback",
+    )
+    return result
 
 
 @router.post("/create_full", response_model=ProjectOut)
@@ -398,9 +417,14 @@ def get_my_project_permissions(
     if is_project_owner or is_project_admin:
         permissions.update(PROJECT_ADMIN_PERMISSIONS)
 
+    permissions = _normalize_permissions_for_methodology(
+        project.methodology,
+        permissions,
+    )
+
     return {
         "membership_id": membership.id,
-        "role": _serialize_role(membership.role) if membership.role else None,
+        "role": _serialize_role(membership.role, project) if membership.role else None,
         "permissions": permissions,
         "is_project_owner": is_project_owner,
         "is_project_admin": is_project_admin,
@@ -459,6 +483,22 @@ def _parse_permissions(raw_permissions: str | None) -> dict:
         return {}
 
 
+def _normalize_permissions_for_methodology(
+    methodology: str,
+    permissions: dict | None,
+) -> dict[str, bool]:
+    normalized = {
+        str(key): bool(value)
+        for key, value in (permissions or {}).items()
+    }
+
+    if methodology == "KANBAN":
+        for key in SPRINT_PERMISSION_KEYS:
+            normalized[key] = False
+
+    return normalized
+
+
 DEFAULT_WORKFLOW_CONFIG = {
     "wip_limits": {
         "TODO": None,
@@ -508,18 +548,26 @@ def _serialize_project(project: Project) -> dict:
         "description": project.description,
         "methodology": project.methodology,
         "workflow_config": _parse_workflow_config(project.workflow_config),
+        "is_archived": project.is_archived,
         "owner_id": project.owner_id,
         "created_at": project.created_at,
     }
 
 
-def _serialize_role(role: Role) -> dict:
+def _serialize_role(role: Role, project: Project | None = None) -> dict:
+    permissions = _parse_permissions(role.permissions)
+    if project:
+        permissions = _normalize_permissions_for_methodology(
+            project.methodology,
+            permissions,
+        )
+
     return {
         "id": role.id,
         "project_id": role.project_id,
         "name": role.name,
         "description": role.description,
-        "permissions": _parse_permissions(role.permissions),
+        "permissions": permissions,
     }
 
 
@@ -1202,9 +1250,12 @@ def get_project_roles(
     current_user: User = Depends(get_current_user),
 ):
     ensure_project_member(project_id, current_user.id, db)
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found.")
 
     roles = db.query(Role).filter(Role.project_id == project_id).order_by(Role.id.asc()).all()
-    return [_serialize_role(role) for role in roles]
+    return [_serialize_role(role, project) for role in roles]
 
 
 @router.put("/{project_id}/roles/{role_id}/permissions")
@@ -1216,6 +1267,9 @@ def update_role_permissions(
     current_user: User = Depends(get_current_user),
 ):
     require_project_permission(db, current_user.id, project_id, "ROLE_MANAGE")
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found.")
 
     role = db.query(Role).filter(
         Role.id == role_id,
@@ -1231,12 +1285,14 @@ def update_role_permissions(
             detail="Project Admin permissions cannot be edited.",
         )
 
-    role.permissions = json.dumps(data.permissions)
+    role.permissions = json.dumps(
+        _normalize_permissions_for_methodology(project.methodology, data.permissions)
+    )
 
     db.commit()
     db.refresh(role)
 
-    return _serialize_role(role)
+    return _serialize_role(role, project)
 
 
 @router.get("/{project_id}/invitations")
@@ -1516,14 +1572,19 @@ def create_project_role(
         project_id=project_id,
         name=role_name,
         description=data.description,
-        permissions=json.dumps(data.permissions or DEFAULT_ROLE_PERMISSIONS),
+        permissions=json.dumps(
+            _normalize_permissions_for_methodology(
+                project.methodology,
+                data.permissions or DEFAULT_ROLE_PERMISSIONS,
+            )
+        ),
     )
 
     db.add(role)
     db.commit()
     db.refresh(role)
 
-    return _serialize_role(role)
+    return _serialize_role(role, project)
 
 
 @router.put("/{project_id}/roles/{role_id}")
@@ -1535,6 +1596,9 @@ def update_project_role(
     current_user: User = Depends(get_current_user),
 ):
     require_project_permission(db, current_user.id, project_id, "ROLE_MANAGE")
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found.")
 
     role = db.query(Role).filter(
         Role.id == role_id,
@@ -1573,12 +1637,17 @@ def update_project_role(
         role.description = update_data["description"]
 
     if "permissions" in update_data and update_data["permissions"] is not None:
-        role.permissions = json.dumps(update_data["permissions"])
+        role.permissions = json.dumps(
+            _normalize_permissions_for_methodology(
+                project.methodology,
+                update_data["permissions"],
+            )
+        )
 
     db.commit()
     db.refresh(role)
 
-    return _serialize_role(role)
+    return _serialize_role(role, project)
 
 
 @router.delete("/{project_id}/roles/{role_id}")
@@ -2693,6 +2762,14 @@ def get_project_workload_suggestions(
                 "reason": "The current workload distribution looks balanced based on active tasks, overdue work and story points.",
             }
         )
+
+    record_ai_usage(
+        db,
+        user_id=current_user.id,
+        project_id=project_id,
+        feature="WORKLOAD_BALANCER",
+        source="algorithm",
+    )
 
     return {
         "summary": (

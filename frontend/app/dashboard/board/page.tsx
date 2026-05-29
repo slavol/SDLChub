@@ -28,11 +28,14 @@ import { CSS } from "@dnd-kit/utilities";
 import {
   ExternalLink,
   AlertTriangle,
+  BarChart3,
   Loader2,
   CalendarClock,
   CheckCircle,
   CircleDot,
+  Gauge,
   GripVertical,
+  KanbanSquare,
   UserRound,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -53,6 +56,7 @@ import { getProjectTasks, updateTask, Task, TaskStatus, TaskPriority } from "@/s
 import { completeSprint, getProjectSprints } from "@/services/sprint";
 import { getApiErrorMessage } from "@/lib/api-error";
 import { useProjectStore } from "@/store/use-project-store";
+import type { Project } from "@/services/project";
 
 // ==========================================
 // CONSTANTS & HELPERS
@@ -84,6 +88,20 @@ function formatTaskDate(value?: string | null) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return null;
   return date.toLocaleDateString([], { month: "short", day: "numeric" });
+}
+
+function projectSnapshotChanged(current: Project | null, next: Project) {
+  if (!current) return true;
+
+  return (
+    current.id !== next.id ||
+    current.name !== next.name ||
+    current.key !== next.key ||
+    current.methodology !== next.methodology ||
+    current.description !== next.description ||
+    JSON.stringify(current.workflow_config || null) !==
+      JSON.stringify(next.workflow_config || null)
+  );
 }
 
 // ==========================================
@@ -136,8 +154,8 @@ function TaskCard({
       {...attributes}
       {...listeners}
       className={cn(
-        "group relative overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/85 p-4 shadow-sm transition-all cursor-grab active:cursor-grabbing",
-        "hover:-translate-y-0.5 hover:border-blue-500/35 hover:bg-slate-900 hover:shadow-xl hover:shadow-slate-950/25",
+        "group relative overflow-hidden rounded-lg border border-slate-800 bg-slate-900/90 p-4 shadow-sm transition-all cursor-grab active:cursor-grabbing",
+        "hover:-translate-y-0.5 hover:border-blue-500/35 hover:bg-slate-900 hover:shadow-lg hover:shadow-slate-950/25",
         isOverlay && "rotate-2 scale-105 border-blue-500 shadow-2xl shadow-blue-950/30 cursor-grabbing z-50"
       )}
     >
@@ -147,10 +165,10 @@ function TaskCard({
       {/* Header Task (Key, Priority, Actions) */}
       <div className="mb-3 flex items-start justify-between gap-3 pl-1">
         <div className="flex min-w-0 flex-wrap items-center gap-2">
-          <Badge variant="outline" className="border-slate-700 bg-slate-950 font-mono text-[10px] text-slate-300">
+          <Badge variant="outline" className="rounded-md border-slate-700 bg-slate-950 font-mono text-[10px] text-slate-300">
             {task.key}
           </Badge>
-          <Badge variant="outline" className={cn("border text-[10px]", priorityColor[task.priority])}>
+          <Badge variant="outline" className={cn("rounded-md border text-[10px]", priorityColor[task.priority])}>
             {task.priority}
           </Badge>
         </div>
@@ -160,7 +178,7 @@ function TaskCard({
           <Link
             href={`/dashboard/tasks/${task.id}`}
             onPointerDown={(event) => event.stopPropagation()}
-            className="rounded-lg p-1 text-slate-500 opacity-0 transition hover:bg-slate-800 hover:text-blue-300 group-hover:opacity-100"
+            className="rounded-md p-1 text-slate-500 opacity-0 transition hover:bg-slate-800 hover:text-blue-300 group-hover:opacity-100"
             aria-label={`Open ${task.key}`}
           >
             <ExternalLink className="h-4 w-4" />
@@ -177,7 +195,7 @@ function TaskCard({
       <div className="mt-auto flex items-center justify-between gap-3 pl-1">
         <div className="flex min-w-0 items-center gap-2 text-xs text-slate-500">
           {showStoryPoints && (
-            <Badge variant="secondary" className="h-6 rounded-lg bg-slate-800 px-2 text-xs text-slate-300 hover:bg-slate-800">
+            <Badge variant="secondary" className="h-6 rounded-md bg-slate-800 px-2 text-xs text-slate-300 hover:bg-slate-800">
               {task.story_points ? `${task.story_points} pts` : "No est."}
             </Badge>
           )}
@@ -241,22 +259,22 @@ function BoardColumn({
     <div
       ref={setNodeRef}
       className={cn(
-        "flex h-full min-w-[340px] w-[340px] flex-col rounded-2xl border bg-slate-950/55 shadow-xl shadow-slate-950/20",
+        "flex h-full min-w-[360px] w-[360px] flex-col rounded-lg border bg-slate-950/70 shadow-xl shadow-slate-950/20",
         limitExceeded ? "border-red-500/45" : "border-slate-800"
       )}
     >
-      <div className="flex items-center justify-between border-b border-slate-800 p-4">
+      <div className="flex items-center justify-between border-b border-slate-800 bg-slate-900/50 p-4">
         <div className="flex items-center gap-2">
           <div className={cn("h-2.5 w-2.5 rounded-full", color)} />
           <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-300">{title}</h3>
-          <Badge variant="secondary" className="ml-1 rounded-lg bg-slate-800 text-slate-400 hover:bg-slate-800">
+          <Badge variant="secondary" className="ml-1 rounded-md bg-slate-800 text-slate-400 hover:bg-slate-800">
             {tasks.length}
           </Badge>
           {typeof wipLimit === "number" && wipLimit > 0 && (
             <Badge
               variant="outline"
               className={cn(
-                "rounded-lg text-[10px]",
+                "rounded-md text-[10px]",
                 limitExceeded
                   ? "border-red-500/40 bg-red-500/10 text-red-200"
                   : "border-slate-700 bg-slate-900 text-slate-400"
@@ -277,7 +295,7 @@ function BoardColumn({
             ))}
 
             {tasks.length === 0 && (
-              <div className="rounded-2xl border border-dashed border-slate-800 bg-slate-900/35 p-6 text-center">
+              <div className="rounded-lg border border-dashed border-slate-800 bg-slate-900/35 p-6 text-center">
                 <CircleDot className="mx-auto mb-3 h-6 w-6 text-slate-700" />
                 <p className="text-sm font-medium text-slate-500">No tasks here</p>
                 <p className="mt-1 text-xs text-slate-600">Drop work into this lane.</p>
@@ -344,7 +362,9 @@ export default function BoardPage() {
             getProjectSprints(pid),
           ]);
 
-          setCurrentProject(freshProject);
+          if (projectSnapshotChanged(project, freshProject)) {
+            setCurrentProject(freshProject);
+          }
           setMethodology(freshProject.methodology);
           setWipLimits(freshProject.workflow_config?.wip_limits || {});
           setTasks(remoteTasks);
@@ -497,53 +517,98 @@ export default function BoardPage() {
   const activeTasks = tasks.filter((task) => task.status !== TaskStatus.DONE).length;
   const doneTasks = tasks.filter((task) => task.status === TaskStatus.DONE).length;
   const reviewTasks = tasks.filter((task) => task.status === TaskStatus.REVIEW).length;
+  const inProgressTasks = tasks.filter((task) => task.status === TaskStatus.IN_PROGRESS).length;
+  const wipAlerts = supportsWipLimits
+    ? COLUMNS_CONFIG.filter((column) => {
+        const limit = wipLimits[column.id];
+        if (typeof limit !== "number" || limit <= 0) return false;
+        return tasks.filter((task) => task.status === column.id).length > limit;
+      }).length
+    : 0;
 
   return (
     <div className="flex h-full flex-col bg-slate-950 text-slate-50">
       
       {/* --- HEADER --- */}
-      <div className="sticky top-0 z-10 border-b border-slate-800 bg-slate-950/90 p-6 backdrop-blur">
-        <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+      <div className="sticky top-0 z-10 border-b border-slate-800 bg-slate-950/95 px-6 py-5 backdrop-blur">
+        <div className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
           
           {/* Titlu și Info */}
           <div>
             <div className="mb-3 flex flex-wrap items-center gap-2">
-              <Badge className="bg-blue-600 text-white">
+              <Badge className="rounded-md bg-blue-600 text-white">
                 {isScrumLike ? "Sprint board" : "Kanban board"}
               </Badge>
               {isScrumLike && activeSprintId && (
-                <Badge className="border-green-500/20 bg-green-500/10 text-green-400">
+                <Badge className="rounded-md border-green-500/20 bg-green-500/10 text-green-400">
                   Running
                 </Badge>
               )}
               {isScrumLike && !activeSprintId && (
-                <Badge className="border-slate-700 bg-slate-800 text-slate-400">
+                <Badge className="rounded-md border-slate-700 bg-slate-800 text-slate-400">
                   No active sprint
+                </Badge>
+              )}
+              {supportsWipLimits && (
+                <Badge
+                  className={cn(
+                    "rounded-md",
+                    wipAlerts > 0
+                      ? "border-red-500/30 bg-red-500/10 text-red-200"
+                      : "border-emerald-500/25 bg-emerald-500/10 text-emerald-200"
+                  )}
+                >
+                  {wipAlerts > 0 ? `${wipAlerts} WIP alerts` : "Flow healthy"}
                 </Badge>
               )}
             </div>
 
-            <h1 className="text-3xl font-semibold tracking-tight text-white">
-              {isScrumLike ? "Active Sprint" : "Kanban Board"}
-            </h1>
-            <p className="mt-2 text-sm text-slate-400">
-              Drag tasks between lanes and open details without losing board context.
-            </p>
+            <div className="flex items-center gap-3">
+              <div className="flex h-11 w-11 items-center justify-center rounded-lg border border-blue-500/25 bg-blue-500/10 text-blue-200">
+                <KanbanSquare className="h-5 w-5" />
+              </div>
+              <div>
+                <h1 className="text-3xl font-semibold tracking-tight text-white">
+                  {isScrumLike ? "Active Sprint" : "Kanban Board"}
+                </h1>
+                <p className="mt-1 text-sm text-slate-400">
+                  {isScrumLike
+                    ? "Focused execution for the currently running sprint."
+                    : "Continuous delivery flow with live WIP pressure."}
+                </p>
+              </div>
+            </div>
           </div>
 
           {/* Statistici Board */}
-          <div className="grid grid-cols-3 gap-3 rounded-2xl border border-slate-800 bg-slate-900/60 p-3">
-            <div className="px-3">
-              <p className="text-xs text-slate-500">Active</p>
-              <p className="mt-1 text-lg font-semibold text-white">{activeTasks}</p>
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+            <div className="rounded-lg border border-slate-800 bg-slate-900/70 px-4 py-3">
+              <div className="mb-2 flex items-center gap-2 text-slate-500">
+                <BarChart3 className="h-4 w-4 text-blue-300" />
+                <p className="text-xs">Active</p>
+              </div>
+              <p className="text-xl font-semibold text-white">{activeTasks}</p>
             </div>
-            <div className="border-x border-slate-800 px-3">
-              <p className="text-xs text-slate-500">Review</p>
-              <p className="mt-1 text-lg font-semibold text-white">{reviewTasks}</p>
+            <div className="rounded-lg border border-slate-800 bg-slate-900/70 px-4 py-3">
+              <div className="mb-2 flex items-center gap-2 text-slate-500">
+                <Gauge className="h-4 w-4 text-cyan-300" />
+                <p className="text-xs">In progress</p>
+              </div>
+              <p className="text-xl font-semibold text-white">{inProgressTasks}</p>
             </div>
-            <div className="px-3">
-              <p className="text-xs text-slate-500">Done</p>
-              <p className="mt-1 text-lg font-semibold text-white">{doneTasks}</p>
+            <div className="rounded-lg border border-slate-800 bg-slate-900/70 px-4 py-3">
+              <div className="mb-2 flex items-center gap-2 text-slate-500">
+                <CircleDot className="h-4 w-4 text-purple-300" />
+                <p className="text-xs">Review</p>
+              </div>
+              <p className="text-xl font-semibold text-white">{reviewTasks}</p>
+            </div>
+            <div className="rounded-lg border border-slate-800 bg-slate-900/70 px-4 py-3">
+              <div className="mb-2 flex items-center gap-2 text-slate-500">
+                <CheckCircle className="h-4 w-4 text-emerald-300" />
+                <p className="text-xs">Done</p>
+              </div>
+              <p className="text-xl font-semibold text-white">{doneTasks}</p>
             </div>
           </div>
         </div>
@@ -561,10 +626,6 @@ export default function BoardPage() {
             </Button>
           )}
 
-          <Button variant="outline" className="border-slate-700 bg-slate-950/60 text-slate-300 hover:bg-slate-900">
-            Filters
-          </Button>
-
           {projectId && canCreateTask && (!isScrumLike || activeSprintId) && (
             <CreateTaskDialog
               projectId={projectId}
@@ -577,7 +638,7 @@ export default function BoardPage() {
       </div>
 
       {/* --- BOARD CONTENT --- */}
-      <div className="flex-1 overflow-x-auto overflow-y-hidden p-6">
+      <div className="flex-1 overflow-x-auto overflow-y-hidden bg-slate-950 p-5">
         {loading ? (
           <div className="flex h-full items-center justify-center">
             <Loader2 className="h-10 w-10 animate-spin text-blue-500" />

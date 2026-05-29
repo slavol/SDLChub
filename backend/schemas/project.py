@@ -54,6 +54,7 @@ class ProjectOut(BaseModel):
     description: Optional[str] = None
     methodology: str
     logo_url: Optional[str] = None
+    is_archived: bool = False
     owner_id: int
     created_at: datetime
 

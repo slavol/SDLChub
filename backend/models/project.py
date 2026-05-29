@@ -16,6 +16,7 @@ class Project(Base):
     description = Column(String, nullable=True)
     methodology = Column(String, default="SCRUM")
     workflow_config = Column(Text, nullable=True)
+    is_archived = Column(Boolean, default=False, nullable=False)
     owner_id = Column(Integer, ForeignKey("users.id")) # <--- Asta exista deja
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 

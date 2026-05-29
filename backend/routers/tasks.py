@@ -36,6 +36,7 @@ from backend.services.documentation_service import enum_value, upsert_task_docum
 from backend.services.ai_service import estimate_story_points, generate_task_metadata, refine_task_spec
 from backend.utils.permissions import check_project_permission, require_project_permission
 from backend.utils.notifications import notify_comment_mentions, notify_task_assigned
+from backend.utils.ai_usage import record_ai_usage
 
 
 router = APIRouter(prefix="/tasks", tags=["Tasks"])
@@ -202,8 +203,24 @@ def generate_task_ai(
 
     try:
         description = generate_task_metadata(req.title, req.priority, req.context)
+        record_ai_usage(
+            db,
+            user_id=current_user.id,
+            project_id=req.project_id,
+            feature="TASK_GENERATE",
+            source="gemini" if description else "fallback",
+        )
         return {"description": description}
     except Exception as exc:
+        record_ai_usage(
+            db,
+            user_id=current_user.id,
+            project_id=req.project_id,
+            feature="TASK_GENERATE",
+            source="error",
+            status="ERROR",
+            detail=str(exc),
+        )
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
@@ -216,12 +233,20 @@ def refine_task_ai(
     if req.project_id:
         require_project_permission(db, current_user.id, req.project_id, "AI_USE")
 
-    return refine_task_spec(
+    result = refine_task_spec(
         title=req.title,
         description=req.description,
         priority=req.priority,
         context=req.context,
     )
+    record_ai_usage(
+        db,
+        user_id=current_user.id,
+        project_id=req.project_id,
+        feature="SPEC_REFINER",
+        source=result.get("source"),
+    )
+    return result
 
 
 @router.post("/ai-estimate")
@@ -233,12 +258,20 @@ def estimate_task_ai(
     if req.project_id:
         require_project_permission(db, current_user.id, req.project_id, "AI_USE")
 
-    return estimate_story_points(
+    result = estimate_story_points(
         title=req.title,
         description=req.description,
         priority=req.priority,
         context=req.context,
     )
+    record_ai_usage(
+        db,
+        user_id=current_user.id,
+        project_id=req.project_id,
+        feature="POKER_ESTIMATOR",
+        source=result.get("source"),
+    )
+    return result
 
 
 @router.get("/project/{project_id}", response_model=List[TaskOut])

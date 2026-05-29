@@ -8,6 +8,7 @@ export interface AdminOverview {
   errors_last_24h: number;
   ai_configured: boolean;
   ai_requests: number;
+  ai_requests_24h: number;
 }
 
 export interface AdminProject {
@@ -15,6 +16,7 @@ export interface AdminProject {
   name: string;
   key: string;
   methodology: string;
+  is_archived: boolean;
   owner_name?: string | null;
   owner_email?: string | null;
   members_count: number;
@@ -71,6 +73,20 @@ export interface AdminUser {
   assigned_tasks_count: number;
 }
 
+export interface AiUsageLog {
+  id: number;
+  user_id?: number | null;
+  user_name?: string | null;
+  project_id?: number | null;
+  project_name?: string | null;
+  feature: string;
+  provider: string;
+  source?: string | null;
+  status: string;
+  detail?: string | null;
+  created_at?: string | null;
+}
+
 export const getAdminOverview = async (): Promise<AdminOverview> => {
   const response = await api.get("/admin/overview");
   return response.data;
@@ -108,11 +124,53 @@ export const getAdminUsers = async (): Promise<AdminUser[]> => {
   return response.data;
 };
 
+export const getAdminAiUsage = async (): Promise<AiUsageLog[]> => {
+  const response = await api.get("/admin/ai-usage");
+  return response.data;
+};
+
+export const downloadAdminCsv = async (
+  kind: "projects" | "users" | "ai-usage"
+): Promise<void> => {
+  const response = await api.get(`/admin/export/${kind}.csv`, {
+    responseType: "blob",
+  });
+
+  const url = window.URL.createObjectURL(new Blob([response.data]));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `sdlc-hub-${kind}.csv`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.URL.revokeObjectURL(url);
+};
+
 export const updateAdminUser = async (
   userId: number,
   data: { is_active?: boolean; is_global_admin?: boolean }
 ): Promise<AdminUser> => {
   const response = await api.put(`/admin/users/${userId}`, data);
+  return response.data;
+};
+
+export const updateAdminProjectArchive = async (
+  projectId: number,
+  isArchived: boolean
+): Promise<AdminProject> => {
+  const response = await api.put(`/admin/projects/${projectId}/archive`, {
+    is_archived: isArchived,
+  });
+  return response.data;
+};
+
+export const deleteAdminProject = async (
+  projectId: number,
+  confirmationKey: string
+): Promise<{ message: string }> => {
+  const response = await api.delete(`/admin/projects/${projectId}`, {
+    data: { confirmation_key: confirmationKey },
+  });
   return response.data;
 };
 
@@ -140,5 +198,22 @@ export const createSupportTicketComment = async (
   const response = await api.post(`/admin/tickets/${ticketId}/comments`, {
     body,
   });
+  return response.data;
+};
+
+export const deleteSupportTicket = async (
+  ticketId: number
+): Promise<{ message: string }> => {
+  const response = await api.delete(`/admin/tickets/${ticketId}`);
+  return response.data;
+};
+
+export const deleteSupportTicketComment = async (
+  ticketId: number,
+  commentId: number
+): Promise<{ message: string }> => {
+  const response = await api.delete(
+    `/admin/tickets/${ticketId}/comments/${commentId}`
+  );
   return response.data;
 };

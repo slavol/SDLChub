@@ -1,20 +1,43 @@
 from datetime import datetime, timedelta, timezone
+from io import StringIO
+import csv
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from backend.config import get_settings
 from backend.database.session import get_db
-from backend.models.admin import HttpErrorLog, SupportTicket, SupportTicketComment
-from backend.models.project import Project, ProjectMember, Task
+from backend.models.admin import AiUsageLog, HttpErrorLog, SupportTicket, SupportTicketComment
+from backend.models.documentation import DocumentationPage
+from backend.models.github import GitHubEvent
+from backend.models.notification import Notification
+from backend.models.project import (
+    CalendarEvent,
+    Invitation,
+    Project,
+    ProjectAuditLog,
+    ProjectMember,
+    ProjectTeam,
+    Role,
+    Sprint,
+    Subtask,
+    Task,
+    TaskAuditLog,
+    TaskComment,
+)
 from backend.models.user import User
+from backend.realtime import broadcast_project_event
 from backend.routers.auth import get_current_user
 from backend.schemas.admin import (
     AdminOverview,
+    AdminProjectArchiveUpdate,
+    AdminProjectDeleteRequest,
     AdminProjectOut,
     AdminUserOut,
     AdminUserUpdate,
+    AiUsageLogOut,
     HttpErrorLogOut,
     SupportTicketCreate,
     SupportTicketCommentCreate,
@@ -33,6 +56,65 @@ def require_global_admin(current_user: User = Depends(get_current_user)) -> User
             detail="Global admin access is required.",
         )
     return current_user
+
+
+def csv_response(filename: str, rows: list[dict]) -> StreamingResponse:
+    buffer = StringIO()
+    if rows:
+        writer = csv.DictWriter(buffer, fieldnames=list(rows[0].keys()))
+        writer.writeheader()
+        writer.writerows(rows)
+    else:
+        buffer.write("")
+
+    return StreamingResponse(
+        iter([buffer.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+def delete_project_tree(db: Session, project_id: int) -> None:
+    task_ids = [
+        task_id
+        for (task_id,) in db.query(Task.id).filter(Task.project_id == project_id).all()
+    ]
+
+    if task_ids:
+        db.query(Notification).filter(Notification.task_id.in_(task_ids)).update(
+            {"task_id": None},
+            synchronize_session=False,
+        )
+        db.query(GitHubEvent).filter(GitHubEvent.task_id.in_(task_ids)).update(
+            {"task_id": None},
+            synchronize_session=False,
+        )
+        db.query(DocumentationPage).filter(DocumentationPage.task_id.in_(task_ids)).update(
+            {"task_id": None},
+            synchronize_session=False,
+        )
+        db.query(TaskAuditLog).filter(TaskAuditLog.task_id.in_(task_ids)).delete(synchronize_session=False)
+        db.query(TaskComment).filter(TaskComment.task_id.in_(task_ids)).delete(synchronize_session=False)
+        db.query(Subtask).filter(Subtask.task_id.in_(task_ids)).delete(synchronize_session=False)
+
+    db.query(Notification).filter(Notification.project_id == project_id).update(
+        {"project_id": None},
+        synchronize_session=False,
+    )
+    db.query(AiUsageLog).filter(AiUsageLog.project_id == project_id).update(
+        {"project_id": None},
+        synchronize_session=False,
+    )
+    db.query(GitHubEvent).filter(GitHubEvent.project_id == project_id).delete(synchronize_session=False)
+    db.query(DocumentationPage).filter(DocumentationPage.project_id == project_id).delete(synchronize_session=False)
+    db.query(CalendarEvent).filter(CalendarEvent.project_id == project_id).delete(synchronize_session=False)
+    db.query(ProjectAuditLog).filter(ProjectAuditLog.project_id == project_id).delete(synchronize_session=False)
+    db.query(Task).filter(Task.project_id == project_id).delete(synchronize_session=False)
+    db.query(Sprint).filter(Sprint.project_id == project_id).delete(synchronize_session=False)
+    db.query(Invitation).filter(Invitation.project_id == project_id).delete(synchronize_session=False)
+    db.query(ProjectMember).filter(ProjectMember.project_id == project_id).delete(synchronize_session=False)
+    db.query(ProjectTeam).filter(ProjectTeam.project_id == project_id).delete(synchronize_session=False)
+    db.query(Role).filter(Role.project_id == project_id).delete(synchronize_session=False)
 
 
 def require_ticket_access(ticket: SupportTicket, current_user: User) -> None:
@@ -65,7 +147,10 @@ def read_admin_overview(
         .filter(HttpErrorLog.created_at >= since)
         .count(),
         "ai_configured": bool(settings.gemini_api_key),
-        "ai_requests": 0,
+        "ai_requests": db.query(AiUsageLog).count(),
+        "ai_requests_24h": db.query(AiUsageLog)
+        .filter(AiUsageLog.created_at >= since)
+        .count(),
     }
 
 
@@ -106,6 +191,7 @@ def list_admin_projects(
             "name": project.name,
             "key": project.key,
             "methodology": project.methodology,
+            "is_archived": project.is_archived,
             "owner_name": owner_name,
             "owner_email": owner_email,
             "members_count": members_count,
@@ -235,6 +321,85 @@ def update_admin_user(
     }
 
 
+@router.put("/projects/{project_id}/archive", response_model=AdminProjectOut)
+def update_admin_project_archive(
+    project_id: int,
+    data: AdminProjectArchiveUpdate,
+    current_user: User = Depends(require_global_admin),
+    db: Session = Depends(get_db),
+):
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found.")
+
+    old_archived_state = project.is_archived
+    project.is_archived = data.is_archived
+    db.add(
+        ProjectAuditLog(
+            project_id=project.id,
+            actor_id=current_user.id,
+            action="ARCHIVE_UPDATED",
+            field="is_archived",
+            old_value=str(old_archived_state),
+            new_value=str(data.is_archived),
+        )
+    )
+    db.commit()
+    db.refresh(project)
+
+    projects = list_admin_projects(current_user, db)
+    updated_project = next(
+        (item for item in projects if item["id"] == project.id),
+        None,
+    )
+
+    broadcast_project_event(
+        project.id,
+        "project.changed",
+        {
+            "action": "archive_updated",
+            "project_id": project.id,
+            "is_archived": project.is_archived,
+            "project": updated_project,
+        },
+    )
+
+    if updated_project:
+        return updated_project
+
+    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found.")
+
+
+@router.delete("/projects/{project_id}")
+def delete_admin_project(
+    project_id: int,
+    data: AdminProjectDeleteRequest,
+    current_user: User = Depends(require_global_admin),
+    db: Session = Depends(get_db),
+):
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found.")
+
+    if data.confirmation_key.strip().upper() != project.key:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Confirmation key does not match project key.",
+        )
+
+    project_key = project.key
+    delete_project_tree(db, project.id)
+    db.delete(project)
+    db.commit()
+
+    broadcast_project_event(
+        project_id,
+        "project.deleted",
+        {"action": "deleted_by_global_admin", "project_id": project_id, "key": project_key},
+    )
+    return {"message": "Project deleted successfully."}
+
+
 @router.get("/errors", response_model=list[HttpErrorLogOut])
 def list_admin_errors(
     _: User = Depends(require_global_admin),
@@ -246,6 +411,95 @@ def list_admin_errors(
         .limit(100)
         .all()
     )
+
+
+@router.get("/ai-usage", response_model=list[AiUsageLogOut])
+def list_ai_usage(
+    _: User = Depends(require_global_admin),
+    db: Session = Depends(get_db),
+):
+    return (
+        db.query(AiUsageLog)
+        .order_by(AiUsageLog.created_at.desc())
+        .limit(200)
+        .all()
+    )
+
+
+@router.get("/export/projects.csv")
+def export_admin_projects_csv(
+    _: User = Depends(require_global_admin),
+    db: Session = Depends(get_db),
+):
+    projects = list_admin_projects(_, db)
+    rows = [
+        {
+            "id": project["id"],
+            "name": project["name"],
+            "key": project["key"],
+            "methodology": project["methodology"],
+            "is_archived": project["is_archived"],
+            "owner_name": project.get("owner_name") or "",
+            "owner_email": project.get("owner_email") or "",
+            "members_count": project["members_count"],
+            "tasks_count": project["tasks_count"],
+            "created_at": project["created_at"].isoformat() if project.get("created_at") else "",
+        }
+        for project in projects
+    ]
+    return csv_response("sdlc-hub-projects.csv", rows)
+
+
+@router.get("/export/users.csv")
+def export_admin_users_csv(
+    _: User = Depends(require_global_admin),
+    db: Session = Depends(get_db),
+):
+    users = list_admin_users(_, db)
+    rows = [
+        {
+            "id": user["id"],
+            "email": user["email"],
+            "full_name": user.get("full_name") or "",
+            "is_active": user["is_active"],
+            "is_global_admin": user["is_global_admin"],
+            "projects_count": user["projects_count"],
+            "owned_projects_count": user["owned_projects_count"],
+            "assigned_tasks_count": user["assigned_tasks_count"],
+        }
+        for user in users
+    ]
+    return csv_response("sdlc-hub-users.csv", rows)
+
+
+@router.get("/export/ai-usage.csv")
+def export_ai_usage_csv(
+    _: User = Depends(require_global_admin),
+    db: Session = Depends(get_db),
+):
+    logs = (
+        db.query(AiUsageLog)
+        .order_by(AiUsageLog.created_at.desc())
+        .limit(1000)
+        .all()
+    )
+    rows = [
+        {
+            "id": log.id,
+            "feature": log.feature,
+            "provider": log.provider,
+            "source": log.source or "",
+            "status": log.status,
+            "user_id": log.user_id or "",
+            "user_name": log.user_name or "",
+            "project_id": log.project_id or "",
+            "project_name": log.project_name or "",
+            "created_at": log.created_at.isoformat() if log.created_at else "",
+            "detail": log.detail or "",
+        }
+        for log in logs
+    ]
+    return csv_response("sdlc-hub-ai-usage.csv", rows)
 
 
 @router.get("/tickets", response_model=list[SupportTicketOut])
@@ -330,6 +584,22 @@ def update_support_ticket(
     return ticket
 
 
+@router.delete("/tickets/{ticket_id}")
+def delete_support_ticket(
+    ticket_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    ticket = db.query(SupportTicket).filter(SupportTicket.id == ticket_id).first()
+    if not ticket:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Ticket not found.")
+
+    require_ticket_access(ticket, current_user)
+    db.delete(ticket)
+    db.commit()
+    return {"message": "Support ticket deleted successfully."}
+
+
 @router.post(
     "/tickets/{ticket_id}/comments",
     response_model=SupportTicketCommentOut,
@@ -357,3 +627,39 @@ def create_support_ticket_comment(
     db.commit()
     db.refresh(comment)
     return comment
+
+
+@router.delete("/tickets/{ticket_id}/comments/{comment_id}")
+def delete_support_ticket_comment(
+    ticket_id: int,
+    comment_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    ticket = db.query(SupportTicket).filter(SupportTicket.id == ticket_id).first()
+    if not ticket:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Ticket not found.")
+
+    require_ticket_access(ticket, current_user)
+
+    comment = (
+        db.query(SupportTicketComment)
+        .filter(
+            SupportTicketComment.id == comment_id,
+            SupportTicketComment.ticket_id == ticket.id,
+        )
+        .first()
+    )
+    if not comment:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Comment not found.")
+
+    if not current_user.is_global_admin and comment.author_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You can delete only your own comments.",
+        )
+
+    db.delete(comment)
+    ticket.updated_at = datetime.now(timezone.utc)
+    db.commit()
+    return {"message": "Comment deleted successfully."}

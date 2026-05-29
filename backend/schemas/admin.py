@@ -12,6 +12,7 @@ class AdminOverview(BaseModel):
     errors_last_24h: int
     ai_configured: bool
     ai_requests: int = 0
+    ai_requests_24h: int = 0
 
 
 class AdminProjectOut(BaseModel):
@@ -19,6 +20,7 @@ class AdminProjectOut(BaseModel):
     name: str
     key: str
     methodology: str
+    is_archived: bool = False
     owner_name: Optional[str] = None
     owner_email: Optional[str] = None
     members_count: int
@@ -87,6 +89,23 @@ class HttpErrorLogOut(BaseModel):
         from_attributes = True
 
 
+class AiUsageLogOut(BaseModel):
+    id: int
+    user_id: Optional[int] = None
+    user_name: Optional[str] = None
+    project_id: Optional[int] = None
+    project_name: Optional[str] = None
+    feature: str
+    provider: str
+    source: Optional[str] = None
+    status: str
+    detail: Optional[str] = None
+    created_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
 class AdminUserOut(BaseModel):
     id: int
     email: str
@@ -102,3 +121,11 @@ class AdminUserOut(BaseModel):
 class AdminUserUpdate(BaseModel):
     is_active: Optional[bool] = None
     is_global_admin: Optional[bool] = None
+
+
+class AdminProjectArchiveUpdate(BaseModel):
+    is_archived: bool
+
+
+class AdminProjectDeleteRequest(BaseModel):
+    confirmation_key: str = Field(min_length=1, max_length=20)

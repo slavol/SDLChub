@@ -1,4 +1,4 @@
-from backend.models.admin import HttpErrorLog, SupportTicket, SupportTicketComment
+from backend.models.admin import AiUsageLog, HttpErrorLog, SupportTicket, SupportTicketComment
 from backend.models.user import User
 from backend.models.notification import Notification
 from backend.models.documentation import DocumentationPage
@@ -23,6 +23,7 @@ __all__ = [
     "SupportTicket",
     "SupportTicketComment",
     "HttpErrorLog",
+    "AiUsageLog",
     "Project",
     "ProjectAuditLog",
     "ProjectMember",

@@ -9,6 +9,7 @@ import {
   MessageSquare,
   RefreshCw,
   Send,
+  Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -21,6 +22,8 @@ import { getApiErrorMessage } from "@/lib/api-error";
 import {
   createSupportTicket,
   createSupportTicketComment,
+  deleteSupportTicket,
+  deleteSupportTicketComment,
   getMySupportTickets,
   getSupportTicket,
   SupportTicket,
@@ -158,6 +161,34 @@ export default function SupportPage() {
       toast.error(getApiErrorMessage(error, "Comment could not be sent."));
     } finally {
       setSendingComment(false);
+    }
+  };
+
+  const handleDeleteSelectedTicket = async () => {
+    if (!selectedTicket) return;
+
+    try {
+      await deleteSupportTicket(selectedTicket.id);
+      setTickets((current) => {
+        const remaining = current.filter((ticket) => ticket.id !== selectedTicket.id);
+        setSelectedTicket(remaining[0] || null);
+        return remaining;
+      });
+      toast.success("Ticket deleted.");
+    } catch (error: unknown) {
+      toast.error(getApiErrorMessage(error, "Ticket could not be deleted."));
+    }
+  };
+
+  const handleDeleteComment = async (commentId: number) => {
+    if (!selectedTicket) return;
+
+    try {
+      await deleteSupportTicketComment(selectedTicket.id, commentId);
+      await refreshSelectedTicket(selectedTicket.id);
+      toast.success("Comment deleted.");
+    } catch (error: unknown) {
+      toast.error(getApiErrorMessage(error, "Comment could not be deleted."));
     }
   };
 
@@ -377,6 +408,15 @@ export default function SupportPage() {
                         Created {formatDate(selectedTicket.created_at)}
                       </p>
                     </div>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="w-fit rounded-xl border-red-500/30 bg-red-500/10 text-red-200 hover:bg-red-500/20 hover:text-white"
+                      onClick={handleDeleteSelectedTicket}
+                    >
+                      <Trash2 className="mr-2 h-4 w-4" />
+                      Delete ticket
+                    </Button>
                   </div>
 
                   <div className="mt-6 grid gap-3 md:grid-cols-4">
@@ -437,7 +477,7 @@ export default function SupportPage() {
                       </h3>
                     </div>
 
-                    <div className="space-y-3">
+                    <div className="max-h-[520px] space-y-3 overflow-y-auto pr-1">
                       {selectedComments.map((item) => (
                         <div
                           key={item.id}
@@ -453,9 +493,21 @@ export default function SupportPage() {
                                 item.author_email ||
                                 (item.author_id === user?.id ? "You" : "User")}
                             </p>
-                            <p className="text-xs text-slate-500">
-                              {formatDate(item.created_at)}
-                            </p>
+                            <div className="flex items-center gap-2">
+                              <p className="text-xs text-slate-500">
+                                {formatDate(item.created_at)}
+                              </p>
+                              {item.author_id === user?.id && (
+                                <button
+                                  type="button"
+                                  className="rounded-md p-1 text-slate-600 transition hover:bg-red-500/10 hover:text-red-300"
+                                  onClick={() => handleDeleteComment(item.id)}
+                                  title="Delete comment"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </button>
+                              )}
+                            </div>
                           </div>
                           <p className="whitespace-pre-wrap text-sm leading-6 text-slate-300">
                             {item.body}

@@ -81,6 +81,7 @@ export function RealtimeBridge() {
               owner_id?: number;
               created_at?: string;
               logo_url?: string | null;
+              is_archived?: boolean;
               workflow_config?: { wip_limits?: Record<string, number | null> } | null;
             };
 
