@@ -34,33 +34,35 @@ def upgrade() -> None:
     op.create_index(op.f("ix_project_teams_id"), "project_teams", ["id"], unique=False)
     op.create_index("ix_project_teams_project_id", "project_teams", ["project_id"], unique=False)
 
-    op.add_column("project_members", sa.Column("team_id", sa.Integer(), nullable=True))
-    op.create_foreign_key(
-        "fk_project_members_team_id_project_teams",
-        "project_members",
-        "project_teams",
-        ["team_id"],
-        ["id"],
-        ondelete="SET NULL",
-    )
+    with op.batch_alter_table("project_members") as batch_op:
+        batch_op.add_column(sa.Column("team_id", sa.Integer(), nullable=True))
+        batch_op.create_foreign_key(
+            "fk_project_members_team_id_project_teams",
+            "project_teams",
+            ["team_id"],
+            ["id"],
+            ondelete="SET NULL",
+        )
 
-    op.add_column("tasks", sa.Column("team_id", sa.Integer(), nullable=True))
-    op.create_foreign_key(
-        "fk_tasks_team_id_project_teams",
-        "tasks",
-        "project_teams",
-        ["team_id"],
-        ["id"],
-        ondelete="SET NULL",
-    )
+    with op.batch_alter_table("tasks") as batch_op:
+        batch_op.add_column(sa.Column("team_id", sa.Integer(), nullable=True))
+        batch_op.create_foreign_key(
+            "fk_tasks_team_id_project_teams",
+            "project_teams",
+            ["team_id"],
+            ["id"],
+            ondelete="SET NULL",
+        )
 
 
 def downgrade() -> None:
-    op.drop_constraint("fk_tasks_team_id_project_teams", "tasks", type_="foreignkey")
-    op.drop_column("tasks", "team_id")
+    with op.batch_alter_table("tasks") as batch_op:
+        batch_op.drop_constraint("fk_tasks_team_id_project_teams", type_="foreignkey")
+        batch_op.drop_column("team_id")
 
-    op.drop_constraint("fk_project_members_team_id_project_teams", "project_members", type_="foreignkey")
-    op.drop_column("project_members", "team_id")
+    with op.batch_alter_table("project_members") as batch_op:
+        batch_op.drop_constraint("fk_project_members_team_id_project_teams", type_="foreignkey")
+        batch_op.drop_column("team_id")
 
     op.drop_index("ix_project_teams_project_id", table_name="project_teams")
     op.drop_index(op.f("ix_project_teams_id"), table_name="project_teams")

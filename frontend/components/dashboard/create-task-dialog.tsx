@@ -26,7 +26,7 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
+import { RichTextEditor } from "@/components/ui/rich-text-editor";
 import {
   Select,
   SelectContent,
@@ -521,10 +521,11 @@ export function CreateTaskDialog({ projectId, sprintId, methodology, onTaskCreat
                       </div>
                   </FormLabel>
                   <FormControl>
-                    <Textarea 
-                        placeholder="Add acceptance criteria and details..." 
-                        className="bg-slate-900 border-slate-700 resize-none h-24" 
-                        {...field} 
+                    <RichTextEditor
+                      value={field.value || ""}
+                      onChange={field.onChange}
+                      placeholder="Add acceptance criteria and delivery notes..."
+                      editorClassName="[&_.ProseMirror]:min-h-[180px]"
                     />
                   </FormControl>
                   <FormMessage />

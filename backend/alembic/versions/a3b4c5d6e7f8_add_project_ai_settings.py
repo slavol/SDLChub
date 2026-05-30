@@ -7,7 +7,7 @@ Create Date: 2026-05-29 00:00:00.000000
 """
 from typing import Sequence, Union
 
-from alembic import op
+from alembic import context, op
 import sqlalchemy as sa
 
 
@@ -27,8 +27,9 @@ def upgrade() -> None:
         sa.Column("ai_provider", sa.String(), nullable=False, server_default="GEMINI"),
     )
     op.add_column("projects", sa.Column("ai_api_key_encrypted", sa.Text(), nullable=True))
-    op.alter_column("projects", "ai_provider_mode", server_default=None)
-    op.alter_column("projects", "ai_provider", server_default=None)
+    if context.get_context().dialect.name != "sqlite":
+        op.alter_column("projects", "ai_provider_mode", server_default=None)
+        op.alter_column("projects", "ai_provider", server_default=None)
 
 
 def downgrade() -> None:

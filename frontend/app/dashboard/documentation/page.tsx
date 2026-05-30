@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   BookOpen,
   FileText,
+  History,
   Loader2,
   Pencil,
   Plus,
@@ -27,7 +28,9 @@ import {
   createDocumentationPage,
   deleteDocumentationPage,
   DocumentationPage,
+  DocumentationRevision,
   generateDocumentationFromTask,
+  getDocumentationPageHistory,
   getProjectDocumentationPages,
   updateDocumentationPage,
 } from "@/services/documentation";
@@ -119,6 +122,8 @@ export default function DocumentationPageRoute() {
   const [pages, setPages] = useState<DocumentationPage[]>([]);
   const [doneTasks, setDoneTasks] = useState<Task[]>([]);
   const [selectedPage, setSelectedPage] = useState<DocumentationPage | null>(null);
+  const [revisions, setRevisions] = useState<DocumentationRevision[]>([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
   const [selectedDoneTaskId, setSelectedDoneTaskId] = useState("");
   const [title, setTitle] = useState("New documentation page");
   const [content, setContent] = useState(emptyContent);
@@ -146,6 +151,7 @@ export default function DocumentationPageRoute() {
         setPages([]);
         setDoneTasks([]);
         setSelectedPage(null);
+        setRevisions([]);
         return;
       }
 
@@ -198,8 +204,30 @@ export default function DocumentationPageRoute() {
     [doneTasks, selectedDoneTaskId]
   );
 
+  const loadPageHistory = useCallback(async (pageId: number | null) => {
+    if (!pageId) {
+      setRevisions([]);
+      return;
+    }
+
+    setLoadingHistory(true);
+    try {
+      const history = await getDocumentationPageHistory(pageId);
+      setRevisions(history);
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, "Could not load page history."));
+    } finally {
+      setLoadingHistory(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadPageHistory(selectedPage?.id ?? null);
+  }, [loadPageHistory, selectedPage?.id]);
+
   const handleNewPage = () => {
     setSelectedPage(null);
+    setRevisions([]);
     setTitle("New documentation page");
     setContent(emptyContent);
     setIsEditing(true);
@@ -234,6 +262,7 @@ export default function DocumentationPageRoute() {
           current.map((page) => (page.id === updated.id ? updated : page))
         );
         setSelectedPage(updated);
+        await loadPageHistory(updated.id);
         setIsEditing(false);
         toast.success("Documentation page updated.");
       } else {
@@ -244,6 +273,7 @@ export default function DocumentationPageRoute() {
 
         setPages((current) => [created, ...current]);
         setSelectedPage(created);
+        setRevisions([]);
         setIsEditing(false);
         toast.success("Documentation page created.");
       }
@@ -307,6 +337,7 @@ export default function DocumentationPageRoute() {
       });
 
       setSelectedPage(generated);
+      await loadPageHistory(generated.id);
       setTitle(generated.title);
       setContent(generated.content);
       setIsEditing(false);
@@ -420,58 +451,118 @@ export default function DocumentationPageRoute() {
       </div>
 
       <div className="grid gap-6 xl:grid-cols-[340px_1fr]">
-        <Card className="border-slate-800 bg-slate-900/70">
-          <CardContent className="p-4">
-            <div className="mb-4 flex items-center justify-between">
-              <h2 className="font-semibold text-white">Pages</h2>
-              <Badge className="border-slate-700 bg-slate-950 text-slate-300">
-                {pages.length}
-              </Badge>
-            </div>
+        <aside className="space-y-4">
+          <Card className="border-slate-800 bg-slate-900/70">
+            <CardContent className="p-4">
+              <div className="mb-4 flex items-center justify-between">
+                <h2 className="font-semibold text-white">Pages</h2>
+                <Badge className="border-slate-700 bg-slate-950 text-slate-300">
+                  {pages.length}
+                </Badge>
+              </div>
 
-            <div className="space-y-2">
-              {pages.map((page) => (
-                <button
-                  key={page.id}
-                  type="button"
-                  onClick={() => handleSelectPage(page)}
-                  className={cn(
-                    "w-full rounded-2xl border p-3 text-left transition",
-                    selectedPage?.id === page.id
-                      ? "border-blue-500/40 bg-blue-500/10"
-                      : "border-slate-800 bg-slate-950/60 hover:border-blue-500/30 hover:bg-slate-950"
-                  )}
-                >
-                  <div className="flex items-start gap-3">
-                    <FileText className="mt-0.5 h-4 w-4 shrink-0 text-blue-300" />
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-semibold text-white">
-                        {page.title}
-                      </p>
-                      <p className="mt-1 text-xs text-slate-500">
-                        Updated {formatDate(page.updated_at)}
-                      </p>
-                      {page.task_id && (
-                        <Badge className="mt-2 border-emerald-500/20 bg-emerald-500/10 text-emerald-200">
-                          Task #{page.task_id}
-                        </Badge>
-                      )}
+              <div className="space-y-2">
+                {pages.map((page) => (
+                  <button
+                    key={page.id}
+                    type="button"
+                    onClick={() => handleSelectPage(page)}
+                    className={cn(
+                      "w-full rounded-2xl border p-3 text-left transition",
+                      selectedPage?.id === page.id
+                        ? "border-blue-500/40 bg-blue-500/10"
+                        : "border-slate-800 bg-slate-950/60 hover:border-blue-500/30 hover:bg-slate-950"
+                    )}
+                  >
+                    <div className="flex items-start gap-3">
+                      <FileText className="mt-0.5 h-4 w-4 shrink-0 text-blue-300" />
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold text-white">
+                          {page.title}
+                        </p>
+                        <p className="mt-1 text-xs text-slate-500">
+                          Updated {formatDate(page.updated_at)}
+                        </p>
+                        {page.task_id && (
+                          <Badge className="mt-2 border-emerald-500/20 bg-emerald-500/10 text-emerald-200">
+                            Task #{page.task_id}
+                          </Badge>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                </button>
-              ))}
+                  </button>
+                ))}
 
-              {pages.length === 0 && (
-                <div className="rounded-2xl border border-dashed border-slate-800 bg-slate-950/60 p-6 text-center">
-                  <BookOpen className="mx-auto mb-3 h-8 w-8 text-slate-600" />
-                  <p className="text-sm text-slate-500">
-                    No documentation pages yet.
-                  </p>
+                {pages.length === 0 && (
+                  <div className="rounded-2xl border border-dashed border-slate-800 bg-slate-950/60 p-6 text-center">
+                    <BookOpen className="mx-auto mb-3 h-8 w-8 text-slate-600" />
+                    <p className="text-sm text-slate-500">
+                      No documentation pages yet.
+                    </p>
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="border-slate-800 bg-slate-900/70">
+            <CardContent className="p-4">
+              <div className="mb-4 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <History className="h-4 w-4 text-violet-300" />
+                  <h2 className="font-semibold text-white">Version history</h2>
                 </div>
-              )}
-            </div>
-          </CardContent>
-        </Card>
+                {loadingHistory ? (
+                  <Loader2 className="h-4 w-4 animate-spin text-violet-300" />
+                ) : (
+                  <Badge className="border-slate-700 bg-slate-950 text-slate-300">
+                    {revisions.length}
+                  </Badge>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                {revisions.slice(0, 8).map((revision) => (
+                  <div
+                    key={revision.id}
+                    className="rounded-2xl border border-slate-800 bg-slate-950/60 p-3"
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <Badge className="border-violet-500/20 bg-violet-500/10 text-violet-200">
+                        {revision.action}
+                      </Badge>
+                      <span className="text-xs text-slate-600">
+                        {formatDate(revision.created_at)}
+                      </span>
+                    </div>
+                    <p className="mt-2 truncate text-sm font-medium text-slate-200">
+                      {revision.title}
+                    </p>
+                    <p className="mt-1 text-xs text-slate-600">
+                      {revision.content.length.toLocaleString()} chars snapshot
+                    </p>
+                  </div>
+                ))}
+
+                {!loadingHistory && selectedPage && revisions.length === 0 && (
+                  <div className="rounded-2xl border border-dashed border-slate-800 bg-slate-950/60 p-5 text-center">
+                    <p className="text-sm text-slate-500">
+                      No previous revisions yet.
+                    </p>
+                  </div>
+                )}
+
+                {!selectedPage && (
+                  <div className="rounded-2xl border border-dashed border-slate-800 bg-slate-950/60 p-5 text-center">
+                    <p className="text-sm text-slate-500">
+                      Select a page to view history.
+                    </p>
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </aside>
 
         <Card className="border-slate-800 bg-slate-900/70">
           <CardContent className="p-6">

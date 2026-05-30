@@ -56,18 +56,47 @@ import { getProjectTasks, updateTask, Task, TaskStatus, TaskPriority } from "@/s
 import { completeSprint, getProjectSprints } from "@/services/sprint";
 import { getApiErrorMessage } from "@/lib/api-error";
 import { useProjectStore } from "@/store/use-project-store";
-import type { Project } from "@/services/project";
+import type { Project, ProjectWorkflowColumn } from "@/services/project";
 
 // ==========================================
 // CONSTANTS & HELPERS
 // ==========================================
 
-const COLUMNS_CONFIG = [
+const DEFAULT_COLUMNS_CONFIG: ProjectWorkflowColumn[] = [
   { id: TaskStatus.TODO, title: "To Do", color: "bg-slate-500" },
   { id: TaskStatus.IN_PROGRESS, title: "In Progress", color: "bg-blue-500" },
   { id: TaskStatus.REVIEW, title: "Code Review", color: "bg-purple-500" },
   { id: TaskStatus.DONE, title: "Done", color: "bg-green-500" },
-];
+].map((column, order) => ({
+  key: column.id,
+  label: column.title,
+  enabled: true,
+  order,
+  color: column.color,
+}));
+
+type BoardColumnConfig = ProjectWorkflowColumn & {
+  id: TaskStatus;
+  title: string;
+  color: string;
+};
+
+function normalizeBoardColumns(columns?: ProjectWorkflowColumn[] | null): BoardColumnConfig[] {
+  const byKey = new Map(DEFAULT_COLUMNS_CONFIG.map((column) => [column.key, column]));
+  for (const column of columns || []) {
+    byKey.set(column.key, { ...byKey.get(column.key), ...column });
+  }
+
+  return Array.from(byKey.values())
+    .filter((column) => Object.values(TaskStatus).includes(column.key as TaskStatus))
+    .sort((a, b) => a.order - b.order)
+    .map((column) => ({
+      ...column,
+      id: column.key as TaskStatus,
+      title: column.label || column.key,
+      color: column.color || "bg-slate-500",
+    }));
+}
 
 const priorityColor = {
   [TaskPriority.CRITICAL]: "text-rose-300 bg-rose-500/10 border-rose-500/30",
@@ -320,6 +349,7 @@ export default function BoardPage() {
   const [projectId, setProjectId] = useState<number | null>(null);
   const [methodology, setMethodology] = useState<string>("SCRUM");
   const [wipLimits, setWipLimits] = useState<Record<string, number | null>>({});
+  const [boardColumns, setBoardColumns] = useState<BoardColumnConfig[]>(normalizeBoardColumns());
   const [activeSprintId, setActiveSprintId] = useState<number | null>(null);
   const [activeTask, setActiveTask] = useState<Task | null>(null);
   const [loading, setLoading] = useState(true);
@@ -367,6 +397,7 @@ export default function BoardPage() {
           }
           setMethodology(freshProject.methodology);
           setWipLimits(freshProject.workflow_config?.wip_limits || {});
+          setBoardColumns(normalizeBoardColumns(freshProject.workflow_config?.columns));
           setTasks(remoteTasks);
           const activeSprint = remoteSprints.find((sprint) => sprint.is_active);
           setActiveSprintId(activeSprint?.id ?? null);
@@ -389,7 +420,11 @@ export default function BoardPage() {
   useRealtimeEvent((message) => {
     if (!projectId || (message.project_id && message.project_id !== projectId)) return;
 
-    if (message.type === "task.changed" || message.type === "sprint.changed") {
+    if (
+      message.type === "task.changed" ||
+      message.type === "sprint.changed" ||
+      message.type === "project.changed"
+    ) {
       loadBoard(false);
     }
   }, [projectId, loadBoard]);
@@ -518,8 +553,11 @@ export default function BoardPage() {
   const doneTasks = tasks.filter((task) => task.status === TaskStatus.DONE).length;
   const reviewTasks = tasks.filter((task) => task.status === TaskStatus.REVIEW).length;
   const inProgressTasks = tasks.filter((task) => task.status === TaskStatus.IN_PROGRESS).length;
+  const visibleColumns = boardColumns.filter(
+    (column) => column.enabled || tasks.some((task) => task.status === column.id)
+  );
   const wipAlerts = supportsWipLimits
-    ? COLUMNS_CONFIG.filter((column) => {
+    ? visibleColumns.filter((column) => {
         const limit = wipLimits[column.id];
         if (typeof limit !== "number" || limit <= 0) return false;
         return tasks.filter((task) => task.status === column.id).length > limit;
@@ -652,7 +690,7 @@ export default function BoardPage() {
             onDragEnd={handleDragEnd}
           >
             <div className="flex h-full gap-6">
-              {COLUMNS_CONFIG.map((col) => (
+              {visibleColumns.map((col) => (
                 <BoardColumn
                   key={col.id}
                   id={col.id}

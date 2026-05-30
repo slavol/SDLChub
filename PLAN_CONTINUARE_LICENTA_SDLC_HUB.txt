@@ -166,6 +166,10 @@ Update 27 mai 2026:
   - frontend/components/dashboard/create-task-dialog.tsx poate asigna Delivery Team la creare task.
   - frontend/app/dashboard/tasks/[taskId]/page.tsx poate schimba Delivery Team din Properties.
   - frontend/app/dashboard/settings/page.tsx include permisiunea TEAM_MANAGE.
+- Team Hierarchy V2:
+  - /dashboard/team afiseaza arbore ierarhic vizual recursiv pentru echipe/subechipe.
+  - fiecare nod de echipa afiseaza membri, task-uri asignate si avataruri pentru membrii directi.
+  - rolurile de coordonare vad card "My team view" cu echipa proprie, membri directi, subechipe si task-uri.
 - Calendar Recurrence V2:
   - backend/models/project.py are recurrence_series_id, recurrence_mode si recurrence_until pe CalendarEvent.
   - migrare Alembic: backend/alembic/versions/ad1e2f3a4b5c_add_calendar_recurrence.py.
@@ -345,31 +349,32 @@ Implementat:
 - comments.
 - audit log.
 - board drag and drop.
+- subtask edit/delete din TaskId, cu audit SUBTASK_UPDATED/SUBTASK_DELETED si realtime task.changed.
+- delete task cu governance: permisiune TASK_DELETE, roluri de guvernanta, confirmare prin cheia task-ului, motiv obligatoriu si Project Audit Log.
+- invalidare estimare/story points cu motiv obligatoriu si audit special ESTIMATE_INVALIDATED.
+- coloane Board configurabile per proiect in workflow_config: label, ordine, vizibilitate si culoare pe statusurile existente.
+- descriere Rich Text reala cu Tiptap pentru creare issue si pagina TaskId.
 
 Lipseste / partial:
-- descriere Rich Text reala cu Tiptap. Acum este textarea simplu.
 - subtask-uri SDLC predefinite: Planificare, Analiza, Design, Implementare, Integrare, Testare.
-- delete task cu governance complet.
 - restrictii granulare bazate pe permisiuni pentru fiecare actiune UI/API.
 - WIP limits pentru Kanban.
-- coloane dinamice configurabile pe proiect.
 - List View tabelar.
 - task teams / echipa asignata pe task, nu doar assignee individual.
-- invalidarea estimarii cu motiv si audit special.
 
 2.3. AI
 Implementat:
 - AI methodology advisor.
 - AI role suggestions.
 - AI task description/spec generation in Create Issue.
-- AI Risk Radar este momentan bazat pe reguli simple, nu analiza Gemini profunda.
-- Workload suggestions exista, dar sunt bazate pe reguli/risk score, nu pe Gemini profund.
+- AI Risk Radar combina semnale din task-uri cu analiza automata a comentariilor pentru bottleneck/risk.
+- Workload suggestions exista pe reguli/risk score, iar explicatiile sunt rafinate prin prompt AI real cand exista provider configurat.
+- Workload page permite drag/drop direct intre membri pentru redistribuirea task-urilor.
 
 Lipseste:
 - Spec Refiner complet: user story + acceptance criteria + subtasks generate structurat.
 - Poker Estimator: sugestie AI pentru story points.
 - Release Notes: rezumat sprint generat automat.
-- Analiza comentariilor pentru bottleneck/risk.
 - contorizare API calls AI pentru Global Admin.
 - fallback UX mai clar cand GEMINI_API_KEY lipseste.
 
@@ -381,11 +386,12 @@ Implementat:
 - Smart transition: PR open -> task mutat in Review.
 - PR merged -> task mutat in Done.
 - pagina /dashboard/devops listeaza evenimentele GitHub legate de proiect.
+- pagina dedicata /dashboard/devops/pull-requests pentru Pull Requests.
+- actiuni manuale de confirmare PR -> Review / Done.
+- mapping automat GitHub sender_login -> user SDLC Hub pe baza de github_username, email local-part sau nume.
 
 Lipseste / partial:
-- pagina PR dedicata cu actiuni de confirmare manuala.
 - ngrok flow documentat pentru webhooks.
-- mapping GitHub user -> user SDLC Hub.
 
 2.5. Reporting
 Implementat:
@@ -409,12 +415,13 @@ Implementat:
 - pagina /dashboard/notifications.
 - @mentions in comentarii prin parser simplu.
 - notificari la task assigned, mention, calendar attendee, due soon/overdue si AI risk.
+- email notifications pentru task assigned, mention, calendar invite/reminder, due soon/overdue si AI risk.
+- preferinte per utilizator pentru canal in-app, canal email si tipuri: task assignments, mentions, calendar, due dates, AI risk.
 - model/tabela Notification.
 - stare read/unread.
 - WebSocket pentru update live: notification.created/read/read_all.
 
 Lipseste / partial:
-- notificari email pentru task assigned, mention si meeting reminder.
 - realtime mai avansat: presence online, typing/comments live fara refetch complet si debounce pentru evenimente rapide.
 
 2.7. Calendar
@@ -463,14 +470,14 @@ Neimplementat:
 - panou erori 400/500.
 
 2.11. Profil Utilizator
-In curs de implementare:
+Implementat:
 - pagina profil/account settings.
 - schimbare nume, email, avatar prin upload local.
 - schimbare parola din profil.
 - afisare proiecte in care se afla utilizatorul si rolul pe fiecare proiect.
+- preferinte notificari in Account Settings.
 
 Ramane de facut ulterior:
-- preferinte notificari.
 - sesiuni active / security log.
 
 2.12. Testare si calitate
@@ -671,7 +678,7 @@ Ramane:
 - WIP historical warnings.
 
 Prioritatea 5 - Notifications si @mentions
-Stadiu 27 mai 2026: implementat functional fara canal live.
+Stadiu 30 mai 2026: implementat functional cu WebSocket, email si preferinte per utilizator.
 
 Backend:
 - tabela notifications:
@@ -682,10 +689,20 @@ Backend:
   - event attendee added.
   - due soon/overdue.
   - AI risk.
-- canal live WebSocket sau SSE:
+- canal live WebSocket:
   - refresh avatar/nume in team, comments, assignee chips;
   - push notificari in-app;
   - invalidare cache task/board/calendar cand alt utilizator modifica datele.
+- email notifications:
+  - task assignments.
+  - mentions.
+  - calendar invites/reminders.
+  - due soon/overdue.
+  - AI risk.
+- user preferences:
+  - canal in-app.
+  - canal email.
+  - categorii task/mentions/calendar/due dates/AI risk.
 
 Frontend:
 - clopotel in topbar/sidebar.
@@ -694,9 +711,7 @@ Frontend:
 - parser @Name in comments.
 
 Ramane:
-- WebSocket/SSE.
-- email notifications pentru task/mention/meeting.
-- preferences per utilizator.
+- typing/comments live fara refetch complet si debounce suplimentar pentru evenimente foarte dese, optional pentru polish.
 
 Prioritatea 6 - Documentation/Wiki
 Stadiu 27 mai 2026: implementat functional.
@@ -1857,12 +1872,618 @@ Verificari batch AL:
 - curl -I http://127.0.0.1:3000/dashboard/settings: 200 OK
 - curl -i http://127.0.0.1:8000/projects/1/audit-logs fara token: 401 OK, endpointul este protejat.
 
-Urmatoarea prioritate recomandata dupa batch AL:
-1. Verificare functionala manuala finala:
-   - login/register/verify, creare proiect, schimbare metodologie, create task, board drag/drop, calendar, admin console.
-2. Polish final pentru licenta:
-   - verificare texte/UI in romana/engleza unde apar inconsistente.
-   - mici ajustari de design pe paginile cele mai folosite daca apar probleme vizuale.
+Batch AM - Fresh clone startup recovery batch 30 mai 2026
+Context:
+- dupa reclonare de pe GitHub proiectul nu mai pornea pentru ca fisierele .env locale nu sunt versionate, frontend-ul nu avea node_modules, iar backend-ul incerca PostgreSQL cu credentiale locale gresite.
+
+Implementat:
+- adaugat .env local pentru masina curenta:
+  - DATABASE_URL=sqlite:///./sdlc_hub_dev.db
+  - mail/AI optionale lasate goale pentru fallback development.
+- adaugat .env.example pentru clone-uri viitoare.
+- adaugat frontend/.env.local local cu NEXT_PUBLIC_API_URL=http://127.0.0.1:8000.
+- adaugat frontend/.env.local.example si exceptie in frontend/.gitignore ca exemplul sa poata fi versionat.
+- backend/config.py are acum fallback DATABASE_URL pe SQLite daca nu exista niciun .env.
+- .gitignore exclude fisiere locale de DB:
+  - *.db
+  - *.sqlite
+  - *.sqlite3
+- README.md contine pasi clari de setup dupa clone:
+  - creare venv.
+  - pip install requirements.
+  - copiere .env.example.
+  - npm install.
+  - alembic upgrade head.
+  - ./start.sh.
+- migrarile Alembic problematice au fost facute compatibile cu SQLite:
+  - 9c0d1e2f3a4b_add_project_teams.py foloseste batch_alter_table pentru FK-uri.
+  - f2a3b4c5d6e7_add_project_archive_flag.py nu mai incearca DROP DEFAULT pe SQLite.
+  - a3b4c5d6e7f8_add_project_ai_settings.py nu mai incearca DROP DEFAULT pe SQLite.
+- rulat npm install in frontend pentru refacerea node_modules local.
+- creat DB local sdlc_hub_dev.db prin migrari Alembic.
+
+Fisiere batch AM:
+- .env.example
+- README.md
+- .gitignore
+- backend/config.py
+- backend/alembic/versions/9c0d1e2f3a4b_add_project_teams.py
+- backend/alembic/versions/f2a3b4c5d6e7_add_project_archive_flag.py
+- backend/alembic/versions/a3b4c5d6e7f8_add_project_ai_settings.py
+- frontend/.gitignore
+- frontend/.env.local.example
+- PLAN_CONTINUARE_LICENTA_SDLC_HUB.txt
+
+Fisiere locale neversionate create:
+- .env
+- frontend/.env.local
+- sdlc_hub_dev.db
+- frontend/node_modules/
+
+Verificari batch AM:
+- .venv/bin/alembic -c backend/alembic.ini upgrade head: OK pe SQLite.
+- .venv/bin/alembic -c backend/alembic.ini current: b4c5d6e7f8a9 (head).
+- npm install: OK.
+- .venv/bin/python -m compileall backend: OK.
+- npm run lint: OK.
+- npm run build: OK, ramane doar warning-ul existent Next `--localstorage-file` fara path valid.
+- ./start.sh: OK.
+- curl http://127.0.0.1:8000/health: OK.
+- curl -I http://127.0.0.1:3000: 200 OK.
+
+Batch AN - PostgreSQL restore si SMTP diagnostics batch 30 mai 2026
+Context:
+- utilizatorul a cerut explicit ca proiectul sa ruleze pe PostgreSQL, nu SQLite, si sa fie rezolvata partea de email.
+
+Implementat / verificat:
+- PostgreSQL local 16/main ruleaza prin systemd:
+  - serviciu activ cu postgres PID 313.
+  - pg_lsclusters poate raporta inconsistent `down`/owner nobody, dar pg_ctl/systemd confirma procesul activ.
+- verificat ca exista userii PostgreSQL:
+  - postgres.
+  - sdlc_user.
+- verificat ca exista baza:
+  - sdlchub.
+- verificat conexiunea Python/psycopg2:
+  - postgresql://sdlc_user:sdlc_password@127.0.0.1:5432/sdlchub conecteaza cu succes.
+- .env local a fost trecut inapoi pe PostgreSQL:
+  - DATABASE_URL=postgresql+psycopg2://sdlc_user:sdlc_password@127.0.0.1:5432/sdlchub.
+- .env.example a fost actualizat sa foloseasca PostgreSQL ca default.
+- backend/config.py are din nou fallback PostgreSQL.
+- Alembic ruleaza pe PostgreSQL:
+  - current: b4c5d6e7f8a9 (head).
+- README.md documenteaza setup-ul PostgreSQL si configurarea Gmail SMTP.
+- adaugat scripts/test_smtp.py:
+  - verifica MAIL_USERNAME, MAIL_PASSWORD, MAIL_FROM, MAIL_SERVER.
+  - trimite email de test prin backend/utils/email.py cand credentialele exista.
+- verificat status SMTP curent:
+  - MAIL_SERVER=smtp.gmail.com.
+  - lipsesc MAIL_USERNAME, MAIL_PASSWORD, MAIL_FROM.
+  - de aceea backend-ul afiseaza corect: SMTP nu este configurat complet.
+
+Important pentru mail:
+- Pentru Gmail SMTP nu functioneaza parola normala a contului.
+- Trebuie App Password generat din Google Account -> Security -> 2-Step Verification -> App passwords.
+- Dupa completarea .env:
+  - MAIL_USERNAME=adresa@gmail.com
+  - MAIL_PASSWORD=app_password_google
+  - MAIL_FROM=adresa@gmail.com
+  - MAIL_SERVER=smtp.gmail.com
+  - MAIL_PORT=587
+  - MAIL_STARTTLS=true
+  - MAIL_SSL_TLS=false
+- apoi se ruleaza:
+  - .venv/bin/python scripts/test_smtp.py adresa@gmail.com
+  - ./start.sh
+
+Fisiere batch AN:
+- .env local
+- .env.example
+- README.md
+- backend/config.py
+- scripts/test_smtp.py
+- PLAN_CONTINUARE_LICENTA_SDLC_HUB.txt
+
+Verificari batch AN:
+- .venv/bin/alembic -c backend/alembic.ini upgrade head: OK pe PostgreSQL.
+- .venv/bin/alembic -c backend/alembic.ini current: b4c5d6e7f8a9 (head).
+- .venv/bin/python -c psycopg2 connect la sdlc_user@sdlchub: OK.
+- ./start.sh: OK.
+- curl http://127.0.0.1:8000/health: OK.
+- curl -I http://127.0.0.1:3000: 200 OK.
+- .venv/bin/python scripts/test_smtp.py slavoliu.preda24@gmail.com: detecteaza corect lipsa MAIL_USERNAME, MAIL_PASSWORD, MAIL_FROM.
+- .venv/bin/python -m compileall backend scripts/test_smtp.py: OK.
+- npm run lint: OK.
+
+Batch AO - SMTP real fix si restart backend batch 30 mai 2026
+Context:
+- utilizatorul a completat variabilele SMTP in .env, dar emailurile tot nu plecau.
+
+Diagnostic:
+- shell-ul citea corect noile valori:
+  - MAIL_USERNAME prezent.
+  - MAIL_PASSWORD prezent.
+  - MAIL_FROM prezent.
+  - MAIL_SERVER=smtp.gmail.com.
+  - MAIL_PORT=587.
+  - MAIL_STARTTLS=true.
+  - MAIL_SSL_TLS=false.
+- backend-ul activ fusese pornit inainte de modificarea .env, iar logul vechi arata in continuare:
+  - SMTP disabled, skipping project invitation email...
+- dupa restart, backend-ul nu mai afiseaza "SMTP nu este configurat complet".
+
+Implementat:
+- adaugat MAIL_TIMEOUT in config:
+  - backend/config.py: mail_timeout=20.
+  - backend/utils/email.py trimite TIMEOUT catre FastMail ConnectionConfig.
+  - .env si .env.example au MAIL_TIMEOUT=20.
+  - README.md documenteaza MAIL_TIMEOUT.
+- rulat test SMTP real din afara sandboxului de retea:
+  - .venv/bin/python scripts/test_smtp.py slavoliu.preda24@gmail.com
+  - rezultat: SMTP test email sent to slavoliu.preda24@gmail.com.
+- repornit aplicatia cu ./start.sh dupa setarea credentialelor.
+
+Fisiere batch AO:
+- backend/config.py
+- backend/utils/email.py
+- .env local
+- .env.example
+- README.md
+- PLAN_CONTINUARE_LICENTA_SDLC_HUB.txt
+
+Verificari batch AO:
+- test config mail: MAIL_USERNAME/MAIL_PASSWORD/MAIL_FROM sunt prezente, fara afisarea secretelor.
+- .venv/bin/python scripts/test_smtp.py slavoliu.preda24@gmail.com: OK, email trimis.
+- ./start.sh: OK.
+- backend log dupa restart: nu mai apare warning SMTP disabled.
+- curl http://127.0.0.1:8000/health: OK.
+- curl -I http://127.0.0.1:3000: 200 OK.
+- .venv/bin/python -m compileall backend scripts/test_smtp.py: OK.
+
+Batch AP - Email notifications pentru notificari in-app batch 30 mai 2026
+Context:
+- dupa ce SMTP-ul real a fost reparat, urmatorul punct din plan a fost canalul email pentru task assigned, @mentions si calendar/meeting reminders.
+
+Implementat:
+- backend/utils/email.py:
+  - adaugat send_notification_email_sync pentru rute sync.
+  - foloseste SMTP real cu STARTTLS/SSL in functie de .env.
+  - foloseste MAIL_TIMEOUT.
+  - genereaza email HTML simplu cu link absolut catre SDLC Hub.
+  - escape pentru title/body/link ca sa nu introducem HTML nesigur din comentarii/task-uri.
+- backend/utils/notifications.py:
+  - create_notification trimite acum si email pentru:
+    - TASK_ASSIGNED.
+    - MENTION.
+    - CALENDAR_INVITE.
+    - CALENDAR_REMINDER.
+    - TASK_DUE_SOON.
+    - TASK_OVERDUE.
+  - daca emailul esueaza, notificarea in-app ramane creata si se logheaza warning, fara sa blocheze actiunea utilizatorului.
+- canalul email este centralizat in create_notification, deci task assign, mentions, calendar attendees si reminders folosesc aceeasi logica.
+
+Fisiere batch AP:
+- backend/utils/email.py
+- backend/utils/notifications.py
+- PLAN_CONTINUARE_LICENTA_SDLC_HUB.txt
+
+Verificari batch AP:
+- .venv/bin/python -m compileall backend scripts/test_smtp.py: OK.
+- import check pentru create_notification + send_notification_email_sync: OK.
+- test integrat fara email real:
+  - monkeypatch send_notification_email_sync.
+  - create_notification cu TASK_ASSIGNED.
+  - confirmat ca hook-ul email primeste recipientul corect.
+  - rollback DB dupa test.
+- ./start.sh: OK.
+- curl http://127.0.0.1:8000/health: OK.
+- curl -I http://127.0.0.1:3000: 200 OK.
+
+Batch AQ - Documentation revision history batch 30 mai 2026
+Context:
+- in plan, Documentation/Wiki era implementat functional, dar lipsea istoricul editarilor pe paginile de documentatie.
+- auto-generarea documentatiei la task Done era deja implementata in backend/tasks.py, desi sectiunea veche din plan o marca partial lipsa.
+
+Implementat:
+- model nou DocumentationRevision:
+  - page_id.
+  - project_id.
+  - task_id.
+  - title snapshot.
+  - content snapshot.
+  - action.
+  - actor_id.
+  - created_at.
+- migrare Alembic noua:
+  - c5d6e7f8a9b0_add_documentation_revisions.py.
+- endpoint nou:
+  - GET /documentation/{page_id}/history.
+  - necesita membru in proiect.
+  - returneaza snapshot-urile paginii in ordine descrescatoare.
+- backend salveaza snapshot inainte de update la pagina de documentatie.
+- backend salveaza snapshot si la delete, inainte de stergerea paginii.
+- frontend/services/documentation.ts expune DocumentationRevision si getDocumentationPageHistory.
+- /dashboard/documentation afiseaza acum card "Version history":
+  - numar snapshot-uri.
+  - actiune.
+  - data.
+  - titlu snapshot.
+  - dimensiune continut.
+  - stare goala cand pagina nu are revizii.
+- la selectarea unei pagini, la save si la generate from task, istoricul se reincarca.
+
+Fisiere batch AQ:
+- backend/models/documentation.py
+- backend/alembic/versions/c5d6e7f8a9b0_add_documentation_revisions.py
+- backend/schemas/documentation.py
+- backend/routers/documentation.py
+- frontend/services/documentation.ts
+- frontend/app/dashboard/documentation/page.tsx
+- PLAN_CONTINUARE_LICENTA_SDLC_HUB.txt
+
+Verificari batch AQ:
+- .venv/bin/alembic -c backend/alembic.ini upgrade head: OK.
+- .venv/bin/alembic -c backend/alembic.ini current: c5d6e7f8a9b0 (head).
+- verificat prin SQLAlchemy inspect ca tabela documentation_revisions exista: True.
+- .venv/bin/python -m compileall backend: OK.
+- npm run lint: OK.
+- npm run build: OK, ramane doar warning-ul existent Next `--localstorage-file` fara path valid.
+- ./start.sh: OK.
+- curl http://127.0.0.1:8000/health: OK.
+- curl -I http://127.0.0.1:3000/dashboard/documentation: 200 OK.
+
+Batch AR - Account notification preferences batch 30 mai 2026
+Context:
+- dupa repararea SMTP si legarea emailului la notificari, lipsea controlul utilizatorului asupra canalelor si categoriilor de notificari.
+
+Implementat:
+- coloane noi pe users:
+  - notification_in_app_enabled.
+  - notification_email_enabled.
+  - notify_task_assignments.
+  - notify_mentions.
+  - notify_calendar.
+  - notify_due_dates.
+  - notify_ai_risk.
+- migrare Alembic noua:
+  - d6e7f8a9b0c1_add_user_notification_preferences.py.
+- endpoint nou:
+  - PUT /auth/me/notification-preferences.
+  - returneaza AuthUser actualizat.
+- AuthUser/UserOut expun preferintele catre frontend.
+- create_notification respecta preferintele:
+  - categoria dezactivata opreste complet notificarea.
+  - canalul email dezactivat opreste emailul.
+  - canalul in-app dezactivat opreste toast/unread broadcast, dar pastreaza o inregistrare read pentru deduplicare scheduler/reminders.
+  - AI_RISK poate trimite email daca email channel si notify_ai_risk sunt active.
+- generate AI risk notifications foloseste create_notification centralizat, deci respecta aceleasi reguli.
+- RealtimeBridge actualizeaza store-ul de user cand preferintele se schimba.
+- Account Settings are card nou Notifications:
+  - toggle pentru In-app channel.
+  - toggle pentru Email channel.
+  - toggle pentru task assignments, mentions, calendar, due dates si AI risk radar.
+
+Fisiere batch AR:
+- backend/models/user.py
+- backend/alembic/versions/d6e7f8a9b0c1_add_user_notification_preferences.py
+- backend/schemas/auth.py
+- backend/schemas/user.py
+- backend/routers/auth.py
+- backend/routers/notifications.py
+- backend/utils/notifications.py
+- frontend/services/auth.ts
+- frontend/store/use-auth-store.ts
+- frontend/components/realtime/realtime-bridge.tsx
+- frontend/app/dashboard/account/page.tsx
+- PLAN_CONTINUARE_LICENTA_SDLC_HUB.txt
+
+Verificari batch AR:
+- .venv/bin/python -m compileall backend: OK.
+- .venv/bin/alembic -c backend/alembic.ini upgrade head: OK.
+- .venv/bin/alembic -c backend/alembic.ini current: d6e7f8a9b0c1 (head).
+- verificat prin SQLAlchemy inspect ca users are notification_email_enabled si notify_ai_risk: True True.
+- npm run lint: OK.
+- npm run build: OK, ramane doar warning-ul existent Next `--localstorage-file` fara path valid.
+- ./start.sh: OK.
+- curl http://127.0.0.1:8000/health: OK.
+- curl -I http://127.0.0.1:3000/dashboard/account: 200 OK.
+- log backend dupa restart: PUT /auth/me/notification-preferences raspunde 200 OK.
+
+Batch AS - Task governance delete si estimate invalidation batch 30 mai 2026
+Context:
+- din lista stricta de functionalitati ramase, Task Management avea doua gauri clare: delete task cu guvernanta si invalidarea estimarii cu motiv + audit special.
+
+Implementat:
+- schema backend noua:
+  - TaskDeleteRequest cu reason si confirm_key obligatorii.
+  - EstimateInvalidationRequest cu reason obligatoriu.
+- endpoint nou:
+  - POST /tasks/{task_id}/estimate/invalidate.
+  - cere TASK_UPDATE.
+  - permite doar Project Owner, Project Admin, Product Owner, Scrum Master, Project Manager sau Tech Lead.
+  - refuza KANBAN si task-urile fara estimare.
+  - seteaza story_points = null.
+  - scrie audit special ESTIMATE_INVALIDATED cu vechea estimare si motivul.
+  - trimite task.changed realtime.
+- endpoint nou:
+  - DELETE /tasks/{task_id}.
+  - cere TASK_DELETE.
+  - permite doar Project Owner, Project Admin, Product Owner, Scrum Master, Project Manager sau Tech Lead.
+  - cere confirmare prin tastarea cheii task-ului, de ex. GFW-12.
+  - cere motiv obligatoriu.
+  - sterge task-ul si pastreaza evenimentul TASK_DELETED in ProjectAuditLog cu metadata JSON: task_id, task_key, titlu, motiv, assignee, status, story_points.
+  - trimite task.changed si project.changed realtime.
+- frontend/services/task.ts expune:
+  - invalidateTaskEstimate.
+  - deleteTask.
+- pagina /dashboard/tasks/[taskId]:
+  - buton Delete in header daca userul are TASK_DELETE.
+  - modal modern de delete cu motiv + confirmare prin cheia task-ului.
+  - buton Invalidate estimate in Properties cand task-ul are story points si metodologia permite.
+  - modal modern pentru invalidarea estimarii cu motiv.
+  - actionLabel include ESTIMATE_INVALIDATED si DOCUMENTATION_GENERATED.
+
+Fisiere batch AS:
+- backend/schemas/task.py
+- backend/routers/tasks.py
+- frontend/services/task.ts
+- frontend/app/dashboard/tasks/[taskId]/page.tsx
+- PLAN_CONTINUARE_LICENTA_SDLC_HUB.txt
+
+Verificari batch AS:
+- .venv/bin/python -m compileall backend: OK.
+- npm run lint: OK.
+- npm run build: OK, ramane doar warning-ul existent Next `--localstorage-file` fara path valid.
+- ./start.sh: OK.
+- curl http://127.0.0.1:8000/health: OK.
+- curl -I http://127.0.0.1:3000/dashboard/tasks/1: 200 OK.
+
+Batch AT - Subtask edit/delete controls batch 30 mai 2026
+Context:
+- utilizatorul a cerut explicit ca subtask-urile sa poata fi editate si sterse, nu doar bifate.
+
+Implementat:
+- endpoint backend nou:
+  - DELETE /tasks/{task_id}/subtasks/{subtask_id}.
+  - cere TASK_UPDATE.
+  - sterge subtask-ul.
+  - scrie audit log SUBTASK_DELETED cu titlul vechi.
+  - trimite task.changed realtime.
+- update-ul existent de subtask title/is_done ramane folosit pentru editarea titlului.
+- frontend/services/task.ts expune deleteSubtask.
+- pagina /dashboard/tasks/[taskId]:
+  - fiecare subtask are meniu cu Edit si Delete.
+  - editarea titlului se face inline, cu Save/Cancel.
+  - delete foloseste ConfirmDialog modern.
+  - audit label include SUBTASK_DELETED.
+
+Fisiere batch AT:
+- backend/routers/tasks.py
+- frontend/services/task.ts
+- frontend/app/dashboard/tasks/[taskId]/page.tsx
+- PLAN_CONTINUARE_LICENTA_SDLC_HUB.txt
+
+Verificari batch AT:
+- .venv/bin/python -m compileall backend: OK.
+- npm run lint: OK.
+- npm run build: OK, ramane doar warning-ul existent Next `--localstorage-file` fara path valid.
+- ./start.sh: OK.
+- curl http://127.0.0.1:8000/health: OK.
+- curl -I http://127.0.0.1:3000/dashboard/tasks/1: 200 OK.
+
+Batch AU - Team hierarchy tree si My Team view batch 30 mai 2026
+Context:
+- din lista stricta ramanea o componenta vizuala de tip arbore ierarhic si o vizualizare "echipa mea" pentru roluri de coordonare.
+
+Implementat:
+- /dashboard/team foloseste acum un arbore vizual recursiv pentru echipe si subechipe:
+  - linii verticale/orizontale pentru niveluri.
+  - noduri cu nume, descriere, membri, task-uri.
+  - avataruri pentru membrii directi ai echipei.
+  - badge "My team" pe nodul echipei utilizatorului curent.
+- card "My team view" pentru Project Owner, Project Admin, Project Manager, Product Owner, Scrum Master, Flow Manager si Tech Lead:
+  - echipa curenta.
+  - membri directi.
+  - numar subechipe.
+  - numar task-uri asignate echipei.
+- actiunile existente de creare/stergere/asignare echipa raman functionale.
+
+Fisiere batch AU:
+- frontend/app/dashboard/team/page.tsx
+- PLAN_CONTINUARE_LICENTA_SDLC_HUB.txt
+
+Verificari batch AU:
+- .venv/bin/python -m compileall backend: OK.
+- npm run lint: OK.
+- npm run build: OK, ramane doar warning-ul existent Next `--localstorage-file` fara path valid.
+- ./start.sh: OK.
+- curl http://127.0.0.1:8000/health: OK.
+- curl -I http://127.0.0.1:3000/dashboard/team: 200 OK.
+
+Batch AV - Board dynamic columns per project batch 30 mai 2026
+Context:
+- din lista stricta ramanea posibilitatea de a configura coloane dinamice per proiect pe Board.
+- statusurile task-urilor sunt inca un enum stabil backend: TODO, IN_PROGRESS, REVIEW, DONE. Pentru a evita o migrare riscanta a istoricului, configurarea dinamica se aplica peste aceste statusuri: label, ordine, vizibilitate si culoare.
+
+Implementat:
+- workflow_config suporta acum columns pe langa wip_limits:
+  - key.
+  - label.
+  - enabled.
+  - order.
+  - color.
+- backend/routers/projects.py:
+  - DEFAULT_WORKFLOW_CONFIG include columns default.
+  - _parse_workflow_config normalizeaza columns.
+  - PUT /projects/{project_id}/workflow accepta columns si le salveaza in workflow_config.
+  - audit PROJECT_WORKFLOW_UPDATED pastreaza old_value si new_value.
+- frontend/services/project.ts:
+  - ProjectWorkflowConfig include columns.
+  - ProjectWorkflowColumn tipizat.
+- /dashboard/settings:
+  - cardul Board workflow este disponibil pentru toate metodologiile.
+  - se pot redenumi coloanele.
+  - se poate schimba ordinea cu Up/Down.
+  - se pot ascunde/afisa coloane; Done ramane vizibila pentru auditabilitate.
+  - Save board workflow salveaza atat columns cat si wip_limits.
+- /dashboard/board:
+  - citeste workflow_config.columns.
+  - ordoneaza coloanele dupa configurarea proiectului.
+  - foloseste label/color configurate.
+  - ascunde coloanele dezactivate, dar le afiseaza automat daca exista task-uri in acea stare ca sa nu dispara munca existenta.
+  - WIP alerts folosesc lista vizibila de coloane.
+  - asculta si project.changed prin realtime ca modificarile de workflow din Settings sa se vada fara refresh manual.
+
+Fisiere batch AV:
+- backend/routers/projects.py
+- frontend/services/project.ts
+- frontend/app/dashboard/settings/page.tsx
+- frontend/app/dashboard/board/page.tsx
+- PLAN_CONTINUARE_LICENTA_SDLC_HUB.txt
+
+Verificari batch AV:
+- .venv/bin/python -m compileall backend: OK.
+- npm run lint: OK.
+- npm run build: OK, ramane doar warning-ul existent Next `--localstorage-file` fara path valid.
+- ./start.sh: OK.
+- curl http://127.0.0.1:8000/health: OK.
+- curl -I http://127.0.0.1:3000/dashboard/board: 200 OK.
+- curl -I http://127.0.0.1:3000/dashboard/settings: 200 OK.
+
+Batch AW - Tiptap Rich Text pentru task description batch 30 mai 2026
+Context:
+- din lista stricta ramanea descriere de tip Rich Text reala integrata cu Tiptap, in loc de textarea simplu.
+
+Implementat:
+- instalate dependinte frontend:
+  - @tiptap/react.
+  - @tiptap/starter-kit.
+  - @tiptap/extension-placeholder.
+  - @tiptap/extension-link.
+- component nou reutilizabil:
+  - frontend/components/ui/rich-text-editor.tsx.
+  - toolbar cu bold, italic, strike, liste, quote, code block, link/unlink, undo/redo.
+  - link editor inline, fara prompt nativ de browser.
+  - compatibil SSR/Next prin immediatelyRender: false.
+  - normalizeaza descrierile vechi plain text in paragrafe HTML.
+- /dashboard/tasks/[taskId]:
+  - campul Description foloseste RichTextEditor.
+  - save task pastreaza HTML-ul generat de Tiptap in acelasi camp description.
+  - AI Refine continua sa actualizeze descrierea si editorul se sincronizeaza cu noul continut.
+- Create issue dialog:
+  - campul Description foloseste RichTextEditor.
+  - Generate with AI si Refine spec continua sa populeze editorul.
+
+Fisiere batch AW:
+- frontend/package.json
+- frontend/package-lock.json
+- frontend/components/ui/rich-text-editor.tsx
+- frontend/components/dashboard/create-task-dialog.tsx
+- frontend/app/dashboard/tasks/[taskId]/page.tsx
+- PLAN_CONTINUARE_LICENTA_SDLC_HUB.txt
+
+Verificari batch AW:
+- npm run lint: OK.
+- npm run build: OK, ramane doar warning-ul existent Next `--localstorage-file` fara path valid.
+
+Batch AX - AI comment risk si Workload Balancer AI/DnD batch 30 mai 2026
+Context:
+- din lista stricta ramanea AI & Workload: analiza automata comentarii, explicatii Workload prin prompt AI real si drag/drop intre membri.
+
+Implementat:
+- backend/services/ai_service.py:
+  - analyze_comment_risk pentru detectare BLOCKER/BOTTLENECK/DEPENDENCY/SCOPE/QUALITY/DELIVERY.
+  - fallback local pe cuvinte cheie RO/EN cand providerul AI nu este disponibil.
+  - enhance_workload_suggestions care primeste scorurile deterministe si cere AI-ului explicatii profesionale fara sa schimbe task-urile/utilizatorii recomandati.
+- backend/routers/tasks.py:
+  - la creare comentariu ruleaza automat analiza de risc.
+  - la editare comentariu ruleaza din nou analiza de risc.
+  - cand se detecteaza risc:
+    - scrie audit special COMMENT_RISK_DETECTED pe task.
+    - trimite notificari AI_RISK catre assignee, owner si rolurile de coordonare.
+    - include metadata: comment_id, severity, category, confidence, source si recommended_action.
+  - foloseste preferintele existente de notificari pentru AI_RISK.
+- backend/routers/projects.py:
+  - endpointul /projects/{id}/workload/ai-suggestions pastreaza recomandarile deterministe, dar rafineaza summary/reason prin prompt AI real.
+  - raspunsul include source ca UI-ul sa arate daca explicatia vine din provider sau fallback.
+- frontend/services/project.ts:
+  - WorkloadSuggestionsResponse include source.
+- frontend/app/dashboard/workload/page.tsx:
+  - afiseaza summary AI si source pentru sugestii.
+  - adauga drag/drop cu @dnd-kit/core intre cardurile de membri.
+  - adauga zona "Drop a task here" pentru dezassignare.
+  - pastreaza selectul existent ca alternativa explicita.
+
+Fisiere batch AX:
+- backend/services/ai_service.py
+- backend/routers/tasks.py
+- backend/routers/projects.py
+- frontend/services/project.ts
+- frontend/app/dashboard/workload/page.tsx
+- PLAN_CONTINUARE_LICENTA_SDLC_HUB.txt
+
+Verificari batch AX:
+- .venv/bin/python -m compileall backend: OK.
+- npm run lint: OK.
+- npm run build: OK, ramane doar warning-ul existent Next `--localstorage-file` fara path valid.
+
+Batch AY - DevOps Pull Requests si GitHub user mapping batch 30 mai 2026
+Context:
+- din lista stricta ramanea o pagina dedicata pentru Pull Requests cu confirmari manuale si mapare automata GitHub user -> SDLC Hub user.
+
+Implementat:
+- model/migrare:
+  - users.github_username pentru mapare persistenta.
+  - github_events.mapped_user_id pentru a lega evenimentele GitHub de utilizatorul SDLC Hub.
+  - migrare Alembic e7f8a9b0c1d2_add_github_user_mapping.py.
+- backend/routers/github.py:
+  - _resolve_github_user cauta sender_login in github_username.
+  - daca nu exista, incearca potrivire automata cu local-part din email sau numele complet normalizat.
+  - cand potrivirea reuseste, completeaza users.github_username pentru mapari viitoare.
+  - commit/PR comments folosesc autorul mapat daca exista, nu doar owner/assignee fallback.
+  - GitHubEvent salveaza mapped_user_id.
+  - endpoint nou GET /github/pull-requests/project/{project_id}.
+  - endpoint nou POST /github/pull-requests/{event_id}/confirm.
+  - confirmarea manuala poate muta task-ul in REVIEW sau DONE, scrie audit GITHUB_PR_MANUAL_CONFIRM si adauga comentariu pe task.
+  - confirmarea DONE declanseaza si generarea/upsert-ul documentatiei task-ului.
+- frontend/services/github.ts:
+  - getProjectPullRequests.
+  - confirmPullRequestTransition.
+- frontend/app/dashboard/devops/page.tsx:
+  - buton catre pagina Pull requests.
+- frontend/app/dashboard/devops/pull-requests/page.tsx:
+  - pagina dedicata cu statistici PR.
+  - afisare PR, task, status task, repository, GitHub sender si utilizator SDLC mapat.
+  - actiuni Confirm review si Confirm done cu modal si nota optionala.
+
+Fisiere batch AY:
+- backend/models/user.py
+- backend/models/github.py
+- backend/alembic/versions/e7f8a9b0c1d2_add_github_user_mapping.py
+- backend/schemas/github.py
+- backend/routers/github.py
+- frontend/services/github.ts
+- frontend/app/dashboard/devops/page.tsx
+- frontend/app/dashboard/devops/pull-requests/page.tsx
+- PLAN_CONTINUARE_LICENTA_SDLC_HUB.txt
+
+Verificari batch AY:
+- .venv/bin/python -m compileall backend: OK.
+- .venv/bin/alembic -c backend/alembic.ini upgrade head: OK.
+- .venv/bin/alembic -c backend/alembic.ini current: e7f8a9b0c1d2 (head).
+- npm run lint: OK.
+- npm run build: OK, ramane doar warning-ul existent Next `--localstorage-file` fara path valid.
+- ./start.sh: OK.
+- curl http://127.0.0.1:8000/health: OK.
+- curl -I http://127.0.0.1:3000/dashboard/devops: 200 OK.
+- curl -I http://127.0.0.1:3000/dashboard/devops/pull-requests: 200 OK.
+
+Urmatoarea prioritate recomandata dupa batch AY:
+1. Reporting:
+   - verificare daca Burndown/Burnup, lead time Kanban si CFD/WIP sunt complet functionale sau necesita polish.
+2. Realtime comments:
+   - typing indicator.
+   - actualizare comentarii fara refetch complet si debounce suplimentar.
 
 
 7. OBSERVATII IMPORTANTE

@@ -2,10 +2,16 @@
 
 import { useEffect, useMemo, useState } from "react";
 import {
+  AtSign,
+  BellRing,
+  BrainCircuit,
   BriefcaseBusiness,
   Camera,
   CheckCircle2,
   Crown,
+  CalendarClock,
+  Clock3,
+  Inbox,
   KeyRound,
   Loader2,
   Lock,
@@ -21,11 +27,13 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { UserAvatar, resolveMediaUrl } from "@/components/user-avatar";
 import { getApiErrorMessage } from "@/lib/api-error";
 import {
   AccountSummary,
   getAccountSummary,
+  updateNotificationPreferences,
   updateCurrentUser,
   updateCurrentUserPassword,
   uploadCurrentUserAvatar,
@@ -46,6 +54,38 @@ function roleTone(roleName: string) {
   return "border-slate-700 bg-slate-800 text-slate-300";
 }
 
+type NotificationPreferences = {
+  notification_in_app_enabled: boolean;
+  notification_email_enabled: boolean;
+  notify_task_assignments: boolean;
+  notify_mentions: boolean;
+  notify_calendar: boolean;
+  notify_due_dates: boolean;
+  notify_ai_risk: boolean;
+};
+
+const DEFAULT_NOTIFICATION_PREFERENCES: NotificationPreferences = {
+  notification_in_app_enabled: true,
+  notification_email_enabled: true,
+  notify_task_assignments: true,
+  notify_mentions: true,
+  notify_calendar: true,
+  notify_due_dates: true,
+  notify_ai_risk: true,
+};
+
+function preferencesFromUser(user?: AccountSummary["user"] | null): NotificationPreferences {
+  return {
+    notification_in_app_enabled: user?.notification_in_app_enabled ?? true,
+    notification_email_enabled: user?.notification_email_enabled ?? true,
+    notify_task_assignments: user?.notify_task_assignments ?? true,
+    notify_mentions: user?.notify_mentions ?? true,
+    notify_calendar: user?.notify_calendar ?? true,
+    notify_due_dates: user?.notify_due_dates ?? true,
+    notify_ai_risk: user?.notify_ai_risk ?? true,
+  };
+}
+
 export default function AccountPage() {
   const { user, setUser } = useAuthStore();
 
@@ -53,11 +93,15 @@ export default function AccountPage() {
   const [loading, setLoading] = useState(true);
   const [savingProfile, setSavingProfile] = useState(false);
   const [savingPassword, setSavingPassword] = useState(false);
+  const [savingNotifications, setSavingNotifications] = useState(false);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
 
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [avatarUrl, setAvatarUrl] = useState("");
+  const [notificationPreferences, setNotificationPreferences] = useState<NotificationPreferences>({
+    ...DEFAULT_NOTIFICATION_PREFERENCES,
+  });
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -78,6 +122,7 @@ export default function AccountPage() {
       setFullName(data.user.full_name || "");
       setEmail(data.user.email);
       setAvatarUrl(data.user.avatar_url || "");
+      setNotificationPreferences(preferencesFromUser(data.user));
       setUser(data.user);
     } catch (error: unknown) {
       toast.error(getApiErrorMessage(error, "Could not load account settings."));
@@ -154,6 +199,58 @@ export default function AccountPage() {
       setSavingPassword(false);
     }
   };
+
+  const handleSaveNotifications = async () => {
+    setSavingNotifications(true);
+    try {
+      const updated = await updateNotificationPreferences(notificationPreferences);
+      setUser(updated);
+      setSummary((current) => (current ? { ...current, user: updated } : current));
+      setNotificationPreferences(preferencesFromUser(updated));
+      toast.success("Notification preferences saved");
+    } catch (error: unknown) {
+      toast.error(getApiErrorMessage(error, "Could not update notification preferences."));
+    } finally {
+      setSavingNotifications(false);
+    }
+  };
+
+  const setNotificationPreference = (key: keyof NotificationPreferences, value: boolean) => {
+    setNotificationPreferences((current) => ({ ...current, [key]: value }));
+  };
+
+  const notificationRows = [
+    {
+      key: "notify_task_assignments" as const,
+      title: "Task assignments",
+      description: "New assignments and ownership changes.",
+      icon: Inbox,
+    },
+    {
+      key: "notify_mentions" as const,
+      title: "Mentions",
+      description: "Comments where someone mentions you.",
+      icon: AtSign,
+    },
+    {
+      key: "notify_calendar" as const,
+      title: "Calendar",
+      description: "Invites and meeting reminders.",
+      icon: CalendarClock,
+    },
+    {
+      key: "notify_due_dates" as const,
+      title: "Due dates",
+      description: "Overdue and due soon task alerts.",
+      icon: Clock3,
+    },
+    {
+      key: "notify_ai_risk" as const,
+      title: "AI risk radar",
+      description: "Workload and delivery risk signals.",
+      icon: BrainCircuit,
+    },
+  ];
 
   if (loading) {
     return (
@@ -395,6 +492,86 @@ export default function AccountPage() {
               >
                 {savingPassword ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <KeyRound className="mr-2 h-4 w-4" />}
                 Change password
+              </Button>
+            </CardContent>
+          </Card>
+
+          <Card className="border-slate-800 bg-slate-900/80 text-slate-50 shadow-xl shadow-slate-950/20">
+            <CardHeader className="border-b border-slate-800/80">
+              <CardTitle className="flex items-center gap-2">
+                <BellRing className="h-5 w-5 text-blue-300" />
+                Notifications
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4 p-5">
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
+                <div className="rounded-2xl border border-slate-800 bg-slate-950/75 p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold text-white">In-app channel</p>
+                      <p className="mt-1 text-xs leading-5 text-slate-500">Bell, sidebar count and live toasts.</p>
+                    </div>
+                    <Switch
+                      checked={notificationPreferences.notification_in_app_enabled}
+                      onCheckedChange={(value) =>
+                        setNotificationPreference("notification_in_app_enabled", value)
+                      }
+                      className="data-[state=checked]:bg-blue-500 data-[state=unchecked]:bg-slate-700"
+                    />
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-slate-800 bg-slate-950/75 p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold text-white">Email channel</p>
+                      <p className="mt-1 text-xs leading-5 text-slate-500">Transactional emails sent through SMTP.</p>
+                    </div>
+                    <Switch
+                      checked={notificationPreferences.notification_email_enabled}
+                      onCheckedChange={(value) =>
+                        setNotificationPreference("notification_email_enabled", value)
+                      }
+                      className="data-[state=checked]:bg-emerald-500 data-[state=unchecked]:bg-slate-700"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                {notificationRows.map((row) => {
+                  const Icon = row.icon;
+                  return (
+                    <div
+                      key={row.key}
+                      className="flex items-center justify-between gap-4 rounded-2xl border border-slate-800 bg-slate-950/65 p-3"
+                    >
+                      <div className="flex min-w-0 items-center gap-3">
+                        <div className="rounded-xl border border-slate-800 bg-slate-900 p-2 text-slate-300">
+                          <Icon className="h-4 w-4" />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-white">{row.title}</p>
+                          <p className="mt-0.5 text-xs leading-5 text-slate-500">{row.description}</p>
+                        </div>
+                      </div>
+                      <Switch
+                        checked={notificationPreferences[row.key]}
+                        onCheckedChange={(value) => setNotificationPreference(row.key, value)}
+                        className="data-[state=checked]:bg-blue-500 data-[state=unchecked]:bg-slate-700"
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+
+              <Button
+                onClick={handleSaveNotifications}
+                disabled={savingNotifications}
+                className="w-full bg-blue-600 hover:bg-blue-700"
+              >
+                {savingNotifications ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+                Save notifications
               </Button>
             </CardContent>
           </Card>

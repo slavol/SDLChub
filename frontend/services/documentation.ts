@@ -11,6 +11,18 @@ export interface DocumentationPage {
   updated_at: string;
 }
 
+export interface DocumentationRevision {
+  id: number;
+  page_id: number;
+  project_id: number;
+  task_id?: number | null;
+  title: string;
+  content: string;
+  action: string;
+  actor_id?: number | null;
+  created_at: string;
+}
+
 export interface DocumentationPageCreate {
   title: string;
   content: string;
@@ -43,6 +55,13 @@ export const updateDocumentationPage = async (
   data: DocumentationPageUpdate
 ): Promise<DocumentationPage> => {
   const response = await api.put(`/documentation/${pageId}`, data);
+  return response.data;
+};
+
+export const getDocumentationPageHistory = async (
+  pageId: number
+): Promise<DocumentationRevision[]> => {
+  const response = await api.get(`/documentation/${pageId}/history`);
   return response.data;
 };
 

@@ -151,14 +151,25 @@ export default function DevOpsPage() {
           </p>
         </div>
 
-        <Button
-          variant="outline"
-          className="border-slate-700 bg-slate-900 text-slate-200 hover:bg-slate-800"
-          onClick={loadEvents}
-        >
-          <RefreshCw className="mr-2 h-4 w-4" />
-          Refresh
-        </Button>
+        <div className="flex flex-wrap gap-3">
+          <Button
+            asChild
+            className="bg-purple-600 hover:bg-purple-700"
+          >
+            <Link href="/dashboard/devops/pull-requests">
+              <GitPullRequest className="mr-2 h-4 w-4" />
+              Pull requests
+            </Link>
+          </Button>
+          <Button
+            variant="outline"
+            className="border-slate-700 bg-slate-900 text-slate-200 hover:bg-slate-800"
+            onClick={loadEvents}
+          >
+            <RefreshCw className="mr-2 h-4 w-4" />
+            Refresh
+          </Button>
+        </div>
       </div>
 
       <div className="mb-6 grid gap-4 md:grid-cols-3">

@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -12,6 +12,7 @@ from backend.realtime import broadcast_user_event
 from backend.routers.auth import get_current_user
 from backend.schemas.notification import NotificationOut
 from backend.utils.notifications import (
+    create_notification,
     generate_calendar_event_reminders as generate_calendar_event_reminders_for_scope,
     generate_due_task_reminders as generate_due_task_reminders_for_scope,
 )
@@ -92,7 +93,7 @@ def _notification_exists(
     query = db.query(Notification).filter(
         Notification.user_id == user_id,
         Notification.type == notification_type,
-        Notification.read_at.is_(None),
+        Notification.created_at >= datetime.utcnow() - timedelta(hours=20),
     )
 
     if task_id is not None:
@@ -115,32 +116,27 @@ def _create_notification(
     task_id: int | None,
     link_url: str | None,
     metadata_json: str | None = None,
-) -> Notification:
-    notification = Notification(
+) -> Notification | None:
+    metadata: dict = {}
+    if metadata_json:
+        try:
+            import json
+
+            metadata = json.loads(metadata_json)
+        except Exception:
+            metadata = {}
+
+    return create_notification(
+        db,
         user_id=user_id,
-        project_id=project_id,
-        task_id=task_id,
-        type=notification_type,
+        notification_type=notification_type,
         title=title,
         message=message,
+        project_id=project_id,
+        task_id=task_id,
         link_url=link_url,
-        metadata_json=metadata_json or "{}",
+        metadata=metadata,
     )
-    db.add(notification)
-    db.flush()
-    broadcast_user_event(
-        user_id,
-        "notification.created",
-        {
-            "id": notification.id,
-            "project_id": project_id,
-            "task_id": task_id,
-            "notification_type": notification_type,
-            "title": title,
-            "link_url": link_url,
-        },
-    )
-    return notification
 
 
 @router.post("/generate-reminders")
@@ -227,7 +223,7 @@ def generate_ai_risk_notifications(
 
         name = member.user.full_name if member.user else "Team member"
 
-        _create_notification(
+        notification = _create_notification(
             db,
             user_id=member.user_id,
             notification_type="AI_RISK",
@@ -241,7 +237,8 @@ def generate_ai_risk_notifications(
             link_url="/dashboard/workload",
             metadata_json=f'{{"risk_score": {risk_score}}}',
         )
-        created += 1
+        if notification:
+            created += 1
 
     db.commit()
     return {"created": created}

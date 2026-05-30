@@ -8,6 +8,8 @@ import {
   Bot,
   CheckCircle2,
   Crown,
+  Eye,
+  EyeOff,
   GitBranch,
   History,
   KeyRound,
@@ -60,6 +62,7 @@ import {
   Project,
   ProjectAuditLog,
   ProjectMember,
+  ProjectWorkflowColumn,
   ProjectRoleWithPermissions,
   ProjectAiConfig,
   getProjectAiSettings,
@@ -130,11 +133,19 @@ const METHODOLOGY_HELP: Record<string, string> = {
 };
 
 const WIP_LIMIT_COLUMNS = [
-  { key: "TODO", label: "To Do", helper: "Intake lane" },
-  { key: "IN_PROGRESS", label: "In Progress", helper: "Active implementation" },
-  { key: "REVIEW", label: "Review", helper: "Code review / QA" },
-  { key: "DONE", label: "Done", helper: "Usually unlimited" },
+  { key: "TODO", label: "To Do", helper: "Intake lane", color: "bg-slate-500" },
+  { key: "IN_PROGRESS", label: "In Progress", helper: "Active implementation", color: "bg-blue-500" },
+  { key: "REVIEW", label: "Review", helper: "Code review / QA", color: "bg-purple-500" },
+  { key: "DONE", label: "Done", helper: "Usually unlimited", color: "bg-green-500" },
 ];
+
+const DEFAULT_BOARD_COLUMNS: ProjectWorkflowColumn[] = WIP_LIMIT_COLUMNS.map((column, index) => ({
+  key: column.key,
+  label: column.label,
+  enabled: true,
+  order: index,
+  color: column.color,
+}));
 
 const DEFAULT_WIP_LIMITS: Record<string, number | null> = {
   TODO: null,
@@ -193,6 +204,7 @@ export default function SettingsPage() {
   const [description, setDescription] = useState("");
   const [methodology, setMethodology] = useState("SCRUM");
   const [wipLimits, setWipLimits] = useState<Record<string, number | null>>(DEFAULT_WIP_LIMITS);
+  const [boardColumns, setBoardColumns] = useState<ProjectWorkflowColumn[]>(DEFAULT_BOARD_COLUMNS);
   const [deleteKey, setDeleteKey] = useState("");
 
   const [selectedRoleId, setSelectedRoleId] = useState<string>("");
@@ -285,6 +297,16 @@ export default function SettingsPage() {
         ...DEFAULT_WIP_LIMITS,
         ...(freshProject.workflow_config?.wip_limits || {}),
       });
+      setBoardColumns(
+        (freshProject.workflow_config?.columns?.length
+          ? freshProject.workflow_config.columns
+          : DEFAULT_BOARD_COLUMNS
+        ).map((column, index) => ({
+          ...DEFAULT_BOARD_COLUMNS[index],
+          ...column,
+          order: typeof column.order === "number" ? column.order : index,
+        }))
+      );
       setAiConfig(freshProject.ai_config || null);
       setAiMode((freshProject.ai_config?.mode as "PLATFORM" | "PROJECT") || "PLATFORM");
       setAiProvider(freshProject.ai_config?.provider || "GEMINI");
@@ -393,6 +415,36 @@ export default function SettingsPage() {
     }));
   };
 
+  const handleColumnLabelChange = (key: string, value: string) => {
+    setBoardColumns((current) =>
+      current.map((column) =>
+        column.key === key ? { ...column, label: value } : column
+      )
+    );
+  };
+
+  const handleColumnEnabledChange = (key: string, enabled: boolean) => {
+    setBoardColumns((current) =>
+      current.map((column) =>
+        column.key === key ? { ...column, enabled } : column
+      )
+    );
+  };
+
+  const moveBoardColumn = (key: string, direction: -1 | 1) => {
+    setBoardColumns((current) => {
+      const ordered = [...current].sort((a, b) => a.order - b.order);
+      const index = ordered.findIndex((column) => column.key === key);
+      const targetIndex = index + direction;
+      if (index < 0 || targetIndex < 0 || targetIndex >= ordered.length) return current;
+
+      const next = [...ordered];
+      const [column] = next.splice(index, 1);
+      next.splice(targetIndex, 0, column);
+      return next.map((item, order) => ({ ...item, order }));
+    });
+  };
+
   const handleSaveWorkflow = async () => {
     if (!canManageSettings || !project) return;
 
@@ -400,6 +452,12 @@ export default function SettingsPage() {
     try {
       const updated = await updateProjectWorkflow(project.id, {
         wip_limits: wipLimits,
+        columns: boardColumns.map((column, index) => ({
+          ...column,
+          label: column.label.trim() || DEFAULT_BOARD_COLUMNS.find((item) => item.key === column.key)?.label || column.key,
+          order: index,
+          enabled: column.key === "DONE" ? true : column.enabled,
+        })),
       });
       setProject(updated);
       setCurrentProject(updated);
@@ -407,8 +465,9 @@ export default function SettingsPage() {
         ...DEFAULT_WIP_LIMITS,
         ...(updated.workflow_config?.wip_limits || {}),
       });
+      setBoardColumns(updated.workflow_config?.columns || DEFAULT_BOARD_COLUMNS);
       setAuditLogs(await getProjectAuditLogs(updated.id).catch(() => auditLogs));
-      toast.success("Workflow limits saved");
+      toast.success("Board workflow saved");
     } catch (error: unknown) {
       toast.error(getApiErrorMessage(error, "Could not save workflow limits."));
     } finally {
@@ -966,8 +1025,7 @@ export default function SettingsPage() {
               </CardContent>
             </Card>
 
-            {(methodology === "KANBAN" || methodology === "SCRUMBAN") && (
-              <Card className="border-slate-800 bg-slate-900 text-slate-50">
+            <Card className="border-slate-800 bg-slate-900 text-slate-50">
                 <CardHeader className="border-b border-slate-800">
                   <CardTitle className="flex items-center gap-2 text-base">
                     <Workflow className="h-5 w-5 text-cyan-300" />
@@ -978,12 +1036,86 @@ export default function SettingsPage() {
                 <CardContent className="space-y-5 p-5">
                   <div className="rounded-2xl border border-cyan-500/20 bg-cyan-500/10 p-4">
                     <p className="font-semibold text-cyan-100">
-                      Flow control for {methodology}
+                      Board workflow for {methodology}
                     </p>
                     <p className="mt-2 text-sm leading-6 text-cyan-100/75">
-                      Board columns will highlight when active work exceeds
-                      these limits. Leave a value empty for no limit.
+                      Configure lane labels, visibility, order and WIP pressure
+                      for this project. Done remains visible to keep completed work auditable.
                     </p>
+                  </div>
+
+                  <div className="space-y-3">
+                    <div>
+                      <Label className="text-sm text-slate-300">Board columns</Label>
+                      <p className="mt-1 text-xs text-slate-500">
+                        These settings change how the board is presented for this project.
+                      </p>
+                    </div>
+
+                    {boardColumns
+                      .slice()
+                      .sort((a, b) => a.order - b.order)
+                      .map((column, index, orderedColumns) => (
+                        <div
+                          key={column.key}
+                          className="grid gap-3 rounded-2xl border border-slate-800 bg-slate-950 p-4 lg:grid-cols-[120px_minmax(0,1fr)_180px]"
+                        >
+                          <div className="flex items-center gap-2">
+                            <div className={`h-2.5 w-2.5 rounded-full ${column.color || "bg-slate-500"}`} />
+                            <Badge variant="outline" className="border-slate-700 bg-slate-900 font-mono text-[10px] text-slate-300">
+                              {column.key}
+                            </Badge>
+                          </div>
+
+                          <Input
+                            value={column.label}
+                            onChange={(event) => handleColumnLabelChange(column.key, event.target.value)}
+                            className="h-10 border-slate-700 bg-slate-900"
+                          />
+
+                          <div className="flex items-center justify-end gap-2">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              disabled={index === 0}
+                              onClick={() => moveBoardColumn(column.key, -1)}
+                              className="border-slate-700 bg-slate-900 text-slate-300 hover:bg-slate-800"
+                            >
+                              Up
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              disabled={index === orderedColumns.length - 1}
+                              onClick={() => moveBoardColumn(column.key, 1)}
+                              className="border-slate-700 bg-slate-900 text-slate-300 hover:bg-slate-800"
+                            >
+                              Down
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              disabled={column.key === "DONE"}
+                              onClick={() => handleColumnEnabledChange(column.key, !column.enabled)}
+                              className={
+                                column.enabled
+                                  ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-100 hover:bg-emerald-500/15"
+                                  : "border-slate-700 bg-slate-900 text-slate-400 hover:bg-slate-800"
+                              }
+                            >
+                              {column.enabled ? (
+                                <Eye className="mr-2 h-4 w-4" />
+                              ) : (
+                                <EyeOff className="mr-2 h-4 w-4" />
+                              )}
+                              {column.enabled ? "Shown" : "Hidden"}
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
                   </div>
 
                   <div className="grid gap-4 md:grid-cols-2">
@@ -1023,11 +1155,10 @@ export default function SettingsPage() {
                     ) : (
                       <Save className="mr-2 h-4 w-4" />
                     )}
-                    Save WIP limits
+                    Save board workflow
                   </Button>
                 </CardContent>
               </Card>
-            )}
 
             <Card className="border-slate-800 bg-slate-900 text-slate-50">
               <CardHeader className="border-b border-slate-800">

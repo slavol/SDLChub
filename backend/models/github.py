@@ -11,6 +11,7 @@ class GitHubEvent(Base):
 
     project_id = Column(Integer, ForeignKey("projects.id", ondelete="CASCADE"), nullable=True, index=True)
     task_id = Column(Integer, ForeignKey("tasks.id", ondelete="SET NULL"), nullable=True, index=True)
+    mapped_user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
 
     event_type = Column(String, nullable=False, index=True)
     action = Column(String, nullable=True)

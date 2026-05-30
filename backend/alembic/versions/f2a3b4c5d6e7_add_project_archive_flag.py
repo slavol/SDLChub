@@ -7,7 +7,7 @@ Create Date: 2026-05-29 00:00:00.000000
 """
 from typing import Sequence, Union
 
-from alembic import op
+from alembic import context, op
 import sqlalchemy as sa
 
 
@@ -22,7 +22,8 @@ def upgrade() -> None:
         "projects",
         sa.Column("is_archived", sa.Boolean(), nullable=False, server_default=sa.false()),
     )
-    op.alter_column("projects", "is_archived", server_default=None)
+    if context.get_context().dialect.name != "sqlite":
+        op.alter_column("projects", "is_archived", server_default=None)
 
 
 def downgrade() -> None:

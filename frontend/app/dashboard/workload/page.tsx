@@ -1,6 +1,13 @@
 "use client";
 
 import Link from "next/link";
+import {
+  DndContext,
+  DragEndEvent,
+  useDraggable,
+  useDroppable,
+} from "@dnd-kit/core";
+import { CSS } from "@dnd-kit/utilities";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
@@ -8,6 +15,7 @@ import {
   Bot,
   CalendarClock,
   CheckCircle2,
+  GripVertical,
   Loader2,
   RefreshCw,
   Sparkles,
@@ -103,19 +111,52 @@ function TaskMiniCard({
   canAssign: boolean;
   onAssign: (task: WorkloadTask, userId: number | null) => void;
 }) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    isDragging,
+  } = useDraggable({
+    id: String(task.id),
+    data: { task },
+    disabled: !canAssign,
+  });
+
   return (
-    <div className="rounded-2xl border border-slate-800 bg-slate-950/80 p-3">
+    <div
+      ref={setNodeRef}
+      style={{ transform: CSS.Translate.toString(transform) }}
+      className={cn(
+        "rounded-2xl border border-slate-800 bg-slate-950/80 p-3 transition",
+        isDragging && "z-20 border-blue-400/50 opacity-80 shadow-2xl shadow-blue-950/40"
+      )}
+    >
       <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <Link
-            href={`/dashboard/tasks/${task.id}`}
-            className="text-xs font-semibold text-blue-300 hover:text-blue-200"
-          >
-            {task.key}
-          </Link>
-          <p className="mt-1 line-clamp-2 text-sm font-medium text-white">
-            {task.title}
-          </p>
+        <div className="flex min-w-0 gap-2">
+          {canAssign && (
+            <button
+              type="button"
+              title="Drag to reassign"
+              aria-label="Drag to reassign"
+              className="mt-0.5 flex h-7 w-7 shrink-0 cursor-grab items-center justify-center rounded-lg border border-slate-800 bg-slate-900 text-slate-500 transition hover:border-blue-500/30 hover:text-blue-200 active:cursor-grabbing"
+              {...attributes}
+              {...listeners}
+            >
+              <GripVertical className="h-4 w-4" />
+            </button>
+          )}
+          <div className="min-w-0">
+            <Link
+              href={`/dashboard/tasks/${task.id}`}
+              className="text-xs font-semibold text-blue-300 hover:text-blue-200"
+            >
+              {task.key}
+            </Link>
+            <p className="mt-1 line-clamp-2 text-sm font-medium text-white">
+              {task.title}
+            </p>
+          </div>
         </div>
 
         <Badge className={cn("shrink-0", priorityTone(task.priority))}>
@@ -180,11 +221,21 @@ function MemberWorkloadCard({
   canAssign: boolean;
   onAssign: (task: WorkloadTask, userId: number | null) => void;
 }) {
+  const { isOver, setNodeRef } = useDroppable({
+    id: `member:${member.user_id}`,
+    disabled: !canAssign,
+  });
   const tone = riskTone(member.risk_score);
   const displayName = member.full_name || member.email || "Team member";
 
   return (
-    <Card className="border-slate-800 bg-slate-900/70 shadow-2xl shadow-slate-950/20">
+    <Card
+      ref={setNodeRef}
+      className={cn(
+        "border-slate-800 bg-slate-900/70 shadow-2xl shadow-slate-950/20 transition",
+        isOver && "border-blue-400/60 bg-blue-500/10"
+      )}
+    >
       <CardContent className="p-5">
         <div className="flex items-start justify-between gap-4">
           <div className="flex min-w-0 items-center gap-3">
@@ -301,6 +352,27 @@ function MemberWorkloadCard({
   );
 }
 
+function UnassignedDropZone({ canAssign }: { canAssign: boolean }) {
+  const { isOver, setNodeRef } = useDroppable({
+    id: "unassigned",
+    disabled: !canAssign,
+  });
+
+  if (!canAssign) return null;
+
+  return (
+    <div
+      ref={setNodeRef}
+      className={cn(
+        "mb-6 rounded-2xl border border-dashed border-slate-700 bg-slate-900/60 px-4 py-3 text-sm text-slate-400 transition",
+        isOver && "border-amber-300/70 bg-amber-500/10 text-amber-100"
+      )}
+    >
+      Drop a task here to remove its assignee.
+    </div>
+  );
+}
+
 function SuggestionCard({ suggestion }: { suggestion: WorkloadSuggestion }) {
   const tone =
     suggestion.severity === "high"
@@ -350,6 +422,8 @@ export default function WorkloadPage() {
   const [project, setProject] = useState<Project | null>(currentProject);
   const [workload, setWorkload] = useState<ProjectWorkload | null>(null);
   const [suggestions, setSuggestions] = useState<WorkloadSuggestion[]>([]);
+  const [suggestionSummary, setSuggestionSummary] = useState<string>("");
+  const [suggestionSource, setSuggestionSource] = useState<string>("");
   const [loading, setLoading] = useState(true);
   const [suggestionsLoading, setSuggestionsLoading] = useState(false);
   const [assigningTaskId, setAssigningTaskId] = useState<number | null>(null);
@@ -396,6 +470,13 @@ export default function WorkloadPage() {
   }, [loadWorkload]);
 
   const sortedMembers = useMemo(() => workload?.members || [], [workload?.members]);
+  const allWorkloadTasks = useMemo(() => {
+    if (!workload) return [];
+    return [
+      ...workload.unassigned_tasks,
+      ...workload.members.flatMap((member) => member.tasks),
+    ];
+  }, [workload]);
 
   const handleGenerateSuggestions = async () => {
     if (!project) return;
@@ -405,6 +486,8 @@ export default function WorkloadPage() {
     try {
       const response = await getProjectWorkloadSuggestions(project.id);
       setSuggestions(response.suggestions);
+      setSuggestionSummary(response.summary || "");
+      setSuggestionSource(response.source || "");
       toast.success("Workload suggestions generated.");
     } catch (error) {
       toast.error(getApiErrorMessage(error, "Could not generate workload suggestions."));
@@ -430,6 +513,26 @@ export default function WorkloadPage() {
     } finally {
       setAssigningTaskId(null);
     }
+  };
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    if (!event.over) return;
+
+    const taskId = Number(event.active.id);
+    const task = allWorkloadTasks.find((item) => item.id === taskId);
+    if (!task) return;
+
+    const overId = String(event.over.id);
+    const nextAssigneeId = overId === "unassigned"
+      ? null
+      : overId.startsWith("member:")
+        ? Number(overId.replace("member:", ""))
+        : task.assignee_id ?? null;
+
+    if (nextAssigneeId !== null && Number.isNaN(nextAssigneeId)) return;
+    if ((task.assignee_id ?? null) === nextAssigneeId) return;
+
+    void handleAssign(task, nextAssigneeId);
   };
 
   if (loading) {
@@ -552,51 +655,55 @@ export default function WorkloadPage() {
         })}
       </div>
 
-      {workload.unassigned_tasks.length > 0 && (
-        <Card className="mb-6 border-amber-500/20 bg-amber-500/10">
-          <CardContent className="p-5">
-            <div className="mb-4 flex items-center gap-2">
-              <AlertTriangle className="h-5 w-5 text-amber-300" />
-              <h2 className="text-lg font-semibold text-white">
-                Unassigned work
-              </h2>
-              <Badge className="border-amber-500/30 bg-amber-500/10 text-amber-200">
-                {workload.summary.unassigned_tasks} tasks
-              </Badge>
-            </div>
+      <DndContext onDragEnd={handleDragEnd}>
+        <UnassignedDropZone canAssign={canAssignTasks} />
 
-            <div className="grid gap-3 lg:grid-cols-2">
-              {workload.unassigned_tasks.slice(0, 4).map((task) => (
-                <TaskMiniCard
-                  key={task.id}
-                  task={task}
-                  members={sortedMembers}
-                  canAssign={canAssignTasks}
-                  onAssign={handleAssign}
-                />
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      )}
+        {workload.unassigned_tasks.length > 0 && (
+          <Card className="mb-6 border-amber-500/20 bg-amber-500/10">
+            <CardContent className="p-5">
+              <div className="mb-4 flex items-center gap-2">
+                <AlertTriangle className="h-5 w-5 text-amber-300" />
+                <h2 className="text-lg font-semibold text-white">
+                  Unassigned work
+                </h2>
+                <Badge className="border-amber-500/30 bg-amber-500/10 text-amber-200">
+                  {workload.summary.unassigned_tasks} tasks
+                </Badge>
+              </div>
 
-      {assigningTaskId && (
-        <div className="mb-4 rounded-2xl border border-blue-500/20 bg-blue-500/10 px-4 py-3 text-sm text-blue-200">
-          Updating task #{assigningTaskId}...
+              <div className="grid gap-3 lg:grid-cols-2">
+                {workload.unassigned_tasks.slice(0, 4).map((task) => (
+                  <TaskMiniCard
+                    key={task.id}
+                    task={task}
+                    members={sortedMembers}
+                    canAssign={canAssignTasks}
+                    onAssign={handleAssign}
+                  />
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {assigningTaskId && (
+          <div className="mb-4 rounded-2xl border border-blue-500/20 bg-blue-500/10 px-4 py-3 text-sm text-blue-200">
+            Updating task #{assigningTaskId}...
+          </div>
+        )}
+
+        <div className="grid gap-5 xl:grid-cols-2">
+          {sortedMembers.map((member) => (
+            <MemberWorkloadCard
+              key={member.user_id}
+              member={member}
+              members={sortedMembers}
+              canAssign={canAssignTasks}
+              onAssign={handleAssign}
+            />
+          ))}
         </div>
-      )}
-
-      <div className="grid gap-5 xl:grid-cols-2">
-        {sortedMembers.map((member) => (
-          <MemberWorkloadCard
-            key={member.user_id}
-            member={member}
-            members={sortedMembers}
-            canAssign={canAssignTasks}
-            onAssign={handleAssign}
-          />
-        ))}
-      </div>
+      </DndContext>
 
       {suggestions.length > 0 && (
         <div className="mt-8">
@@ -605,7 +712,18 @@ export default function WorkloadPage() {
             <h2 className="text-xl font-semibold text-white">
               Workload suggestions
             </h2>
+            {suggestionSource && (
+              <Badge className="border-blue-500/20 bg-blue-500/10 text-blue-200">
+                {suggestionSource.replaceAll("_", " ")}
+              </Badge>
+            )}
           </div>
+
+          {suggestionSummary && (
+            <div className="mb-4 rounded-2xl border border-blue-500/20 bg-blue-500/10 p-4 text-sm leading-6 text-blue-100/85">
+              {suggestionSummary}
+            </div>
+          )}
 
           <div className="grid gap-4 lg:grid-cols-2">
             {suggestions.map((suggestion, index) => (

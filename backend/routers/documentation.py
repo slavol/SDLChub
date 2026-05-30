@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from backend.database.session import get_db
-from backend.models.documentation import DocumentationPage
+from backend.models.documentation import DocumentationPage, DocumentationRevision
 from backend.models.project import Task, TaskStatus
 from backend.realtime import broadcast_project_event
 from backend.models.user import User
@@ -12,6 +12,7 @@ from backend.routers.auth import get_current_user
 from backend.schemas.documentation import (
     DocumentationPageCreate,
     DocumentationPageOut,
+    DocumentationRevisionOut,
     DocumentationPageUpdate,
 )
 from backend.services.documentation_service import enum_value, upsert_task_documentation_page
@@ -33,6 +34,27 @@ def _ensure_task_belongs_to_project(db: Session, project_id: int, task_id: int |
         )
 
     return task
+
+
+def _snapshot_revision(
+    db: Session,
+    page: DocumentationPage,
+    *,
+    actor_id: int | None,
+    action: str,
+) -> DocumentationRevision:
+    revision = DocumentationRevision(
+        page_id=page.id,
+        project_id=page.project_id,
+        task_id=page.task_id,
+        title=page.title,
+        content=page.content,
+        action=action,
+        actor_id=actor_id,
+    )
+    db.add(revision)
+    db.flush()
+    return revision
 
 
 @router.get("/project/{project_id}", response_model=List[DocumentationPageOut])
@@ -125,6 +147,25 @@ def get_documentation_page(
     return page
 
 
+@router.get("/{page_id}/history", response_model=List[DocumentationRevisionOut])
+def get_documentation_page_history(
+    page_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    page = db.query(DocumentationPage).filter(DocumentationPage.id == page_id).first()
+    if not page:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Documentation page not found.")
+
+    check_project_permission(db, current_user.id, page.project_id)
+    return (
+        db.query(DocumentationRevision)
+        .filter(DocumentationRevision.page_id == page.id)
+        .order_by(DocumentationRevision.created_at.desc(), DocumentationRevision.id.desc())
+        .all()
+    )
+
+
 @router.put("/{page_id}", response_model=DocumentationPageOut)
 def update_documentation_page(
     page_id: int,
@@ -139,18 +180,35 @@ def update_documentation_page(
     require_project_permission(db, current_user.id, page.project_id, "TASK_UPDATE")
 
     update_data = page_in.model_dump(exclude_unset=True)
+    changed = False
 
     if "task_id" in update_data:
         _ensure_task_belongs_to_project(db, page.project_id, update_data["task_id"])
 
+    next_title = page.title
+    next_content = page.content
+    next_task_id = page.task_id
+
     if "title" in update_data and update_data["title"] is not None:
-        page.title = update_data["title"].strip()
+        next_title = update_data["title"].strip()
 
     if "content" in update_data and update_data["content"] is not None:
-        page.content = update_data["content"]
+        next_content = update_data["content"]
 
     if "task_id" in update_data:
-        page.task_id = update_data["task_id"]
+        next_task_id = update_data["task_id"]
+
+    changed = (
+        next_title != page.title
+        or next_content != page.content
+        or next_task_id != page.task_id
+    )
+
+    if changed:
+        _snapshot_revision(db, page, actor_id=current_user.id, action="UPDATED")
+        page.title = next_title
+        page.content = next_content
+        page.task_id = next_task_id
 
     db.commit()
     db.refresh(page)
@@ -178,6 +236,7 @@ def delete_documentation_page(
     project_id = page.project_id
     page_id = page.id
     task_id = page.task_id
+    _snapshot_revision(db, page, actor_id=current_user.id, action="DELETED")
     db.delete(page)
     db.commit()
     broadcast_project_event(

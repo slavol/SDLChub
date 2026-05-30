@@ -44,6 +44,15 @@ class TaskUpdate(BaseModel):
     sprint_id: Optional[int] = None
 
 
+class TaskDeleteRequest(BaseModel):
+    reason: str = Field(min_length=8, max_length=800)
+    confirm_key: str = Field(min_length=1, max_length=80)
+
+
+class EstimateInvalidationRequest(BaseModel):
+    reason: str = Field(min_length=8, max_length=800)
+
+
 class TaskOut(BaseModel):
     id: int
     key: str

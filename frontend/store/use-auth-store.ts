@@ -8,6 +8,13 @@ export interface User {
   avatar_url?: string | null;
   is_active?: boolean;
   is_global_admin?: boolean;
+  notification_in_app_enabled?: boolean;
+  notification_email_enabled?: boolean;
+  notify_task_assignments?: boolean;
+  notify_mentions?: boolean;
+  notify_calendar?: boolean;
+  notify_due_dates?: boolean;
+  notify_ai_risk?: boolean;
   role?: string;
 }
 

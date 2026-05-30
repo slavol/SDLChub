@@ -31,7 +31,7 @@ class Settings(BaseSettings):
     frontend_url: str = "http://127.0.0.1:3000"
 
     # Database
-    database_url: str
+    database_url: str = "postgresql+psycopg2://sdlc_user:sdlc_password@127.0.0.1:5432/sdlchub"
 
     # Security
     secret_key: str = "change-me-in-production"
@@ -48,6 +48,7 @@ class Settings(BaseSettings):
     mail_ssl_tls: bool = False
     use_credentials: bool = True
     validate_certs: bool = True
+    mail_timeout: int = 20
 
     # AI
     gemini_api_key: str | None = None

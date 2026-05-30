@@ -31,6 +31,14 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -39,6 +47,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
+import { RichTextEditor } from "@/components/ui/rich-text-editor";
 import {
   Select,
   SelectContent,
@@ -64,9 +73,12 @@ import {
 import {
   createSubtask,
   createTaskComment,
+  deleteSubtask,
+  deleteTask,
   deleteTaskComment,
   getTaskDetail,
   estimateTaskStoryPoints,
+  invalidateTaskEstimate,
   refineTaskSpec,
   RefinedTaskSpec,
   TaskDetail,
@@ -142,9 +154,12 @@ function actionLabel(action: string) {
       TASK_UPDATED: "Updated task",
       SUBTASK_CREATED: "Added subtask",
       SUBTASK_UPDATED: "Updated subtask",
+      SUBTASK_DELETED: "Deleted subtask",
       COMMENT_ADDED: "Commented",
       COMMENT_UPDATED: "Edited comment",
       COMMENT_DELETED: "Deleted comment",
+      ESTIMATE_INVALIDATED: "Invalidated estimate",
+      DOCUMENTATION_GENERATED: "Generated documentation",
     }[action] || action.replaceAll("_", " ").toLowerCase()
   );
 }
@@ -163,11 +178,22 @@ export default function TaskDetailPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [newSubtaskTitle, setNewSubtaskTitle] = useState("");
+  const [editingSubtaskId, setEditingSubtaskId] = useState<number | null>(null);
+  const [editingSubtaskTitle, setEditingSubtaskTitle] = useState("");
+  const [subtaskToDelete, setSubtaskToDelete] = useState<number | null>(null);
+  const [deletingSubtask, setDeletingSubtask] = useState(false);
   const [newComment, setNewComment] = useState("");
   const [editingCommentId, setEditingCommentId] = useState<number | null>(null);
   const [editingCommentBody, setEditingCommentBody] = useState("");
   const [commentToDelete, setCommentToDelete] = useState<number | null>(null);
   const [deletingComment, setDeletingComment] = useState(false);
+  const [deleteTaskOpen, setDeleteTaskOpen] = useState(false);
+  const [deleteTaskReason, setDeleteTaskReason] = useState("");
+  const [deleteTaskConfirmKey, setDeleteTaskConfirmKey] = useState("");
+  const [deletingTask, setDeletingTask] = useState(false);
+  const [invalidateEstimateOpen, setInvalidateEstimateOpen] = useState(false);
+  const [invalidateEstimateReason, setInvalidateEstimateReason] = useState("");
+  const [invalidatingEstimate, setInvalidatingEstimate] = useState(false);
   const [aiWorking, setAiWorking] = useState(false);
   const [aiSuggestedSubtasks, setAiSuggestedSubtasks] = useState<string[]>([]);
   const [lastRefinedSpec, setLastRefinedSpec] = useState<RefinedTaskSpec | null>(null);
@@ -184,6 +210,7 @@ export default function TaskDetailPage() {
   const canAssignTask = can("TASK_ASSIGN");
   const canMoveTask = can("TASK_MOVE");
   const canComment = can("TASK_COMMENT");
+  const canDeleteTask = can("TASK_DELETE");
   const canUseAi = can("AI_USE");
   const canSaveTask = canUpdateTask || canAssignTask || canMoveTask;
 
@@ -346,6 +373,50 @@ export default function TaskDetailPage() {
     }
   };
 
+  const handleInvalidateEstimate = async () => {
+    if (!task || !supportsStoryPoints || !canUpdateTask) return;
+    if (invalidateEstimateReason.trim().length < 8) {
+      toast.error("Please add a reason with at least 8 characters.");
+      return;
+    }
+
+    setInvalidatingEstimate(true);
+    try {
+      const updated = await invalidateTaskEstimate(task.id, invalidateEstimateReason.trim());
+      patchLocalTask(updated);
+      setInvalidateEstimateOpen(false);
+      setInvalidateEstimateReason("");
+      await loadTask(false);
+      toast.success("Estimate invalidated");
+    } catch (error: unknown) {
+      toast.error(getApiErrorMessage(error, "Could not invalidate estimate."));
+    } finally {
+      setInvalidatingEstimate(false);
+    }
+  };
+
+  const handleDeleteTask = async () => {
+    if (!task || !canDeleteTask) return;
+    if (deleteTaskReason.trim().length < 8) {
+      toast.error("Please add a deletion reason with at least 8 characters.");
+      return;
+    }
+
+    setDeletingTask(true);
+    try {
+      await deleteTask(task.id, {
+        reason: deleteTaskReason.trim(),
+        confirm_key: deleteTaskConfirmKey.trim(),
+      });
+      toast.success(`${task.key} deleted`);
+      router.push("/dashboard/tasks");
+    } catch (error: unknown) {
+      toast.error(getApiErrorMessage(error, "Could not delete task."));
+    } finally {
+      setDeletingTask(false);
+    }
+  };
+
   const handleApplyAiSubtasks = async () => {
     if (!task || !canUpdateTask || aiSuggestedSubtasks.length === 0) return;
 
@@ -438,6 +509,44 @@ export default function TaskDetailPage() {
       toast.success("Subtask added");
     } catch (error: unknown) {
       toast.error(getApiErrorMessage(error, "Could not add subtask."));
+    }
+  };
+
+  const handleStartEditSubtask = (subtaskId: number, title: string) => {
+    if (!canUpdateTask) return;
+    setEditingSubtaskId(subtaskId);
+    setEditingSubtaskTitle(title);
+  };
+
+  const handleSaveSubtaskEdit = async () => {
+    if (!canUpdateTask) return;
+    if (!task || !editingSubtaskId || !editingSubtaskTitle.trim()) return;
+
+    try {
+      await updateSubtask(task.id, editingSubtaskId, { title: editingSubtaskTitle.trim() });
+      setEditingSubtaskId(null);
+      setEditingSubtaskTitle("");
+      await loadTask(false);
+      toast.success("Subtask updated");
+    } catch (error: unknown) {
+      toast.error(getApiErrorMessage(error, "Could not update subtask."));
+    }
+  };
+
+  const handleDeleteSubtask = async () => {
+    if (!canUpdateTask) return;
+    if (!task || !subtaskToDelete) return;
+
+    setDeletingSubtask(true);
+    try {
+      await deleteSubtask(task.id, subtaskToDelete);
+      setSubtaskToDelete(null);
+      await loadTask(false);
+      toast.success("Subtask deleted");
+    } catch (error: unknown) {
+      toast.error(getApiErrorMessage(error, "Could not delete subtask."));
+    } finally {
+      setDeletingSubtask(false);
     }
   };
 
@@ -607,6 +716,16 @@ export default function TaskDetailPage() {
                   Refine & save
                 </Button>
               )}
+              {canDeleteTask && (
+                <Button
+                  variant="outline"
+                  onClick={() => setDeleteTaskOpen(true)}
+                  className="h-11 border-rose-500/30 bg-rose-950/20 text-rose-200 hover:bg-rose-950/40 hover:text-rose-100"
+                >
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  Delete
+                </Button>
+              )}
             </div>
           </div>
         </div>
@@ -701,14 +820,12 @@ export default function TaskDetailPage() {
                     </button>
                   )}
                 </div>
-                <Textarea
+                <RichTextEditor
                   value={task.description || ""}
-                  onChange={(event) =>
-                    patchLocalTask({ description: event.target.value })
-                  }
+                  onChange={(value) => patchLocalTask({ description: value })}
                   disabled={!canUpdateTask}
-                  className="min-h-[260px] resize-y border-slate-700 bg-slate-950 leading-6 text-slate-100"
                   placeholder="User story, acceptance criteria, technical notes..."
+                  editorClassName="[&_.ProseMirror]:min-h-[260px]"
                 />
                 {aiStatusMessage && (
                   <div
@@ -824,34 +941,114 @@ export default function TaskDetailPage() {
 
               <div className="space-y-2">
                 {task.subtasks.map((subtask) => (
-                  <button
+                  <div
                     key={subtask.id}
-                    onClick={() =>
-                      handleToggleSubtask(subtask.id, subtask.is_done)
-                    }
-                    disabled={!canUpdateTask}
-                    className="flex w-full items-start gap-3 rounded-2xl border border-slate-800 bg-slate-950/75 p-4 text-left transition hover:border-blue-500/30 hover:bg-slate-950"
+                    className="rounded-2xl border border-slate-800 bg-slate-950/75 p-4 transition hover:border-blue-500/30 hover:bg-slate-950"
                   >
-                    {subtask.is_done ? (
-                      <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-400" />
+                    {editingSubtaskId === subtask.id ? (
+                      <div className="space-y-3">
+                        <Input
+                          value={editingSubtaskTitle}
+                          onChange={(event) => setEditingSubtaskTitle(event.target.value)}
+                          disabled={!canUpdateTask}
+                          className="h-11 border-slate-700 bg-slate-900"
+                        />
+                        <div className="flex justify-end gap-2">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="text-slate-400 hover:text-white"
+                            onClick={() => {
+                              setEditingSubtaskId(null);
+                              setEditingSubtaskTitle("");
+                            }}
+                          >
+                            <X className="mr-2 h-4 w-4" />
+                            Cancel
+                          </Button>
+                          <Button
+                            size="sm"
+                            className="bg-blue-600 hover:bg-blue-700"
+                            onClick={handleSaveSubtaskEdit}
+                            disabled={!canUpdateTask || !editingSubtaskTitle.trim()}
+                          >
+                            <Save className="mr-2 h-4 w-4" />
+                            Save
+                          </Button>
+                        </div>
+                      </div>
                     ) : (
-                      <Circle className="mt-0.5 h-5 w-5 shrink-0 text-slate-500" />
+                      <div className="flex items-start gap-3">
+                        <button
+                          type="button"
+                          onClick={() => handleToggleSubtask(subtask.id, subtask.is_done)}
+                          disabled={!canUpdateTask}
+                          className="mt-0.5 shrink-0 text-left disabled:cursor-not-allowed disabled:opacity-60"
+                          aria-label={subtask.is_done ? "Mark subtask as not done" : "Mark subtask as done"}
+                        >
+                          {subtask.is_done ? (
+                            <CheckCircle2 className="h-5 w-5 text-emerald-400" />
+                          ) : (
+                            <Circle className="h-5 w-5 text-slate-500" />
+                          )}
+                        </button>
+                        <div className="min-w-0 flex-1">
+                          <button
+                            type="button"
+                            onClick={() => handleToggleSubtask(subtask.id, subtask.is_done)}
+                            disabled={!canUpdateTask}
+                            className="block w-full text-left disabled:cursor-not-allowed"
+                          >
+                            <span
+                              className={
+                                subtask.is_done
+                                  ? "text-slate-500 line-through"
+                                  : "text-slate-200"
+                              }
+                            >
+                              {subtask.title}
+                            </span>
+                          </button>
+                          <p className="mt-1 text-xs text-slate-600">
+                            Added by {subtask.created_by_name || "Unknown user"}
+                          </p>
+                        </div>
+                        {canUpdateTask && (
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 text-slate-500 hover:bg-slate-900 hover:text-white"
+                              >
+                                <MoreHorizontal className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent
+                              align="end"
+                              className="border-slate-800 bg-slate-950 text-slate-200"
+                            >
+                              <DropdownMenuItem
+                                className="cursor-pointer hover:bg-slate-900"
+                                onClick={() => handleStartEditSubtask(subtask.id, subtask.title)}
+                              >
+                                <Pencil className="h-4 w-4" />
+                                Edit
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                variant="destructive"
+                                className="cursor-pointer"
+                                onClick={() => setSubtaskToDelete(subtask.id)}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                                Delete
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        )}
+                      </div>
                     )}
-                    <div className="min-w-0 flex-1">
-                      <span
-                        className={
-                          subtask.is_done
-                            ? "text-slate-500 line-through"
-                            : "text-slate-200"
-                        }
-                      >
-                        {subtask.title}
-                      </span>
-                      <p className="mt-1 text-xs text-slate-600">
-                        Added by {subtask.created_by_name || "Unknown user"}
-                      </p>
-                    </div>
-                  </button>
+                  </div>
                 ))}
 
                 {task.subtasks.length === 0 && (
@@ -1179,6 +1376,17 @@ export default function TaskDetailPage() {
                     disabled={!canUpdateTask}
                     className="h-11 border-slate-700 bg-slate-950"
                   />
+                  {canUpdateTask && task.story_points !== null && task.story_points !== undefined && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => setInvalidateEstimateOpen(true)}
+                      className="h-10 w-full border-amber-500/25 bg-amber-500/10 text-amber-100 hover:bg-amber-500/15"
+                    >
+                      <Gauge className="mr-2 h-4 w-4" />
+                      Invalidate estimate
+                    </Button>
+                  )}
                 </div>
               ) : (
                 <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
@@ -1277,6 +1485,129 @@ export default function TaskDetailPage() {
           </div>
         </aside>
       </div>
+
+      <Dialog
+        open={invalidateEstimateOpen}
+        onOpenChange={(open) => {
+          setInvalidateEstimateOpen(open);
+          if (!open) setInvalidateEstimateReason("");
+        }}
+      >
+        <DialogContent className="border-slate-800 bg-slate-950 text-slate-50 sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Invalidate estimate</DialogTitle>
+            <DialogDescription className="text-slate-400">
+              This clears the current story points and writes a dedicated governance event in the task audit log.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Label>Reason</Label>
+            <Textarea
+              value={invalidateEstimateReason}
+              onChange={(event) => setInvalidateEstimateReason(event.target.value)}
+              placeholder="Example: scope changed after API review, previous estimate is no longer valid."
+              className="min-h-28 border-slate-700 bg-slate-900"
+            />
+          </div>
+          <DialogFooter>
+            <Button
+              variant="ghost"
+              className="text-slate-400 hover:text-white"
+              disabled={invalidatingEstimate}
+              onClick={() => setInvalidateEstimateOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              className="bg-amber-600 hover:bg-amber-700"
+              disabled={invalidatingEstimate || invalidateEstimateReason.trim().length < 8}
+              onClick={handleInvalidateEstimate}
+            >
+              {invalidatingEstimate && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Invalidate
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={deleteTaskOpen}
+        onOpenChange={(open) => {
+          setDeleteTaskOpen(open);
+          if (!open) {
+            setDeleteTaskReason("");
+            setDeleteTaskConfirmKey("");
+          }
+        }}
+      >
+        <DialogContent className="border-slate-800 bg-slate-950 text-slate-50 sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Delete {task.key}?</DialogTitle>
+            <DialogDescription className="text-slate-400">
+              This action is governance protected. The task will be removed from the workspace and the deletion reason will remain in the project audit log.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="rounded-2xl border border-rose-500/20 bg-rose-950/20 p-4">
+              <p className="text-sm font-semibold text-rose-100">{task.title}</p>
+              <p className="mt-1 text-xs leading-5 text-rose-200/70">
+                Type <span className="font-mono text-rose-100">{task.key}</span> below to confirm deletion.
+              </p>
+            </div>
+            <div className="space-y-2">
+              <Label>Deletion reason</Label>
+              <Textarea
+                value={deleteTaskReason}
+                onChange={(event) => setDeleteTaskReason(event.target.value)}
+                placeholder="Explain why this task is being deleted."
+                className="min-h-28 border-slate-700 bg-slate-900"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Confirmation key</Label>
+              <Input
+                value={deleteTaskConfirmKey}
+                onChange={(event) => setDeleteTaskConfirmKey(event.target.value)}
+                placeholder={task.key}
+                className="h-11 border-slate-700 bg-slate-900 font-mono"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="ghost"
+              className="text-slate-400 hover:text-white"
+              disabled={deletingTask}
+              onClick={() => setDeleteTaskOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              className="bg-rose-600 hover:bg-rose-700"
+              disabled={
+                deletingTask ||
+                deleteTaskReason.trim().length < 8 ||
+                deleteTaskConfirmKey.trim().toUpperCase() !== task.key.toUpperCase()
+              }
+              onClick={handleDeleteTask}
+            >
+              {deletingTask && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Delete Task
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <ConfirmDialog
+        open={subtaskToDelete !== null}
+        onOpenChange={(open) => !open && setSubtaskToDelete(null)}
+        title="Delete subtask?"
+        description="This removes the checklist item from the issue. The task audit trail will keep the deletion event."
+        confirmLabel="Delete Subtask"
+        destructive
+        loading={deletingSubtask}
+        onConfirm={handleDeleteSubtask}
+      />
 
       <ConfirmDialog
         open={commentToDelete !== null}

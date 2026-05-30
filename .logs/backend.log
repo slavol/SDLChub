@@ -1,347 +1,982 @@
-INFO:     Started server process [29036]
+INFO:     Started server process [192799]
 INFO:     Waiting for application startup.
 INFO:     Application startup complete.
 INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
-⚠️ GEMINI_API_KEY not found. AI features will use fallback responses.
-INFO:     127.0.0.1:34886 - "GET /health HTTP/1.1" 200 OK
-INFO:     127.0.0.1:46696 - "GET /projects/1/audit-logs HTTP/1.1" 401 Unauthorized
-INFO:     127.0.0.1:45132 - "OPTIONS /auth/login HTTP/1.1" 200 OK
-INFO:     127.0.0.1:45132 - "POST /auth/login HTTP/1.1" 200 OK
-INFO:     127.0.0.1:45132 - "POST /auth/login HTTP/1.1" 200 OK
-INFO:     127.0.0.1:45132 - "OPTIONS /projects/mine HTTP/1.1" 200 OK
-INFO:     127.0.0.1:45132 - "GET /projects/mine HTTP/1.1" 200 OK
-INFO:     127.0.0.1:45132 - "GET /projects/mine HTTP/1.1" 200 OK
-INFO:     127.0.0.1:45148 - "GET /projects/mine HTTP/1.1" 200 OK
-INFO:     127.0.0.1:45152 - "WebSocket /ws?token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJzbGF2b2xpdS5wcmVkYTI0QGdtYWlsLmNvbSIsImlkIjoyLCJmdWxsX25hbWUiOiJQcmVkYSBTbGF2b2xpdWItRGVuaXMiLCJleHAiOjE3ODAxNDAzMTd9.qsfv9bCKFd3I1TMaBQ3DI2VG2JyCH-TJP66DAtmjf-4" [accepted]
+INFO:     127.0.0.1:47356 - "GET /notifications/unread-count HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47364 - "WebSocket /ws?token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJzbGF2b2xpdS5wcmVkYTI0QGdtYWlsLmNvbSIsImlkIjoyLCJmdWxsX25hbWUiOiJQcmVkYSBTbGF2b2xpdWItRGVuaXMiLCJleHAiOjE3ODAyNDE2NDN9.ozAwb1SWp140Lghu5SQxXkeYb3sAOR0sgKFIs-Z29j8" [accepted]
+INFO:     connection open
+INFO:     127.0.0.1:47372 - "WebSocket /ws?token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJzbGF2b2xpdS5wcmVkYTI0QGdtYWlsLmNvbSIsImlkIjoyLCJmdWxsX25hbWUiOiJQcmVkYSBTbGF2b2xpdWItRGVuaXMiLCJleHAiOjE3ODAyNDE2NDN9.ozAwb1SWp140Lghu5SQxXkeYb3sAOR0sgKFIs-Z29j8" [accepted]
 INFO:     connection open
 INFO:     connection closed
-INFO:     127.0.0.1:45184 - "OPTIONS /notifications/unread-count HTTP/1.1" 200 OK
-INFO:     127.0.0.1:45186 - "OPTIONS /notifications/unread-count HTTP/1.1" 200 OK
-INFO:     127.0.0.1:45132 - "GET /projects/mine HTTP/1.1" 200 OK
-INFO:     127.0.0.1:45148 - "GET /projects/mine HTTP/1.1" 200 OK
-INFO:     127.0.0.1:45184 - "GET /notifications/unread-count HTTP/1.1" 200 OK
-INFO:     127.0.0.1:45186 - "GET /notifications/unread-count HTTP/1.1" 200 OK
-INFO:     127.0.0.1:45180 - "GET /projects/1/dashboard HTTP/1.1" 200 OK
-INFO:     127.0.0.1:45182 - "GET /projects/1/dashboard HTTP/1.1" 200 OK
-INFO:     127.0.0.1:45196 - "WebSocket /ws?token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJzbGF2b2xpdS5wcmVkYTI0QGdtYWlsLmNvbSIsImlkIjoyLCJmdWxsX25hbWUiOiJQcmVkYSBTbGF2b2xpdWItRGVuaXMiLCJleHAiOjE3ODAxNDAzMTd9.qsfv9bCKFd3I1TMaBQ3DI2VG2JyCH-TJP66DAtmjf-4" [accepted]
-INFO:     connection open
-INFO:     127.0.0.1:45132 - "OPTIONS /projects/1/roles HTTP/1.1" 200 OK
-INFO:     127.0.0.1:45148 - "OPTIONS /projects/1/roles HTTP/1.1" 200 OK
-INFO:     127.0.0.1:45184 - "OPTIONS /projects/1/members HTTP/1.1" 200 OK
-INFO:     127.0.0.1:45186 - "OPTIONS /projects/1/members HTTP/1.1" 200 OK
-INFO:     127.0.0.1:45180 - "GET /projects/1 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:45182 - "GET /projects/1 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:45148 - "GET /projects/1/roles HTTP/1.1" 200 OK
-INFO:     127.0.0.1:45132 - "GET /projects/1/roles HTTP/1.1" 200 OK
-INFO:     127.0.0.1:45186 - "GET /projects/1/members HTTP/1.1" 200 OK
-INFO:     127.0.0.1:45184 - "GET /projects/1/members HTTP/1.1" 200 OK
-INFO:     127.0.0.1:45180 - "OPTIONS /projects/1/audit-logs?limit=40 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:45182 - "OPTIONS /projects/1/audit-logs?limit=40 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:45182 - "GET /projects/1/audit-logs?limit=40 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:45180 - "GET /projects/1/audit-logs?limit=40 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:45180 - "OPTIONS /projects/1/ai-settings HTTP/1.1" 200 OK
-INFO:     127.0.0.1:45182 - "GET /projects/mine HTTP/1.1" 200 OK
-INFO:     127.0.0.1:45180 - "GET /projects/1/ai-settings HTTP/1.1" 200 OK
-INFO:     127.0.0.1:45186 - "GET /projects/1/ai-settings HTTP/1.1" 200 OK
-INFO:     127.0.0.1:45184 - "GET /projects/mine HTTP/1.1" 200 OK
-INFO:     127.0.0.1:45148 - "GET /projects/mine HTTP/1.1" 200 OK
-INFO:     127.0.0.1:45182 - "GET /projects/mine HTTP/1.1" 200 OK
-INFO:     127.0.0.1:45208 - "WebSocket /ws?token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJzbGF2b2xpdS5wcmVkYTI0QGdtYWlsLmNvbSIsImlkIjoyLCJmdWxsX25hbWUiOiJQcmVkYSBTbGF2b2xpdWItRGVuaXMiLCJleHAiOjE3ODAxNDAzMTd9.qsfv9bCKFd3I1TMaBQ3DI2VG2JyCH-TJP66DAtmjf-4" [accepted]
-INFO:     connection open
-INFO:     127.0.0.1:33268 - "GET /notifications/unread-count HTTP/1.1" 200 OK
-INFO:     127.0.0.1:47644 - "OPTIONS /projects/1/my-permissions HTTP/1.1" 200 OK
-INFO:     127.0.0.1:47670 - "OPTIONS /projects/1/my-permissions HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33268 - "GET /projects/mine HTTP/1.1" 200 OK
-INFO:     127.0.0.1:47654 - "GET /projects/mine HTTP/1.1" 200 OK
-INFO:     127.0.0.1:47644 - "GET /projects/1/my-permissions HTTP/1.1" 200 OK
-INFO:     127.0.0.1:47670 - "GET /projects/1/my-permissions HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33268 - "GET /sprints/project/1 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:47644 - "GET /tasks/project/1?view=backlog HTTP/1.1" 200 OK
-INFO:     127.0.0.1:47684 - "GET /sprints/project/1 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:47670 - "GET /projects/1/members HTTP/1.1" 200 OK
-INFO:     127.0.0.1:47654 - "GET /tasks/project/1?view=backlog HTTP/1.1" 200 OK
-INFO:     127.0.0.1:47678 - "GET /projects/1/members HTTP/1.1" 200 OK
-INFO:     127.0.0.1:47644 - "GET /projects/1/my-permissions HTTP/1.1" 200 OK
-INFO:     127.0.0.1:47654 - "GET /projects/1/my-permissions HTTP/1.1" 200 OK
-INFO:     127.0.0.1:47670 - "GET /tasks/63 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:47678 - "GET /tasks/63 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:47654 - "OPTIONS /teams/project/1 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:47678 - "OPTIONS /teams/project/1 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:47654 - "GET /teams/project/1 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:47678 - "GET /teams/project/1 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:47644 - "GET /projects/1/members HTTP/1.1" 200 OK
-INFO:     127.0.0.1:47670 - "GET /projects/1/members HTTP/1.1" 200 OK
-INFO:     127.0.0.1:35652 - "GET /projects/1/dashboard HTTP/1.1" 200 OK
-INFO:     127.0.0.1:35656 - "GET /projects/1/dashboard HTTP/1.1" 200 OK
-INFO:     127.0.0.1:35672 - "GET /notifications/unread-count HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33630 - "OPTIONS /tasks/11 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33638 - "OPTIONS /tasks/11 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33608 - "GET /projects/1/my-permissions HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33616 - "GET /projects/1/my-permissions HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33630 - "GET /tasks/11 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33638 - "GET /tasks/11 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33616 - "GET /teams/project/1 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33608 - "GET /teams/project/1 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33630 - "GET /projects/1/members HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33638 - "GET /projects/1/members HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33630 - "GET /projects/1/dashboard HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33638 - "GET /projects/1/dashboard HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33556 - "OPTIONS /projects/1 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33562 - "OPTIONS /projects/1 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33638 - "GET /projects/1/roles HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33608 - "GET /projects/1/roles HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33556 - "GET /projects/1 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33562 - "GET /projects/1 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33616 - "GET /projects/1/members HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33630 - "GET /projects/1/members HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33638 - "GET /projects/1/audit-logs?limit=40 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33630 - "GET /projects/1/audit-logs?limit=40 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33638 - "GET /projects/1/ai-settings HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33630 - "GET /projects/mine HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33638 - "GET /projects/1/ai-settings HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33630 - "GET /projects/mine HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33608 - "GET /projects/mine HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33616 - "GET /projects/mine HTTP/1.1" 200 OK
-INFO:     127.0.0.1:34492 - "GET /notifications/unread-count HTTP/1.1" 200 OK
-INFO:     127.0.0.1:40086 - "OPTIONS /admin/tickets/mine HTTP/1.1" 200 OK
-INFO:     127.0.0.1:40086 - "GET /admin/tickets/mine HTTP/1.1" 200 OK
-INFO:     127.0.0.1:40086 - "GET /admin/tickets/mine HTTP/1.1" 200 OK
-INFO:     127.0.0.1:40104 - "GET /projects/1/roles HTTP/1.1" 200 OK
-INFO:     127.0.0.1:40114 - "GET /projects/1/roles HTTP/1.1" 200 OK
-INFO:     127.0.0.1:40122 - "GET /teams/project/1 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:40130 - "GET /teams/project/1 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:40086 - "GET /projects/1/members HTTP/1.1" 200 OK
-INFO:     127.0.0.1:40094 - "GET /projects/1/members HTTP/1.1" 200 OK
-INFO:     127.0.0.1:40086 - "OPTIONS /projects/1/invitations HTTP/1.1" 200 OK
-INFO:     127.0.0.1:40086 - "OPTIONS /projects/1/invitations HTTP/1.1" 200 OK
-INFO:     127.0.0.1:40094 - "GET /projects/1/invitations HTTP/1.1" 200 OK
-INFO:     127.0.0.1:40086 - "GET /projects/1/invitations HTTP/1.1" 200 OK
-INFO:     127.0.0.1:40094 - "OPTIONS /tasks/project/1?view=backlog HTTP/1.1" 200 OK
-INFO:     127.0.0.1:40086 - "OPTIONS /sprints/project/1 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:40104 - "OPTIONS /tasks/project/1?view=backlog HTTP/1.1" 200 OK
-INFO:     127.0.0.1:40114 - "OPTIONS /sprints/project/1 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:40086 - "GET /sprints/project/1 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:40114 - "GET /sprints/project/1 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:40122 - "GET /projects/1/my-permissions HTTP/1.1" 200 OK
-INFO:     127.0.0.1:40104 - "GET /tasks/project/1?view=backlog HTTP/1.1" 200 OK
-INFO:     127.0.0.1:40094 - "GET /tasks/project/1?view=backlog HTTP/1.1" 200 OK
-INFO:     127.0.0.1:40086 - "GET /projects/mine HTTP/1.1" 200 OK
-INFO:     127.0.0.1:40104 - "GET /projects/1/my-permissions HTTP/1.1" 200 OK
-INFO:     127.0.0.1:40094 - "GET /projects/1/my-permissions HTTP/1.1" 200 OK
-INFO:     127.0.0.1:40114 - "GET /projects/mine HTTP/1.1" 200 OK
-INFO:     127.0.0.1:40094 - "GET /sprints/project/1 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:40130 - "GET /sprints/project/1 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:40104 - "GET /tasks/project/1?view=backlog HTTP/1.1" 200 OK
-INFO:     127.0.0.1:40114 - "GET /tasks/project/1?view=backlog HTTP/1.1" 200 OK
-INFO:     127.0.0.1:40086 - "GET /projects/1/members HTTP/1.1" 200 OK
-INFO:     127.0.0.1:40122 - "GET /projects/1/members HTTP/1.1" 200 OK
-INFO:     127.0.0.1:40122 - "OPTIONS /tasks/project/1?view=board HTTP/1.1" 200 OK
-INFO:     127.0.0.1:40122 - "OPTIONS /tasks/project/1?view=board HTTP/1.1" 200 OK
-INFO:     127.0.0.1:40114 - "GET /projects/1 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:40104 - "GET /projects/1 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:40130 - "GET /projects/1/my-permissions HTTP/1.1" 200 OK
-INFO:     127.0.0.1:40094 - "GET /sprints/project/1 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:40086 - "GET /sprints/project/1 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:40114 - "GET /tasks/project/1?view=board HTTP/1.1" 200 OK
-INFO:     127.0.0.1:40122 - "GET /tasks/project/1?view=board HTTP/1.1" 200 OK
-INFO:     127.0.0.1:40104 - "GET /projects/1/my-permissions HTTP/1.1" 200 OK
-INFO:     127.0.0.1:40122 - "GET /projects/1/my-permissions HTTP/1.1" 200 OK
-INFO:     127.0.0.1:40130 - "GET /tasks/project/1?view=backlog HTTP/1.1" 200 OK
-INFO:     127.0.0.1:40114 - "GET /tasks/project/1?view=backlog HTTP/1.1" 200 OK
-INFO:     127.0.0.1:40104 - "GET /sprints/project/1 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:40130 - "OPTIONS /calendar/project/1 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:40114 - "OPTIONS /calendar/project/1 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:40094 - "GET /projects/1/members HTTP/1.1" 200 OK
-INFO:     127.0.0.1:40122 - "GET /sprints/project/1 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:40086 - "GET /projects/1/members HTTP/1.1" 200 OK
-INFO:     127.0.0.1:40104 - "GET /calendar/project/1 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:40130 - "GET /calendar/project/1 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:40094 - "GET /projects/1 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:40114 - "GET /projects/1 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:40086 - "GET /sprints/project/1 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:40094 - "GET /projects/1/my-permissions HTTP/1.1" 200 OK
-INFO:     127.0.0.1:40130 - "GET /sprints/project/1 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:40122 - "GET /tasks/project/1?view=board HTTP/1.1" 200 OK
-INFO:     127.0.0.1:40104 - "GET /tasks/project/1?view=board HTTP/1.1" 200 OK
-INFO:     127.0.0.1:40114 - "GET /notifications/unread-count HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33010 - "GET /projects/1/my-permissions HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33020 - "GET /projects/mine HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33036 - "GET /projects/1/my-permissions HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33052 - "GET /projects/mine HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33020 - "GET /sprints/project/1 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33010 - "GET /tasks/project/1?view=backlog HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33036 - "GET /projects/1/members HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33052 - "GET /tasks/project/1?view=backlog HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33070 - "GET /sprints/project/1 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33062 - "GET /projects/1/members HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33052 - "GET /projects/1 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33070 - "GET /sprints/project/1 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33010 - "GET /sprints/project/1 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33036 - "GET /projects/1 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33052 - "GET /projects/1/my-permissions HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33020 - "GET /tasks/project/1?view=board HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33062 - "GET /tasks/project/1?view=board HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33036 - "GET /projects/1/my-permissions HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33010 - "GET /projects/1/my-permissions HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33062 - "GET /sprints/project/1 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33070 - "GET /calendar/project/1 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33020 - "GET /tasks/project/1?view=backlog HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33062 - "GET /calendar/project/1 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33052 - "GET /projects/1/members HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33036 - "GET /projects/1/members HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33010 - "GET /tasks/project/1?view=backlog HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33070 - "GET /sprints/project/1 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33052 - "OPTIONS /projects/1/activity?limit=200 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33010 - "GET /projects/1/activity?limit=200 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33020 - "GET /projects/1/members HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33062 - "GET /projects/1/members HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33010 - "GET /projects/1/activity?limit=200 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33010 - "OPTIONS /github/events/project/1?limit=120 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33052 - "OPTIONS /github/events/project/1?limit=120 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33020 - "GET /github/events/project/1?limit=120 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33010 - "GET /github/events/project/1?limit=120 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33010 - "OPTIONS /projects/1/reports/overview HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33062 - "OPTIONS /projects/1/reports/overview HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33010 - "GET /projects/1/reports/overview HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33052 - "GET /projects/1/reports/overview HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33062 - "OPTIONS /documentation/project/1 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33052 - "OPTIONS /documentation/project/1 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33052 - "GET /documentation/project/1 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33062 - "GET /documentation/project/1 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33010 - "GET /tasks/project/1?view=board HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33020 - "GET /tasks/project/1?view=board HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33010 - "GET /github/events/project/1?limit=120 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33052 - "GET /github/events/project/1?limit=120 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33020 - "GET /documentation/project/1 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33010 - "GET /documentation/project/1 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33062 - "GET /tasks/project/1?view=board HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33052 - "GET /tasks/project/1?view=board HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33010 - "GET /projects/1/reports/overview HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33010 - "GET /projects/1/reports/overview HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33010 - "GET /projects/1/my-permissions HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33062 - "GET /projects/1/my-permissions HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33052 - "GET /projects/1/workload HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33020 - "GET /projects/1/workload HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33062 - "GET /projects/1/dashboard HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33010 - "GET /projects/1/dashboard HTTP/1.1" 200 OK
-INFO:     127.0.0.1:51418 - "GET /projects/1 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:51432 - "GET /projects/1 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:51446 - "GET /projects/1/roles HTTP/1.1" 200 OK
-INFO:     127.0.0.1:51452 - "GET /projects/1/roles HTTP/1.1" 200 OK
-INFO:     127.0.0.1:51456 - "GET /projects/1/members HTTP/1.1" 200 OK
-INFO:     127.0.0.1:51462 - "GET /projects/1/members HTTP/1.1" 200 OK
-INFO:     127.0.0.1:51456 - "GET /projects/1/audit-logs?limit=40 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:51462 - "GET /projects/1/audit-logs?limit=40 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:51446 - "GET /projects/mine HTTP/1.1" 200 OK
-INFO:     127.0.0.1:51462 - "GET /projects/mine HTTP/1.1" 200 OK
-INFO:     127.0.0.1:51456 - "GET /projects/1/ai-settings HTTP/1.1" 200 OK
-INFO:     127.0.0.1:51452 - "GET /projects/1/ai-settings HTTP/1.1" 200 OK
-INFO:     127.0.0.1:51446 - "GET /projects/mine HTTP/1.1" 200 OK
-INFO:     127.0.0.1:51462 - "GET /projects/mine HTTP/1.1" 200 OK
-INFO:     127.0.0.1:51456 - "OPTIONS /auth/me/account-summary HTTP/1.1" 200 OK
-INFO:     127.0.0.1:51462 - "OPTIONS /auth/me/account-summary HTTP/1.1" 200 OK
-INFO:     127.0.0.1:51456 - "GET /auth/me/account-summary HTTP/1.1" 200 OK
-INFO:     127.0.0.1:51462 - "GET /auth/me/account-summary HTTP/1.1" 200 OK
-INFO:     127.0.0.1:51456 - "GET /notifications/unread-count HTTP/1.1" 200 OK
 INFO:     connection closed
-INFO:     127.0.0.1:51462 - "OPTIONS /auth/me HTTP/1.1" 200 OK
-INFO:     127.0.0.1:51456 - "GET /auth/me HTTP/1.1" 200 OK
-INFO:     127.0.0.1:51462 - "GET /auth/me HTTP/1.1" 200 OK
-INFO:     127.0.0.1:51456 - "OPTIONS /admin/overview HTTP/1.1" 200 OK
-INFO:     127.0.0.1:51462 - "GET /admin/overview HTTP/1.1" 200 OK
-INFO:     127.0.0.1:51456 - "GET /admin/overview HTTP/1.1" 200 OK
-INFO:     127.0.0.1:51452 - "OPTIONS /admin/projects HTTP/1.1" 200 OK
-INFO:     127.0.0.1:51446 - "OPTIONS /admin/users HTTP/1.1" 200 OK
-INFO:     127.0.0.1:51418 - "OPTIONS /admin/tickets HTTP/1.1" 200 OK
-INFO:     127.0.0.1:51452 - "OPTIONS /admin/projects HTTP/1.1" 200 OK
-INFO:     127.0.0.1:51432 - "OPTIONS /admin/users HTTP/1.1" 200 OK
-INFO:     127.0.0.1:51418 - "OPTIONS /admin/tickets HTTP/1.1" 200 OK
-INFO:     127.0.0.1:51462 - "GET /admin/overview HTTP/1.1" 200 OK
-INFO:     127.0.0.1:51432 - "GET /admin/tickets HTTP/1.1" 200 OK
-INFO:     127.0.0.1:51446 - "GET /admin/projects HTTP/1.1" 200 OK
-INFO:     127.0.0.1:51456 - "GET /admin/overview HTTP/1.1" 200 OK
-INFO:     127.0.0.1:51446 - "OPTIONS /admin/errors HTTP/1.1" 200 OK
-INFO:     127.0.0.1:51456 - "OPTIONS /admin/ai-usage HTTP/1.1" 200 OK
-INFO:     127.0.0.1:51452 - "GET /admin/users HTTP/1.1" 200 OK
-INFO:     127.0.0.1:51446 - "OPTIONS /admin/errors HTTP/1.1" 200 OK
-INFO:     127.0.0.1:51456 - "OPTIONS /admin/ai-usage HTTP/1.1" 200 OK
-INFO:     127.0.0.1:51418 - "GET /admin/projects HTTP/1.1" 200 OK
-INFO:     127.0.0.1:51462 - "GET /admin/users HTTP/1.1" 200 OK
-INFO:     127.0.0.1:51432 - "GET /admin/tickets HTTP/1.1" 200 OK
-INFO:     127.0.0.1:51456 - "GET /admin/errors HTTP/1.1" 200 OK
-INFO:     127.0.0.1:51452 - "GET /admin/errors HTTP/1.1" 200 OK
-INFO:     127.0.0.1:51446 - "GET /admin/ai-usage HTTP/1.1" 200 OK
-INFO:     127.0.0.1:51418 - "GET /admin/ai-usage HTTP/1.1" 200 OK
-INFO:     127.0.0.1:35238 - "GET /projects/mine HTTP/1.1" 200 OK
-INFO:     127.0.0.1:35240 - "GET /projects/mine HTTP/1.1" 200 OK
-INFO:     127.0.0.1:35250 - "WebSocket /ws?token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJzbGF2b2xpdS5wcmVkYTI0QGdtYWlsLmNvbSIsImlkIjoyLCJmdWxsX25hbWUiOiJQcmVkYSBTbGF2b2xpdWItRGVuaXMiLCJleHAiOjE3ODAxNDAzMTd9.qsfv9bCKFd3I1TMaBQ3DI2VG2JyCH-TJP66DAtmjf-4" [accepted]
+INFO:     127.0.0.1:47356 - "GET /projects/mine HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47356 - "GET /projects/mine HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47382 - "WebSocket /ws?token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJzbGF2b2xpdS5wcmVkYTI0QGdtYWlsLmNvbSIsImlkIjoyLCJmdWxsX25hbWUiOiJQcmVkYSBTbGF2b2xpdWItRGVuaXMiLCJleHAiOjE3ODAyNDE2NDN9.ozAwb1SWp140Lghu5SQxXkeYb3sAOR0sgKFIs-Z29j8" [accepted]
 INFO:     connection open
 INFO:     connection closed
-INFO:     127.0.0.1:35238 - "GET /projects/mine HTTP/1.1" 200 OK
-INFO:     127.0.0.1:35240 - "GET /projects/mine HTTP/1.1" 200 OK
-INFO:     127.0.0.1:35276 - "GET /notifications/unread-count HTTP/1.1" 200 OK
-INFO:     127.0.0.1:35264 - "GET /notifications/unread-count HTTP/1.1" 200 OK
-INFO:     127.0.0.1:35278 - "GET /projects/1/dashboard HTTP/1.1" 200 OK
-INFO:     127.0.0.1:35292 - "GET /projects/1/dashboard HTTP/1.1" 200 OK
-INFO:     127.0.0.1:39398 - "WebSocket /ws?token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJzbGF2b2xpdS5wcmVkYTI0QGdtYWlsLmNvbSIsImlkIjoyLCJmdWxsX25hbWUiOiJQcmVkYSBTbGF2b2xpdWItRGVuaXMiLCJleHAiOjE3ODAxNDAzMTd9.qsfv9bCKFd3I1TMaBQ3DI2VG2JyCH-TJP66DAtmjf-4" [accepted]
+INFO:     127.0.0.1:47356 - "GET /projects/mine HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47356 - "GET /notifications/unread-count HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47384 - "GET /notifications/unread-count HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47394 - "GET /projects/mine HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47406 - "GET /projects/mine HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47420 - "GET /projects/1/my-permissions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47356 - "GET /projects/1/my-permissions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47432 - "GET /projects/1/workload HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47384 - "GET /projects/1/workload HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47448 - "WebSocket /ws?token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJzbGF2b2xpdS5wcmVkYTI0QGdtYWlsLmNvbSIsImlkIjoyLCJmdWxsX25hbWUiOiJQcmVkYSBTbGF2b2xpdWItRGVuaXMiLCJleHAiOjE3ODAyNDE2NDN9.ozAwb1SWp140Lghu5SQxXkeYb3sAOR0sgKFIs-Z29j8" [accepted]
 INFO:     connection open
-INFO:     127.0.0.1:39402 - "WebSocket /ws?token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJzbGF2b2xpdS5wcmVkYTI0QGdtYWlsLmNvbSIsImlkIjoyLCJmdWxsX25hbWUiOiJQcmVkYSBTbGF2b2xpdWItRGVuaXMiLCJleHAiOjE3ODAxNDAzMTd9.qsfv9bCKFd3I1TMaBQ3DI2VG2JyCH-TJP66DAtmjf-4" [accepted]
+INFO:     127.0.0.1:47452 - "WebSocket /ws?token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJzbGF2b2xpdS5wcmVkYTI0QGdtYWlsLmNvbSIsImlkIjoyLCJmdWxsX25hbWUiOiJQcmVkYSBTbGF2b2xpdWItRGVuaXMiLCJleHAiOjE3ODAyNDE2NDN9.ozAwb1SWp140Lghu5SQxXkeYb3sAOR0sgKFIs-Z29j8" [accepted]
 INFO:     connection open
-INFO:     127.0.0.1:37544 - "GET /notifications/unread-count HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49516 - "GET /notifications/unread-count HTTP/1.1" 200 OK
-INFO:     127.0.0.1:59228 - "GET /notifications/unread-count HTTP/1.1" 200 OK
-INFO:     127.0.0.1:54224 - "GET /notifications/unread-count HTTP/1.1" 200 OK
-INFO:     127.0.0.1:51300 - "GET /notifications/unread-count HTTP/1.1" 200 OK
-INFO:     127.0.0.1:50144 - "GET /notifications/unread-count HTTP/1.1" 200 OK
-INFO:     127.0.0.1:47634 - "GET /notifications/unread-count HTTP/1.1" 200 OK
-INFO:     127.0.0.1:56008 - "GET /notifications/unread-count HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49386 - "GET /notifications/unread-count HTTP/1.1" 200 OK
-INFO:     127.0.0.1:40362 - "GET /notifications/unread-count HTTP/1.1" 200 OK
-INFO:     127.0.0.1:56160 - "GET /notifications/unread-count HTTP/1.1" 200 OK
-INFO:     127.0.0.1:37402 - "GET /notifications/unread-count HTTP/1.1" 200 OK
-INFO:     127.0.0.1:34604 - "GET /notifications/unread-count HTTP/1.1" 200 OK
-INFO:     127.0.0.1:42198 - "OPTIONS /notifications/unread-count HTTP/1.1" 200 OK
-INFO:     127.0.0.1:42198 - "GET /notifications/unread-count HTTP/1.1" 200 OK
-INFO:     127.0.0.1:60186 - "GET /notifications/unread-count HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49298 - "GET /notifications/unread-count HTTP/1.1" 200 OK
-INFO:     127.0.0.1:40054 - "GET /notifications/unread-count HTTP/1.1" 200 OK
-INFO:     127.0.0.1:55606 - "GET /notifications/unread-count HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49860 - "GET /notifications/unread-count HTTP/1.1" 200 OK
-INFO:     127.0.0.1:55662 - "GET /notifications/unread-count HTTP/1.1" 200 OK
-INFO:     127.0.0.1:47264 - "GET /notifications/unread-count HTTP/1.1" 200 OK
-INFO:     127.0.0.1:48796 - "GET /notifications/unread-count HTTP/1.1" 200 OK
-INFO:     127.0.0.1:46326 - "GET /notifications/unread-count HTTP/1.1" 200 OK
-INFO:     127.0.0.1:40478 - "GET /notifications/unread-count HTTP/1.1" 200 OK
-INFO:     127.0.0.1:53632 - "GET /notifications/unread-count HTTP/1.1" 200 OK
-INFO:     127.0.0.1:48490 - "GET /notifications/unread-count HTTP/1.1" 200 OK
-INFO:     127.0.0.1:53494 - "GET /notifications/unread-count HTTP/1.1" 200 OK
-INFO:     127.0.0.1:46018 - "GET /notifications/unread-count HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33954 - "GET /notifications/unread-count HTTP/1.1" 200 OK
-INFO:     127.0.0.1:41768 - "GET /notifications/unread-count HTTP/1.1" 200 OK
-INFO:     127.0.0.1:51354 - "GET /notifications/unread-count HTTP/1.1" 200 OK
-INFO:     127.0.0.1:58474 - "GET /notifications/unread-count HTTP/1.1" 200 OK
-INFO:     127.0.0.1:34886 - "GET /notifications/unread-count HTTP/1.1" 200 OK
-INFO:     127.0.0.1:46668 - "OPTIONS /notifications/unread-count HTTP/1.1" 200 OK
-INFO:     127.0.0.1:46668 - "GET /notifications/unread-count HTTP/1.1" 200 OK
-INFO:     127.0.0.1:34646 - "GET /notifications/unread-count HTTP/1.1" 200 OK
-INFO:     127.0.0.1:37492 - "GET /notifications/unread-count HTTP/1.1" 200 OK
-INFO:     127.0.0.1:39578 - "GET /notifications/unread-count HTTP/1.1" 200 OK
-INFO:     127.0.0.1:47008 - "GET /notifications/unread-count HTTP/1.1" 200 OK
-INFO:     127.0.0.1:34040 - "GET /notifications/unread-count HTTP/1.1" 200 OK
-INFO:     127.0.0.1:58400 - "GET /notifications/unread-count HTTP/1.1" 200 OK
-INFO:     127.0.0.1:48082 - "GET /notifications/unread-count HTTP/1.1" 200 OK
-INFO:     127.0.0.1:45278 - "GET /notifications/unread-count HTTP/1.1" 200 OK
-INFO:     127.0.0.1:50422 - "GET /notifications/unread-count HTTP/1.1" 200 OK
-INFO:     127.0.0.1:37388 - "GET /notifications/unread-count HTTP/1.1" 200 OK
-INFO:     127.0.0.1:44230 - "GET /notifications/unread-count HTTP/1.1" 200 OK
-INFO:     127.0.0.1:33548 - "GET /notifications/unread-count HTTP/1.1" 200 OK
-INFO:     127.0.0.1:47046 - "GET /notifications/unread-count HTTP/1.1" 200 OK
-INFO:     127.0.0.1:39102 - "GET /notifications/unread-count HTTP/1.1" 200 OK
-INFO:     127.0.0.1:49692 - "GET /notifications/unread-count HTTP/1.1" 200 OK
-INFO:     127.0.0.1:36498 - "GET /notifications/unread-count HTTP/1.1" 200 OK
-INFO:     127.0.0.1:46656 - "GET /notifications/unread-count HTTP/1.1" 200 OK
-INFO:     127.0.0.1:48246 - "GET /notifications/unread-count HTTP/1.1" 401 Unauthorized
+INFO:     127.0.0.1:47384 - "GET /github/events/project/1?limit=120 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47432 - "GET /github/events/project/1?limit=120 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40344 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40382 - "OPTIONS /github/pull-requests/project/1?limit=120 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40398 - "OPTIONS /github/pull-requests/project/1?limit=120 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40358 - "GET /projects/1/my-permissions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40368 - "GET /projects/1/my-permissions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40382 - "GET /github/pull-requests/project/1?limit=120 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40398 - "GET /github/pull-requests/project/1?limit=120 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47684 - "GET /github/events/project/1?limit=120 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47694 - "GET /github/events/project/1?limit=120 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47684 - "OPTIONS /github/events/project/1?event_type=push&limit=120 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47694 - "GET /github/events/project/1?event_type=push&limit=120 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47684 - "GET /github/events/project/1?limit=120 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47694 - "OPTIONS /projects/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47684 - "OPTIONS /projects/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47694 - "OPTIONS /projects/1/members HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35816 - "OPTIONS /projects/1/roles HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35826 - "OPTIONS /projects/1/members HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35830 - "OPTIONS /projects/1/roles HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47684 - "GET /projects/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35846 - "GET /projects/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35816 - "GET /projects/1/roles HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35830 - "GET /projects/1/roles HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47694 - "GET /projects/1/members HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35826 - "GET /projects/1/members HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47694 - "GET /projects/1/audit-logs?limit=40 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35826 - "GET /projects/1/audit-logs?limit=40 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47694 - "GET /projects/1/ai-settings HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35826 - "GET /projects/mine HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35816 - "GET /projects/mine HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47684 - "GET /projects/1/ai-settings HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47694 - "GET /projects/mine HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35826 - "GET /projects/mine HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47694 - "GET /notifications/unread-count HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57260 - "OPTIONS /auth/me/account-summary HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57274 - "OPTIONS /auth/me/account-summary HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57260 - "GET /auth/me/account-summary HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57274 - "GET /auth/me/account-summary HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57280 - "OPTIONS /projects/1/dashboard HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57288 - "OPTIONS /projects/1/dashboard HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57280 - "GET /projects/1/dashboard HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57288 - "GET /projects/1/dashboard HTTP/1.1" 200 OK
+INFO:     127.0.0.1:48516 - "OPTIONS /notifications/unread-count HTTP/1.1" 200 OK
+INFO:     127.0.0.1:48516 - "GET /notifications/unread-count HTTP/1.1" 200 OK
+INFO:     127.0.0.1:37414 - "GET /notifications/unread-count HTTP/1.1" 200 OK
+INFO:     127.0.0.1:37432 - "OPTIONS /tasks/44 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:37436 - "OPTIONS /tasks/44 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:37414 - "GET /projects/1/my-permissions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:37426 - "GET /projects/1/my-permissions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:37432 - "GET /tasks/44 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:37436 - "GET /tasks/44 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:37426 - "GET /teams/project/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:37414 - "GET /teams/project/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:37432 - "GET /projects/1/members HTTP/1.1" 200 OK
+INFO:     127.0.0.1:37436 - "GET /projects/1/members HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53866 - "OPTIONS /tasks/44/comments HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53866 - "POST /tasks/44/comments HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53866 - "GET /tasks/44 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53866 - "GET /tasks/44 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53866 - "GET /tasks/44 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53866 - "GET /projects/1/members HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53866 - "GET /projects/1/members HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53866 - "GET /teams/project/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53866 - "GET /teams/project/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53866 - "GET /projects/1/members HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53866 - "GET /teams/project/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53874 - "POST /tasks/44/comments HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53874 - "GET /tasks/44 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35972 - "GET /tasks/44 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53874 - "GET /tasks/44 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35972 - "GET /projects/1/members HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53874 - "GET /projects/1/members HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35972 - "GET /teams/project/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53874 - "GET /teams/project/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53874 - "GET /teams/project/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35972 - "GET /projects/1/members HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35972 - "OPTIONS /tasks/44/comments/68 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53874 - "DELETE /tasks/44/comments/68 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35972 - "GET /tasks/44 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53874 - "GET /teams/project/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35972 - "GET /projects/1/members HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53874 - "GET /tasks/44 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35972 - "GET /tasks/44 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53874 - "GET /teams/project/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35972 - "GET /projects/1/members HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53874 - "GET /teams/project/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35972 - "GET /projects/1/members HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53884 - "POST /tasks/44/comments HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35972 - "GET /tasks/44 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53874 - "GET /tasks/44 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53884 - "GET /tasks/44 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53874 - "GET /teams/project/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53884 - "GET /projects/1/members HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53874 - "GET /teams/project/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35972 - "GET /projects/1/members HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53884 - "GET /teams/project/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35972 - "GET /projects/1/members HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35964 - "POST /tasks/44/comments HTTP/1.1" 500 Internal Server Error
+ERROR:    Exception in ASGI application
+Traceback (most recent call last):
+  File "/home/slavoliu/SDLChub/.venv/lib/python3.12/site-packages/uvicorn/protocols/http/h11_impl.py", line 410, in run_asgi
+    result = await app(  # type: ignore[func-returns-value]
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/slavoliu/SDLChub/.venv/lib/python3.12/site-packages/uvicorn/middleware/proxy_headers.py", line 60, in __call__
+    return await self.app(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/slavoliu/SDLChub/.venv/lib/python3.12/site-packages/fastapi/applications.py", line 1135, in __call__
+    await super().__call__(scope, receive, send)
+  File "/home/slavoliu/SDLChub/.venv/lib/python3.12/site-packages/starlette/applications.py", line 107, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "/home/slavoliu/SDLChub/.venv/lib/python3.12/site-packages/starlette/middleware/errors.py", line 186, in __call__
+    raise exc
+  File "/home/slavoliu/SDLChub/.venv/lib/python3.12/site-packages/starlette/middleware/errors.py", line 164, in __call__
+    await self.app(scope, receive, _send)
+  File "/home/slavoliu/SDLChub/.venv/lib/python3.12/site-packages/starlette/middleware/base.py", line 191, in __call__
+    with recv_stream, send_stream, collapse_excgroups():
+  File "/usr/lib/python3.12/contextlib.py", line 158, in __exit__
+    self.gen.throw(value)
+  File "/home/slavoliu/SDLChub/.venv/lib/python3.12/site-packages/starlette/_utils.py", line 85, in collapse_excgroups
+    raise exc
+  File "/home/slavoliu/SDLChub/.venv/lib/python3.12/site-packages/starlette/middleware/base.py", line 193, in __call__
+    response = await self.dispatch_func(request, call_next)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/slavoliu/SDLChub/backend/main.py", line 58, in log_http_errors
+    response = await call_next(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/slavoliu/SDLChub/.venv/lib/python3.12/site-packages/starlette/middleware/base.py", line 168, in call_next
+    raise app_exc from app_exc.__cause__ or app_exc.__context__
+  File "/home/slavoliu/SDLChub/.venv/lib/python3.12/site-packages/starlette/middleware/base.py", line 144, in coro
+    await self.app(scope, receive_or_disconnect, send_no_error)
+  File "/home/slavoliu/SDLChub/.venv/lib/python3.12/site-packages/starlette/middleware/cors.py", line 93, in __call__
+    await self.simple_response(scope, receive, send, request_headers=headers)
+  File "/home/slavoliu/SDLChub/.venv/lib/python3.12/site-packages/starlette/middleware/cors.py", line 144, in simple_response
+    await self.app(scope, receive, send)
+  File "/home/slavoliu/SDLChub/.venv/lib/python3.12/site-packages/starlette/middleware/exceptions.py", line 63, in __call__
+    await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+  File "/home/slavoliu/SDLChub/.venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "/home/slavoliu/SDLChub/.venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "/home/slavoliu/SDLChub/.venv/lib/python3.12/site-packages/fastapi/middleware/asyncexitstack.py", line 18, in __call__
+    await self.app(scope, receive, send)
+  File "/home/slavoliu/SDLChub/.venv/lib/python3.12/site-packages/starlette/routing.py", line 716, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "/home/slavoliu/SDLChub/.venv/lib/python3.12/site-packages/starlette/routing.py", line 736, in app
+    await route.handle(scope, receive, send)
+  File "/home/slavoliu/SDLChub/.venv/lib/python3.12/site-packages/starlette/routing.py", line 290, in handle
+    await self.app(scope, receive, send)
+  File "/home/slavoliu/SDLChub/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 115, in app
+    await wrap_app_handling_exceptions(app, request)(scope, receive, send)
+  File "/home/slavoliu/SDLChub/.venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "/home/slavoliu/SDLChub/.venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "/home/slavoliu/SDLChub/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 101, in app
+    response = await f(request)
+               ^^^^^^^^^^^^^^^^
+  File "/home/slavoliu/SDLChub/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 355, in app
+    raw_response = await run_endpoint_function(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/slavoliu/SDLChub/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 245, in run_endpoint_function
+    return await run_in_threadpool(dependant.call, **values)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/slavoliu/SDLChub/.venv/lib/python3.12/site-packages/starlette/concurrency.py", line 32, in run_in_threadpool
+    return await anyio.to_thread.run_sync(func)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/slavoliu/SDLChub/.venv/lib/python3.12/site-packages/anyio/to_thread.py", line 63, in run_sync
+    return await get_async_backend().run_sync_in_worker_thread(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/slavoliu/SDLChub/.venv/lib/python3.12/site-packages/anyio/_backends/_asyncio.py", line 2502, in run_sync_in_worker_thread
+    return await future
+           ^^^^^^^^^^^^
+  File "/home/slavoliu/SDLChub/.venv/lib/python3.12/site-packages/anyio/_backends/_asyncio.py", line 986, in run
+    result = context.run(func, *args)
+             ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/slavoliu/SDLChub/backend/routers/tasks.py", line 1099, in create_comment
+    db.refresh(comment)
+  File "/home/slavoliu/SDLChub/.venv/lib/python3.12/site-packages/sqlalchemy/orm/session.py", line 3170, in refresh
+    raise sa_exc.InvalidRequestError(
+sqlalchemy.exc.InvalidRequestError: Could not refresh instance '<TaskComment at 0x794a27714860>'
+INFO:     127.0.0.1:35972 - "OPTIONS /tasks/44/comments/67 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53874 - "DELETE /tasks/44/comments/67 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35972 - "GET /tasks/44 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53874 - "GET /tasks/44 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53884 - "GET /tasks/44 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:41978 - "GET /teams/project/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53874 - "GET /teams/project/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35972 - "GET /projects/1/members HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53884 - "GET /projects/1/members HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53874 - "GET /teams/project/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:41978 - "GET /projects/1/members HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35932 - "POST /tasks/44/comments HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35972 - "GET /tasks/44 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53884 - "GET /tasks/44 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:41978 - "GET /tasks/44 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:41978 - "GET /teams/project/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35972 - "GET /projects/1/members HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53874 - "GET /teams/project/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35972 - "GET /teams/project/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:41978 - "GET /projects/1/members HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53884 - "GET /projects/1/members HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35948 - "POST /tasks/44/comments HTTP/1.1" 500 Internal Server Error
+ERROR:    Exception in ASGI application
+Traceback (most recent call last):
+  File "/home/slavoliu/SDLChub/.venv/lib/python3.12/site-packages/uvicorn/protocols/http/h11_impl.py", line 410, in run_asgi
+    result = await app(  # type: ignore[func-returns-value]
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/slavoliu/SDLChub/.venv/lib/python3.12/site-packages/uvicorn/middleware/proxy_headers.py", line 60, in __call__
+    return await self.app(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/slavoliu/SDLChub/.venv/lib/python3.12/site-packages/fastapi/applications.py", line 1135, in __call__
+    await super().__call__(scope, receive, send)
+  File "/home/slavoliu/SDLChub/.venv/lib/python3.12/site-packages/starlette/applications.py", line 107, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "/home/slavoliu/SDLChub/.venv/lib/python3.12/site-packages/starlette/middleware/errors.py", line 186, in __call__
+    raise exc
+  File "/home/slavoliu/SDLChub/.venv/lib/python3.12/site-packages/starlette/middleware/errors.py", line 164, in __call__
+    await self.app(scope, receive, _send)
+  File "/home/slavoliu/SDLChub/.venv/lib/python3.12/site-packages/starlette/middleware/base.py", line 191, in __call__
+    with recv_stream, send_stream, collapse_excgroups():
+  File "/usr/lib/python3.12/contextlib.py", line 158, in __exit__
+    self.gen.throw(value)
+  File "/home/slavoliu/SDLChub/.venv/lib/python3.12/site-packages/starlette/_utils.py", line 85, in collapse_excgroups
+    raise exc
+  File "/home/slavoliu/SDLChub/.venv/lib/python3.12/site-packages/starlette/middleware/base.py", line 193, in __call__
+    response = await self.dispatch_func(request, call_next)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/slavoliu/SDLChub/backend/main.py", line 58, in log_http_errors
+    response = await call_next(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/slavoliu/SDLChub/.venv/lib/python3.12/site-packages/starlette/middleware/base.py", line 168, in call_next
+    raise app_exc from app_exc.__cause__ or app_exc.__context__
+  File "/home/slavoliu/SDLChub/.venv/lib/python3.12/site-packages/starlette/middleware/base.py", line 144, in coro
+    await self.app(scope, receive_or_disconnect, send_no_error)
+  File "/home/slavoliu/SDLChub/.venv/lib/python3.12/site-packages/starlette/middleware/cors.py", line 93, in __call__
+    await self.simple_response(scope, receive, send, request_headers=headers)
+  File "/home/slavoliu/SDLChub/.venv/lib/python3.12/site-packages/starlette/middleware/cors.py", line 144, in simple_response
+    await self.app(scope, receive, send)
+  File "/home/slavoliu/SDLChub/.venv/lib/python3.12/site-packages/starlette/middleware/exceptions.py", line 63, in __call__
+    await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+  File "/home/slavoliu/SDLChub/.venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "/home/slavoliu/SDLChub/.venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "/home/slavoliu/SDLChub/.venv/lib/python3.12/site-packages/fastapi/middleware/asyncexitstack.py", line 18, in __call__
+    await self.app(scope, receive, send)
+  File "/home/slavoliu/SDLChub/.venv/lib/python3.12/site-packages/starlette/routing.py", line 716, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "/home/slavoliu/SDLChub/.venv/lib/python3.12/site-packages/starlette/routing.py", line 736, in app
+    await route.handle(scope, receive, send)
+  File "/home/slavoliu/SDLChub/.venv/lib/python3.12/site-packages/starlette/routing.py", line 290, in handle
+    await self.app(scope, receive, send)
+  File "/home/slavoliu/SDLChub/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 115, in app
+    await wrap_app_handling_exceptions(app, request)(scope, receive, send)
+  File "/home/slavoliu/SDLChub/.venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "/home/slavoliu/SDLChub/.venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "/home/slavoliu/SDLChub/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 101, in app
+    response = await f(request)
+               ^^^^^^^^^^^^^^^^
+  File "/home/slavoliu/SDLChub/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 355, in app
+    raw_response = await run_endpoint_function(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/slavoliu/SDLChub/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 245, in run_endpoint_function
+    return await run_in_threadpool(dependant.call, **values)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/slavoliu/SDLChub/.venv/lib/python3.12/site-packages/starlette/concurrency.py", line 32, in run_in_threadpool
+    return await anyio.to_thread.run_sync(func)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/slavoliu/SDLChub/.venv/lib/python3.12/site-packages/anyio/to_thread.py", line 63, in run_sync
+    return await get_async_backend().run_sync_in_worker_thread(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/slavoliu/SDLChub/.venv/lib/python3.12/site-packages/anyio/_backends/_asyncio.py", line 2502, in run_sync_in_worker_thread
+    return await future
+           ^^^^^^^^^^^^
+  File "/home/slavoliu/SDLChub/.venv/lib/python3.12/site-packages/anyio/_backends/_asyncio.py", line 986, in run
+    result = context.run(func, *args)
+             ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/slavoliu/SDLChub/backend/routers/tasks.py", line 1099, in create_comment
+    db.refresh(comment)
+  File "/home/slavoliu/SDLChub/.venv/lib/python3.12/site-packages/sqlalchemy/orm/session.py", line 3170, in refresh
+    raise sa_exc.InvalidRequestError(
+sqlalchemy.exc.InvalidRequestError: Could not refresh instance '<TaskComment at 0x794a277933e0>'
+INFO:     127.0.0.1:35972 - "GET /notifications/unread-count HTTP/1.1" 200 OK
+INFO:     127.0.0.1:41978 - "OPTIONS /tasks/44/comments/66 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53884 - "DELETE /tasks/44/comments/66 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35972 - "GET /tasks/44 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:41978 - "GET /tasks/44 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53884 - "GET /tasks/44 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53874 - "GET /teams/project/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:41978 - "GET /teams/project/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:41984 - "GET /teams/project/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35972 - "GET /projects/1/members HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35932 - "GET /projects/1/members HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53884 - "GET /projects/1/members HTTP/1.1" 200 OK
+INFO:     127.0.0.1:41978 - "OPTIONS /tasks/44/comments/65 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35972 - "DELETE /tasks/44/comments/65 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:41978 - "GET /tasks/44 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35972 - "GET /tasks/44 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:41984 - "GET /tasks/44 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35972 - "GET /teams/project/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53884 - "GET /teams/project/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:41984 - "GET /projects/1/members HTTP/1.1" 200 OK
+INFO:     127.0.0.1:41978 - "GET /projects/1/members HTTP/1.1" 200 OK
+INFO:     127.0.0.1:41984 - "GET /teams/project/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35972 - "GET /projects/1/members HTTP/1.1" 200 OK
+INFO:     127.0.0.1:41978 - "OPTIONS /tasks/44/comments/64 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:41984 - "DELETE /tasks/44/comments/64 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35972 - "GET /tasks/44 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:41984 - "GET /tasks/44 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:41978 - "GET /tasks/44 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53884 - "GET /teams/project/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:41978 - "GET /teams/project/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:41984 - "GET /projects/1/members HTTP/1.1" 200 OK
+INFO:     127.0.0.1:48462 - "GET /projects/1/members HTTP/1.1" 200 OK
+INFO:     127.0.0.1:48474 - "GET /teams/project/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35972 - "GET /projects/1/members HTTP/1.1" 200 OK
 INFO:     connection closed
 INFO:     connection closed
+INFO:     127.0.0.1:41978 - "GET /projects/mine HTTP/1.1" 200 OK
+INFO:     127.0.0.1:41984 - "GET /projects/mine HTTP/1.1" 200 OK
+INFO:     127.0.0.1:48488 - "WebSocket /ws?token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJzbGF2b2xpdS5wcmVkYTI0QGdtYWlsLmNvbSIsImlkIjoyLCJmdWxsX25hbWUiOiJQcmVkYSBTbGF2b2xpdWItRGVuaXMiLCJleHAiOjE3ODAyNDE2NDN9.ozAwb1SWp140Lghu5SQxXkeYb3sAOR0sgKFIs-Z29j8" [accepted]
+INFO:     connection open
 INFO:     connection closed
-INFO:     127.0.0.1:48246 - "GET /projects/mine HTTP/1.1" 401 Unauthorized
+INFO:     127.0.0.1:35972 - "GET /projects/mine HTTP/1.1" 200 OK
+INFO:     127.0.0.1:48462 - "GET /notifications/unread-count HTTP/1.1" 200 OK
+INFO:     127.0.0.1:48474 - "GET /notifications/unread-count HTTP/1.1" 200 OK
+INFO:     127.0.0.1:41984 - "GET /projects/mine HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35972 - "GET /projects/1/my-permissions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:41978 - "GET /tasks/44 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53884 - "GET /projects/1/my-permissions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:48474 - "GET /projects/mine HTTP/1.1" 200 OK
+INFO:     127.0.0.1:48462 - "GET /tasks/44 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35972 - "GET /projects/mine HTTP/1.1" 200 OK
+INFO:     127.0.0.1:41984 - "GET /tasks/44 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53884 - "GET /teams/project/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:48474 - "GET /teams/project/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:41978 - "GET /projects/1/members HTTP/1.1" 200 OK
+INFO:     127.0.0.1:41984 - "GET /teams/project/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:48462 - "GET /projects/1/members HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35972 - "GET /projects/1/members HTTP/1.1" 200 OK
+INFO:     127.0.0.1:48498 - "WebSocket /ws?token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJzbGF2b2xpdS5wcmVkYTI0QGdtYWlsLmNvbSIsImlkIjoyLCJmdWxsX25hbWUiOiJQcmVkYSBTbGF2b2xpdWItRGVuaXMiLCJleHAiOjE3ODAyNDE2NDN9.ozAwb1SWp140Lghu5SQxXkeYb3sAOR0sgKFIs-Z29j8" [accepted]
+INFO:     connection open
+INFO:     127.0.0.1:48504 - "WebSocket /ws?token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJzbGF2b2xpdS5wcmVkYTI0QGdtYWlsLmNvbSIsImlkIjoyLCJmdWxsX25hbWUiOiJQcmVkYSBTbGF2b2xpdWItRGVuaXMiLCJleHAiOjE3ODAyNDE2NDN9.ozAwb1SWp140Lghu5SQxXkeYb3sAOR0sgKFIs-Z29j8" [accepted]
+INFO:     connection open
+INFO:     127.0.0.1:36490 - "OPTIONS /tasks/44/comments/63 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36490 - "DELETE /tasks/44/comments/63 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36490 - "GET /tasks/44 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36506 - "GET /tasks/44 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36508 - "GET /tasks/44 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36508 - "GET /teams/project/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36514 - "GET /teams/project/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36490 - "GET /projects/1/members HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36528 - "GET /teams/project/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36506 - "GET /projects/1/members HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36516 - "GET /projects/1/members HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36490 - "GET /projects/1/dashboard HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36508 - "GET /projects/1/dashboard HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36556 - "GET /projects/mine HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36542 - "GET /projects/1/my-permissions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36558 - "GET /projects/1/my-permissions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36562 - "GET /projects/mine HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36556 - "GET /sprints/project/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36542 - "GET /tasks/project/1?view=backlog HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36558 - "GET /projects/1/members HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36562 - "GET /tasks/project/1?view=backlog HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36580 - "GET /sprints/project/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36564 - "GET /projects/1/members HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36542 - "GET /projects/1/my-permissions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36562 - "GET /projects/1/my-permissions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36564 - "GET /tasks/63 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36558 - "GET /tasks/63 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36562 - "GET /teams/project/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36558 - "GET /teams/project/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36542 - "GET /projects/1/members HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36564 - "GET /projects/1/members HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36562 - "GET /projects/1/my-permissions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36558 - "GET /projects/mine HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36542 - "GET /projects/1/my-permissions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36564 - "GET /projects/mine HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36558 - "GET /sprints/project/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36580 - "GET /sprints/project/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36542 - "GET /tasks/project/1?view=backlog HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36562 - "GET /projects/1/members HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36564 - "GET /tasks/project/1?view=backlog HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36556 - "GET /projects/1/members HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36564 - "OPTIONS /tasks/56 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36558 - "OPTIONS /tasks/56 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36562 - "GET /projects/1/my-permissions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36542 - "GET /projects/1/my-permissions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36564 - "GET /tasks/56 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36558 - "GET /tasks/56 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36558 - "GET /teams/project/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36542 - "GET /teams/project/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36564 - "GET /projects/1/members HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36562 - "GET /projects/1/members HTTP/1.1" 200 OK
+INFO:     127.0.0.1:48458 - "GET /notifications/unread-count HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46946 - "OPTIONS /tasks/56/comments HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46946 - "POST /tasks/56/comments HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46946 - "GET /tasks/56 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:41830 - "GET /tasks/56 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:41832 - "GET /tasks/56 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:41832 - "GET /teams/project/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:41834 - "GET /teams/project/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:41830 - "GET /projects/1/members HTTP/1.1" 200 OK
+INFO:     127.0.0.1:41858 - "GET /teams/project/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:41842 - "GET /projects/1/members HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46946 - "GET /projects/1/members HTTP/1.1" 200 OK
+INFO:     127.0.0.1:41832 - "GET /notifications/unread-count HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36302 - "GET /notifications/unread-count HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35000 - "GET /projects/1/dashboard HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35000 - "GET /projects/1/dashboard HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35000 - "OPTIONS /notifications?unread_only=false&limit=100 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35006 - "OPTIONS /notifications?unread_only=false&limit=100 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35000 - "GET /notifications?unread_only=false&limit=100 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35006 - "GET /notifications?unread_only=false&limit=100 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35000 - "GET /projects/1/dashboard HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35006 - "GET /projects/1/dashboard HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54942 - "GET /notifications/unread-count HTTP/1.1" 200 OK
+INFO:     connection closed
+INFO:     connection closed
+INFO:     127.0.0.1:54942 - "GET /projects/mine HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54954 - "GET /projects/mine HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54960 - "WebSocket /ws?token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJzbGF2b2xpdS5wcmVkYTI0QGdtYWlsLmNvbSIsImlkIjoyLCJmdWxsX25hbWUiOiJQcmVkYSBTbGF2b2xpdWItRGVuaXMiLCJleHAiOjE3ODAyNDE2NDN9.ozAwb1SWp140Lghu5SQxXkeYb3sAOR0sgKFIs-Z29j8" [accepted]
+INFO:     connection open
+INFO:     connection closed
+INFO:     127.0.0.1:54942 - "GET /projects/mine HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54954 - "GET /projects/mine HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54970 - "GET /projects/mine HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54986 - "GET /notifications/unread-count HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54980 - "GET /notifications/unread-count HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54942 - "GET /projects/1/dashboard HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55000 - "GET /projects/1/dashboard HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55004 - "WebSocket /ws?token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJzbGF2b2xpdS5wcmVkYTI0QGdtYWlsLmNvbSIsImlkIjoyLCJmdWxsX25hbWUiOiJQcmVkYSBTbGF2b2xpdWItRGVuaXMiLCJleHAiOjE3ODAyNDE2NDN9.ozAwb1SWp140Lghu5SQxXkeYb3sAOR0sgKFIs-Z29j8" [accepted]
+INFO:     connection open
+INFO:     127.0.0.1:55006 - "WebSocket /ws?token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJzbGF2b2xpdS5wcmVkYTI0QGdtYWlsLmNvbSIsImlkIjoyLCJmdWxsX25hbWUiOiJQcmVkYSBTbGF2b2xpdWItRGVuaXMiLCJleHAiOjE3ODAyNDE2NDN9.ozAwb1SWp140Lghu5SQxXkeYb3sAOR0sgKFIs-Z29j8" [accepted]
+INFO:     connection open
+INFO:     127.0.0.1:37426 - "OPTIONS /projects/1/my-permissions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:37436 - "OPTIONS /projects/1/my-permissions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:37436 - "GET /projects/1/my-permissions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:37426 - "GET /projects/1/my-permissions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:37402 - "GET /projects/1/workload HTTP/1.1" 200 OK
+INFO:     127.0.0.1:37410 - "GET /projects/1/workload HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52822 - "GET /projects/1/my-permissions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52838 - "GET /projects/1/my-permissions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52836 - "GET /tasks/56 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52852 - "GET /tasks/56 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52852 - "OPTIONS /teams/project/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52838 - "OPTIONS /teams/project/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52852 - "GET /teams/project/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52838 - "GET /teams/project/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52836 - "GET /projects/1/members HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52822 - "GET /projects/1/members HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35272 - "GET /notifications/unread-count HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57122 - "GET /projects/1/dashboard HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57134 - "GET /projects/1/dashboard HTTP/1.1" 200 OK
+INFO:     127.0.0.1:45202 - "GET /notifications/unread-count HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58606 - "GET /notifications/unread-count HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43560 - "GET /projects/1/my-permissions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43570 - "GET /projects/1/my-permissions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43594 - "GET /projects/1/workload HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43582 - "GET /projects/1/workload HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43594 - "GET /projects/1/dashboard HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43582 - "GET /projects/1/dashboard HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43560 - "GET /projects/1/my-permissions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43594 - "GET /projects/1/my-permissions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43582 - "GET /projects/1/workload HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43570 - "GET /projects/1/workload HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43594 - "OPTIONS /projects/1/reports/overview HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43582 - "GET /projects/1/reports/overview HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43570 - "GET /projects/1/reports/overview HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43570 - "GET /projects/1/my-permissions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43594 - "GET /projects/1/my-permissions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43560 - "GET /projects/1/workload HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43582 - "GET /projects/1/workload HTTP/1.1" 200 OK
+INFO:     127.0.0.1:48102 - "GET /notifications/unread-count HTTP/1.1" 200 OK
+INFO:     127.0.0.1:48116 - "OPTIONS /tasks/49 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:48116 - "PUT /tasks/49 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:48116 - "GET /projects/1/workload HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55034 - "GET /projects/1/my-permissions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55042 - "GET /projects/1/my-permissions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55046 - "GET /tasks/56 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55036 - "GET /tasks/56 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55034 - "GET /teams/project/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55042 - "GET /teams/project/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55036 - "GET /projects/1/members HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55046 - "GET /projects/1/members HTTP/1.1" 200 OK
+INFO:     127.0.0.1:37748 - "GET /notifications/unread-count HTTP/1.1" 200 OK
+INFO:     127.0.0.1:37752 - "GET /projects/1/dashboard HTTP/1.1" 200 OK
+INFO:     127.0.0.1:37758 - "GET /projects/1/dashboard HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53498 - "GET /notifications/unread-count HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50958 - "GET /notifications/unread-count HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57312 - "OPTIONS /github/events/project/1?limit=120 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57324 - "OPTIONS /github/events/project/1?limit=120 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57312 - "GET /github/events/project/1?limit=120 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57324 - "GET /github/events/project/1?limit=120 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57312 - "OPTIONS /github/events/project/1?event_type=pull_request&limit=120 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57324 - "GET /github/events/project/1?event_type=pull_request&limit=120 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57312 - "GET /github/events/project/1?event_type=push&limit=120 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57324 - "GET /github/events/project/1?limit=120 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57312 - "GET /projects/1/my-permissions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57324 - "GET /projects/1/my-permissions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51140 - "GET /github/pull-requests/project/1?limit=120 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51132 - "GET /github/pull-requests/project/1?limit=120 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:48862 - "GET /github/events/project/1?limit=120 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:48866 - "GET /github/events/project/1?limit=120 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:48862 - "GET /notifications/unread-count HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40456 - "OPTIONS /tasks/58 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40466 - "OPTIONS /tasks/58 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:48866 - "GET /projects/1/my-permissions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:48862 - "GET /projects/1/my-permissions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40456 - "GET /tasks/58 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40466 - "GET /tasks/58 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40466 - "GET /teams/project/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:48862 - "GET /teams/project/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40456 - "GET /projects/1/members HTTP/1.1" 200 OK
+INFO:     127.0.0.1:48866 - "GET /projects/1/members HTTP/1.1" 200 OK
+INFO:     127.0.0.1:44272 - "OPTIONS /tasks/ai-refine HTTP/1.1" 200 OK
+INFO:     127.0.0.1:44292 - "GET /notifications/unread-count HTTP/1.1" 200 OK
+INFO:     127.0.0.1:44272 - "POST /tasks/ai-refine HTTP/1.1" 200 OK
+INFO:     127.0.0.1:44272 - "OPTIONS /tasks/58 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:44272 - "PUT /tasks/58 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:44292 - "GET /tasks/58 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:44272 - "GET /tasks/58 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43086 - "GET /tasks/58 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43086 - "GET /teams/project/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43090 - "GET /teams/project/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43106 - "GET /teams/project/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:44292 - "GET /projects/1/members HTTP/1.1" 200 OK
+INFO:     127.0.0.1:44272 - "GET /projects/1/members HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43102 - "GET /projects/1/members HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43120 - "OPTIONS /tasks/58/subtasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43132 - "OPTIONS /tasks/58/subtasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43120 - "OPTIONS /tasks/58/subtasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43132 - "OPTIONS /tasks/58/subtasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43120 - "OPTIONS /tasks/58/subtasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43136 - "OPTIONS /tasks/58/subtasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43138 - "OPTIONS /tasks/58/subtasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43120 - "POST /tasks/58/subtasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43132 - "POST /tasks/58/subtasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43150 - "POST /tasks/58/subtasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43136 - "POST /tasks/58/subtasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43156 - "POST /tasks/58/subtasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43138 - "POST /tasks/58/subtasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43168 - "POST /tasks/58/subtasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43120 - "GET /tasks/58 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43132 - "GET /tasks/58 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43168 - "GET /tasks/58 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43136 - "GET /tasks/58 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43170 - "GET /tasks/58 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43178 - "GET /tasks/58 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43120 - "GET /tasks/58 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43132 - "GET /tasks/58 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43168 - "GET /tasks/58 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43136 - "GET /tasks/58 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43170 - "GET /tasks/58 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43138 - "GET /projects/1/members HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43136 - "OPTIONS /tasks/58/subtasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43178 - "GET /tasks/58 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43120 - "GET /tasks/58 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43168 - "GET /teams/project/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43132 - "GET /tasks/58 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43138 - "GET /teams/project/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43136 - "GET /projects/1/members HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43170 - "GET /projects/1/members HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43150 - "POST /tasks/58/subtasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43120 - "GET /teams/project/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43132 - "GET /teams/project/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43138 - "GET /teams/project/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43178 - "GET /projects/1/members HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43136 - "GET /teams/project/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43120 - "GET /tasks/58 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43132 - "GET /teams/project/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43168 - "GET /projects/1/members HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43170 - "GET /projects/1/members HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43138 - "GET /tasks/58 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43120 - "GET /teams/project/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43178 - "GET /projects/1/members HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43132 - "GET /teams/project/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43136 - "GET /projects/1/members HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43168 - "GET /projects/1/members HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43138 - "GET /teams/project/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43170 - "GET /projects/1/members HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43178 - "GET /projects/1/members HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43132 - "GET /teams/project/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43120 - "GET /projects/1/members HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43138 - "GET /teams/project/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43170 - "GET /teams/project/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43120 - "GET /teams/project/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43136 - "GET /projects/1/members HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43168 - "GET /projects/1/members HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43120 - "GET /teams/project/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43132 - "GET /tasks/58 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43178 - "GET /projects/1/members HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43170 - "GET /teams/project/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43138 - "GET /projects/1/members HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43132 - "GET /teams/project/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43120 - "GET /projects/1/members HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43138 - "OPTIONS /tasks/58/subtasks/160 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43132 - "PUT /tasks/58/subtasks/160 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43120 - "GET /tasks/58 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43138 - "GET /tasks/58 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43132 - "GET /tasks/58 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43132 - "GET /teams/project/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43136 - "GET /teams/project/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43178 - "GET /teams/project/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43138 - "GET /projects/1/members HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43168 - "GET /projects/1/members HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43120 - "GET /projects/1/members HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43132 - "OPTIONS /tasks/58/subtasks/159 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43138 - "PUT /tasks/58/subtasks/159 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43120 - "GET /tasks/58 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43132 - "GET /tasks/58 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43138 - "GET /tasks/58 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43170 - "GET /teams/project/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43120 - "GET /projects/1/members HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43138 - "GET /teams/project/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43136 - "GET /teams/project/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43120 - "GET /projects/1/members HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43132 - "GET /projects/1/members HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43138 - "OPTIONS /tasks/58/subtasks/161 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43120 - "PUT /tasks/58/subtasks/161 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43138 - "GET /tasks/58 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43132 - "GET /tasks/58 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43120 - "GET /tasks/58 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43178 - "GET /teams/project/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43138 - "GET /projects/1/members HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43168 - "GET /teams/project/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43120 - "GET /teams/project/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43138 - "GET /projects/1/members HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43132 - "GET /projects/1/members HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43120 - "OPTIONS /tasks/58/subtasks/234 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43138 - "PUT /tasks/58/subtasks/234 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43132 - "GET /tasks/58 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43120 - "GET /tasks/58 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43138 - "GET /tasks/58 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43120 - "GET /teams/project/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43132 - "GET /projects/1/members HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43170 - "GET /teams/project/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43120 - "GET /teams/project/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43138 - "GET /projects/1/members HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43132 - "GET /projects/1/members HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43120 - "OPTIONS /tasks/58/subtasks/235 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43138 - "PUT /tasks/58/subtasks/235 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43132 - "GET /tasks/58 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43120 - "GET /tasks/58 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43138 - "GET /tasks/58 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43120 - "GET /teams/project/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43136 - "GET /teams/project/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43132 - "GET /projects/1/members HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43138 - "GET /projects/1/members HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43132 - "GET /teams/project/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43120 - "GET /projects/1/members HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43138 - "OPTIONS /tasks/58/subtasks/236 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43132 - "PUT /tasks/58/subtasks/236 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43132 - "GET /tasks/58 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43138 - "GET /tasks/58 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43120 - "GET /tasks/58 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43138 - "GET /teams/project/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43132 - "GET /projects/1/members HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43138 - "GET /teams/project/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43178 - "GET /teams/project/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43132 - "GET /projects/1/members HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43120 - "GET /projects/1/members HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43138 - "OPTIONS /tasks/58/subtasks/237 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43132 - "PUT /tasks/58/subtasks/237 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43138 - "GET /tasks/58 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43132 - "GET /tasks/58 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43120 - "GET /tasks/58 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43132 - "GET /teams/project/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43168 - "GET /teams/project/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43138 - "GET /projects/1/members HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43120 - "GET /projects/1/members HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43138 - "GET /teams/project/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43132 - "GET /projects/1/members HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43120 - "OPTIONS /tasks/58/subtasks/238 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43138 - "PUT /tasks/58/subtasks/238 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43120 - "GET /tasks/58 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43138 - "GET /tasks/58 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43132 - "GET /tasks/58 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43138 - "GET /teams/project/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43120 - "GET /projects/1/members HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43138 - "GET /teams/project/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43170 - "GET /teams/project/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43132 - "GET /projects/1/members HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43120 - "GET /projects/1/members HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43138 - "OPTIONS /tasks/58/subtasks/239 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43132 - "PUT /tasks/58/subtasks/239 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43138 - "GET /tasks/58 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43120 - "GET /tasks/58 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43132 - "GET /tasks/58 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43136 - "GET /teams/project/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43120 - "GET /teams/project/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43138 - "GET /projects/1/members HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43132 - "GET /projects/1/members HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43138 - "GET /teams/project/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43120 - "GET /projects/1/members HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43132 - "OPTIONS /tasks/58/subtasks/240 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43138 - "PUT /tasks/58/subtasks/240 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43132 - "GET /tasks/58 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43120 - "GET /tasks/58 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43138 - "GET /tasks/58 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43120 - "GET /teams/project/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43132 - "GET /projects/1/members HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43120 - "GET /teams/project/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43178 - "GET /teams/project/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43138 - "GET /projects/1/members HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43132 - "GET /projects/1/members HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43120 - "OPTIONS /tasks/58/subtasks/241 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43138 - "PUT /tasks/58/subtasks/241 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43120 - "GET /tasks/58 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43132 - "GET /tasks/58 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43138 - "GET /tasks/58 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43132 - "GET /teams/project/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43120 - "GET /projects/1/members HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43132 - "GET /teams/project/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43168 - "GET /teams/project/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43120 - "GET /projects/1/members HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43138 - "GET /projects/1/members HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43132 - "GET /notifications/unread-count HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43132 - "PUT /tasks/58 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43132 - "GET /tasks/58 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52768 - "GET /tasks/58 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52780 - "GET /tasks/58 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52780 - "GET /teams/project/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52786 - "GET /teams/project/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52808 - "GET /teams/project/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52768 - "GET /projects/1/members HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43132 - "GET /projects/1/members HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52794 - "GET /projects/1/members HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52822 - "OPTIONS /documentation/project/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52830 - "OPTIONS /tasks/project/1?view=board HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52844 - "OPTIONS /documentation/project/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52852 - "OPTIONS /tasks/project/1?view=board HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52822 - "GET /documentation/project/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52844 - "GET /documentation/project/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52830 - "GET /tasks/project/1?view=board HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52852 - "GET /tasks/project/1?view=board HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52830 - "OPTIONS /documentation/25/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52852 - "GET /documentation/25/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:45500 - "OPTIONS /documentation/25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:45500 - "PUT /documentation/25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:45500 - "GET /documentation/project/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:45522 - "GET /documentation/project/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:45510 - "GET /tasks/project/1?view=board HTTP/1.1" 200 OK
+INFO:     127.0.0.1:45542 - "GET /documentation/25/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:45536 - "GET /tasks/project/1?view=board HTTP/1.1" 200 OK
+INFO:     127.0.0.1:45552 - "GET /projects/1/dashboard HTTP/1.1" 200 OK
+INFO:     127.0.0.1:45552 - "GET /projects/1/dashboard HTTP/1.1" 200 OK
+INFO:     127.0.0.1:45552 - "GET /projects/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40190 - "GET /projects/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:45566 - "GET /projects/1/roles HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40204 - "GET /projects/1/members HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40212 - "GET /projects/1/roles HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40178 - "GET /projects/1/members HTTP/1.1" 200 OK
+INFO:     127.0.0.1:45552 - "OPTIONS /projects/1/audit-logs?limit=40 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40204 - "OPTIONS /projects/1/audit-logs?limit=40 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:45552 - "GET /projects/1/audit-logs?limit=40 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40178 - "GET /projects/1/audit-logs?limit=40 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:45552 - "OPTIONS /projects/1/ai-settings HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40178 - "OPTIONS /projects/mine HTTP/1.1" 200 OK
+INFO:     127.0.0.1:45552 - "GET /projects/1/ai-settings HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40178 - "GET /projects/mine HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40204 - "GET /projects/1/ai-settings HTTP/1.1" 200 OK
+INFO:     127.0.0.1:45566 - "GET /projects/mine HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40212 - "GET /projects/mine HTTP/1.1" 200 OK
+INFO:     127.0.0.1:45552 - "GET /projects/mine HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40178 - "GET /projects/1/dashboard HTTP/1.1" 200 OK
+INFO:     127.0.0.1:45552 - "GET /projects/1/dashboard HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40178 - "GET /auth/me/account-summary HTTP/1.1" 200 OK
+INFO:     127.0.0.1:45552 - "GET /auth/me/account-summary HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40178 - "GET /notifications/unread-count HTTP/1.1" 200 OK
+INFO:     127.0.0.1:45552 - "GET /projects/1/dashboard HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40178 - "GET /projects/1/dashboard HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40218 - "OPTIONS /projects/1/workload HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40232 - "OPTIONS /projects/1/workload HTTP/1.1" 200 OK
+INFO:     127.0.0.1:45552 - "GET /projects/1/my-permissions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40178 - "GET /projects/1/my-permissions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40232 - "GET /projects/1/workload HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40218 - "GET /projects/1/workload HTTP/1.1" 200 OK
+INFO:     127.0.0.1:45552 - "GET /projects/1/reports/overview HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40178 - "GET /projects/1/reports/overview HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40178 - "GET /documentation/project/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:45552 - "GET /documentation/project/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40232 - "GET /tasks/project/1?view=board HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40218 - "GET /tasks/project/1?view=board HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40232 - "GET /documentation/25/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40218 - "GET /github/events/project/1?limit=120 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40232 - "GET /github/events/project/1?limit=120 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40178 - "OPTIONS /projects/1/activity?limit=200 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:45552 - "OPTIONS /projects/1/activity?limit=200 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40178 - "GET /projects/1/activity?limit=200 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:45552 - "GET /projects/1/activity?limit=200 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40232 - "GET /projects/1/members HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40218 - "GET /projects/1/members HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36746 - "OPTIONS /tasks/project/1?view=backlog HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36748 - "OPTIONS /calendar/project/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36746 - "OPTIONS /tasks/project/1?view=backlog HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40178 - "GET /projects/1/my-permissions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40232 - "GET /projects/1/my-permissions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40232 - "OPTIONS /calendar/project/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40232 - "OPTIONS /sprints/project/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:45552 - "GET /projects/1/members HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36746 - "GET /calendar/project/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36746 - "OPTIONS /sprints/project/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36748 - "GET /tasks/project/1?view=backlog HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40218 - "GET /projects/1/members HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40178 - "GET /tasks/project/1?view=backlog HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40232 - "GET /calendar/project/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:45552 - "GET /sprints/project/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36746 - "GET /sprints/project/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40218 - "GET /projects/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40178 - "GET /sprints/project/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36746 - "GET /sprints/project/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:45552 - "GET /projects/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40232 - "GET /tasks/project/1?view=board HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36748 - "GET /tasks/project/1?view=board HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40218 - "GET /projects/1/my-permissions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40232 - "GET /projects/mine HTTP/1.1" 200 OK
+INFO:     127.0.0.1:45552 - "GET /projects/1/my-permissions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40178 - "GET /projects/1/my-permissions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36748 - "GET /projects/mine HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40218 - "GET /sprints/project/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36746 - "GET /sprints/project/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:45552 - "GET /tasks/project/1?view=backlog HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40178 - "GET /projects/1/members HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40232 - "GET /tasks/project/1?view=backlog HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36748 - "GET /projects/1/members HTTP/1.1" 200 OK
+INFO:     127.0.0.1:45552 - "GET /projects/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40218 - "GET /projects/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40178 - "GET /sprints/project/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36746 - "GET /sprints/project/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40232 - "GET /tasks/project/1?view=board HTTP/1.1" 200 OK
+INFO:     127.0.0.1:45552 - "GET /projects/1/my-permissions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36748 - "GET /tasks/project/1?view=board HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40218 - "GET /projects/1/my-permissions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:45552 - "GET /projects/mine HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40178 - "GET /projects/1/my-permissions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40232 - "GET /projects/mine HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36748 - "GET /sprints/project/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:45552 - "GET /tasks/project/1?view=backlog HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36746 - "GET /sprints/project/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40178 - "GET /projects/1/members HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40218 - "GET /tasks/project/1?view=backlog HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40232 - "GET /projects/1/members HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40218 - "GET /sprints/project/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40232 - "GET /projects/1/my-permissions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36748 - "GET /sprints/project/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40178 - "GET /tasks/project/1?view=backlog HTTP/1.1" 200 OK
+INFO:     127.0.0.1:45552 - "GET /tasks/project/1?view=backlog HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40218 - "GET /projects/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40232 - "GET /projects/1/roles HTTP/1.1" 200 OK
+INFO:     127.0.0.1:45552 - "GET /projects/1/roles HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40178 - "GET /projects/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36748 - "GET /projects/1/members HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52862 - "GET /projects/1/members HTTP/1.1" 200 OK
+INFO:     127.0.0.1:45552 - "GET /projects/1/audit-logs?limit=40 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40178 - "GET /projects/1/audit-logs?limit=40 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:45552 - "GET /projects/mine HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40178 - "GET /projects/1/ai-settings HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40218 - "GET /projects/mine HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40232 - "GET /projects/1/ai-settings HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36748 - "GET /projects/mine HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52862 - "GET /projects/mine HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36748 - "OPTIONS /projects/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36748 - "PUT /projects/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52874 - "GET /projects/mine HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36748 - "GET /projects/1/audit-logs?limit=40 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52874 - "GET /projects/mine HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36748 - "OPTIONS /projects/1/methodology-transition-preview?target=KANBAN HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36748 - "GET /projects/1/methodology-transition-preview?target=KANBAN HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55976 - "GET /notifications/unread-count HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55976 - "GET /projects/1/dashboard HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55976 - "GET /projects/1/dashboard HTTP/1.1" 200 OK
+INFO:     connection closed
+INFO:     127.0.0.1:55976 - "GET /projects/mine HTTP/1.1" 401 Unauthorized
+INFO:     127.0.0.1:58088 - "GET /projects/mine HTTP/1.1" 401 Unauthorized
+INFO:     connection closed
+INFO:     127.0.0.1:45386 - "OPTIONS /auth/login HTTP/1.1" 200 OK
+INFO:     127.0.0.1:45386 - "POST /auth/login HTTP/1.1" 200 OK
+INFO:     127.0.0.1:45386 - "POST /auth/login HTTP/1.1" 200 OK
+INFO:     127.0.0.1:45386 - "OPTIONS /projects/mine HTTP/1.1" 200 OK
+INFO:     127.0.0.1:45386 - "GET /projects/mine HTTP/1.1" 200 OK
+INFO:     127.0.0.1:45386 - "GET /projects/mine HTTP/1.1" 200 OK
+INFO:     127.0.0.1:45398 - "GET /projects/mine HTTP/1.1" 200 OK
+INFO:     127.0.0.1:45414 - "WebSocket /ws?token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJzbGF2b2xpdS5wcmVkYTI0QGdtYWlsLmNvbSIsImlkIjoyLCJmdWxsX25hbWUiOiJQcmVkYSBTbGF2b2xpdWItRGVuaXMiLCJleHAiOjE3ODAyNjI4NDN9.Y1x2qPYkDE-kQWVAXOpAExs8crVAuXqOTlWrL2zTYuI" [accepted]
+INFO:     connection open
+INFO:     connection closed
+INFO:     127.0.0.1:45386 - "GET /projects/mine HTTP/1.1" 200 OK
+INFO:     127.0.0.1:45398 - "GET /projects/mine HTTP/1.1" 200 OK
+INFO:     127.0.0.1:45452 - "GET /notifications/unread-count HTTP/1.1" 200 OK
+INFO:     127.0.0.1:45424 - "GET /projects/mine HTTP/1.1" 200 OK
+INFO:     127.0.0.1:45398 - "GET /projects/mine HTTP/1.1" 200 OK
+INFO:     127.0.0.1:45424 - "OPTIONS /projects/1/dashboard HTTP/1.1" 200 OK
+INFO:     127.0.0.1:45434 - "GET /notifications/unread-count HTTP/1.1" 200 OK
+INFO:     127.0.0.1:45446 - "GET /projects/1/dashboard HTTP/1.1" 200 OK
+INFO:     127.0.0.1:45386 - "GET /projects/1/dashboard HTTP/1.1" 200 OK
+INFO:     127.0.0.1:45452 - "GET /projects/mine HTTP/1.1" 200 OK
+INFO:     127.0.0.1:45398 - "GET /projects/1/dashboard HTTP/1.1" 200 OK
+INFO:     127.0.0.1:45468 - "WebSocket /ws?token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJzbGF2b2xpdS5wcmVkYTI0QGdtYWlsLmNvbSIsImlkIjoyLCJmdWxsX25hbWUiOiJQcmVkYSBTbGF2b2xpdWItRGVuaXMiLCJleHAiOjE3ODAyNjI4NDN9.Y1x2qPYkDE-kQWVAXOpAExs8crVAuXqOTlWrL2zTYuI" [accepted]
+INFO:     connection open
+INFO:     127.0.0.1:45478 - "WebSocket /ws?token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJzbGF2b2xpdS5wcmVkYTI0QGdtYWlsLmNvbSIsImlkIjoyLCJmdWxsX25hbWUiOiJQcmVkYSBTbGF2b2xpdWItRGVuaXMiLCJleHAiOjE3ODAyNjI4NDN9.Y1x2qPYkDE-kQWVAXOpAExs8crVAuXqOTlWrL2zTYuI" [accepted]
+INFO:     connection open
+INFO:     connection closed
+INFO:     127.0.0.1:46870 - "OPTIONS /auth/me HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46886 - "OPTIONS /auth/me HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46870 - "GET /auth/me HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46886 - "GET /auth/me HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46870 - "OPTIONS /admin/overview HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46886 - "OPTIONS /admin/overview HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46886 - "GET /admin/overview HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46870 - "GET /admin/overview HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46900 - "OPTIONS /admin/projects HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46916 - "OPTIONS /admin/users HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46926 - "OPTIONS /admin/tickets HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46930 - "OPTIONS /admin/projects HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46900 - "OPTIONS /admin/errors HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46886 - "GET /admin/overview HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46870 - "GET /admin/overview HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46870 - "OPTIONS /admin/users HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46916 - "GET /admin/projects HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46870 - "OPTIONS /admin/tickets HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46930 - "GET /admin/tickets HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46870 - "OPTIONS /admin/errors HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46926 - "GET /admin/users HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46870 - "OPTIONS /admin/ai-usage HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46900 - "GET /admin/projects HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46870 - "OPTIONS /admin/ai-usage HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46886 - "GET /admin/errors HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46916 - "GET /admin/users HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46930 - "GET /admin/tickets HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46926 - "GET /admin/errors HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46900 - "GET /admin/ai-usage HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46870 - "GET /admin/ai-usage HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46886 - "GET /projects/mine HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46926 - "GET /projects/mine HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46934 - "WebSocket /ws?token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJzbGF2b2xpdS5wcmVkYTI0QGdtYWlsLmNvbSIsImlkIjoyLCJmdWxsX25hbWUiOiJQcmVkYSBTbGF2b2xpdWItRGVuaXMiLCJleHAiOjE3ODAyNjI4NDN9.Y1x2qPYkDE-kQWVAXOpAExs8crVAuXqOTlWrL2zTYuI" [accepted]
+INFO:     connection open
+INFO:     connection closed
+INFO:     127.0.0.1:46870 - "GET /notifications/unread-count HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46900 - "GET /notifications/unread-count HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46926 - "GET /projects/mine HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46886 - "GET /projects/mine HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46930 - "GET /projects/1/dashboard HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46916 - "GET /projects/1/dashboard HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46936 - "WebSocket /ws?token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJzbGF2b2xpdS5wcmVkYTI0QGdtYWlsLmNvbSIsImlkIjoyLCJmdWxsX25hbWUiOiJQcmVkYSBTbGF2b2xpdWItRGVuaXMiLCJleHAiOjE3ODAyNjI4NDN9.Y1x2qPYkDE-kQWVAXOpAExs8crVAuXqOTlWrL2zTYuI" [accepted]
+INFO:     connection open
+INFO:     127.0.0.1:46366 - "WebSocket /ws?token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJzbGF2b2xpdS5wcmVkYTI0QGdtYWlsLmNvbSIsImlkIjoyLCJmdWxsX25hbWUiOiJQcmVkYSBTbGF2b2xpdWItRGVuaXMiLCJleHAiOjE3ODAyNjI4NDN9.Y1x2qPYkDE-kQWVAXOpAExs8crVAuXqOTlWrL2zTYuI" [accepted]
+INFO:     connection open
+INFO:     127.0.0.1:44070 - "OPTIONS /notifications/unread-count HTTP/1.1" 200 OK
+INFO:     127.0.0.1:44070 - "GET /notifications/unread-count HTTP/1.1" 200 OK

@@ -280,6 +280,71 @@ def _fallback_release_notes(
     }
 
 
+def _fallback_comment_risk_analysis(comment_body: str) -> dict:
+    text = (comment_body or "").lower()
+    high_keywords = [
+        "blocked",
+        "blocker",
+        "blocking",
+        "can't continue",
+        "cannot continue",
+        "production",
+        "critical",
+        "urgent",
+        "blocaj",
+        "blocat",
+        "nu pot continua",
+        "urgent",
+    ]
+    medium_keywords = [
+        "stuck",
+        "waiting",
+        "dependency",
+        "problem",
+        "issue",
+        "fails",
+        "failing",
+        "broken",
+        "delay",
+        "risk",
+        "astept",
+        "dependinta",
+        "eroare",
+        "nu merge",
+        "intarziere",
+    ]
+
+    matched_high = [keyword for keyword in high_keywords if keyword in text]
+    matched_medium = [keyword for keyword in medium_keywords if keyword in text]
+    matched = matched_high or matched_medium
+
+    if not matched:
+        return {
+            "risk_detected": False,
+            "severity": "low",
+            "category": "NONE",
+            "summary": "No blocker or delivery risk signal was detected in this comment.",
+            "recommended_action": "No action required.",
+            "confidence": 70,
+            "source": "fallback",
+        }
+
+    severity = "high" if matched_high else "medium"
+    category = "BLOCKER" if matched_high else "RISK"
+    excerpt = " ".join((comment_body or "").split())[:180]
+
+    return {
+        "risk_detected": True,
+        "severity": severity,
+        "category": category,
+        "summary": f"Comment contains possible {category.lower()} signal: {excerpt}",
+        "recommended_action": "Review the task owner, dependency and next action in the current workflow.",
+        "confidence": 78 if severity == "high" else 68,
+        "source": "fallback",
+        "matched_keywords": matched[:5],
+    }
+
+
 def _extract_json_object(value: str) -> dict:
     try:
         return json.loads(value)
@@ -460,6 +525,168 @@ def estimate_story_points(
         fallback["source"] = "fallback_after_error"
         fallback["error"] = str(exc)
         return fallback
+
+
+def analyze_comment_risk(
+    *,
+    task_title: str,
+    task_key: str | None,
+    task_status: str,
+    task_priority: str,
+    comment_body: str,
+    context: str = "Software Development",
+    ai_config: dict | None = None,
+) -> dict:
+    prompt = f"""
+    Role: Senior delivery risk analyst.
+    Analyze this task comment and detect whether it signals a blocker, bottleneck, dependency, scope risk,
+    quality risk or delivery risk.
+
+    Context: {context}
+    Task: {task_key or "Task"} - {task_title}
+    Status: {task_status}
+    Priority: {task_priority}
+    Comment: {comment_body}
+
+    Return ONLY valid JSON:
+    {{
+      "risk_detected": true,
+      "severity": "low | medium | high",
+      "category": "BLOCKER | BOTTLENECK | DEPENDENCY | SCOPE | QUALITY | DELIVERY | NONE",
+      "summary": "short business-readable explanation",
+      "recommended_action": "concrete next action",
+      "confidence": 0
+    }}
+    """
+
+    try:
+        text = _generate_text(prompt, ai_config=ai_config, temperature=0.1)
+        parsed = _extract_json_object(text or "{}")
+        severity = str(parsed.get("severity") or "low").lower()
+        if severity not in {"low", "medium", "high"}:
+            severity = "low"
+
+        category = str(parsed.get("category") or "NONE").upper()
+        if category not in {"BLOCKER", "BOTTLENECK", "DEPENDENCY", "SCOPE", "QUALITY", "DELIVERY", "NONE"}:
+            category = "NONE"
+
+        risk_detected = bool(parsed.get("risk_detected")) and category != "NONE"
+        return {
+            "risk_detected": risk_detected,
+            "severity": severity,
+            "category": category,
+            "summary": str(parsed.get("summary") or "No delivery risk signal was detected."),
+            "recommended_action": str(parsed.get("recommended_action") or "No action required."),
+            "confidence": max(0, min(100, int(parsed.get("confidence") or 70))),
+            "source": _provider_source(ai_config),
+        }
+    except Exception as exc:
+        print(f"AI Comment Risk Error: {exc}")
+        fallback = _fallback_comment_risk_analysis(comment_body)
+        fallback["source"] = "fallback_after_error"
+        fallback["error"] = str(exc)
+        return fallback
+
+
+def enhance_workload_suggestions(
+    *,
+    workload: dict,
+    suggestions: list[dict],
+    ai_config: dict | None = None,
+) -> dict:
+    compact_members = [
+        {
+            "user_id": member.get("user_id"),
+            "name": member.get("full_name") or member.get("email"),
+            "role": member.get("role_name"),
+            "active_tasks": member.get("active_tasks"),
+            "story_points": member.get("story_points"),
+            "overdue_tasks": member.get("overdue_tasks"),
+            "review_tasks": member.get("review_tasks"),
+            "risk_score": member.get("risk_score"),
+            "risk_factors": member.get("risk_factors", [])[:5],
+        }
+        for member in workload.get("members", [])[:12]
+    ]
+    compact_suggestions = [
+        {
+            "index": index,
+            "type": suggestion.get("type"),
+            "severity": suggestion.get("severity"),
+            "task_key": suggestion.get("task_key"),
+            "task_title": suggestion.get("task_title"),
+            "from": suggestion.get("from_name"),
+            "to": suggestion.get("to_name"),
+            "current_reason": suggestion.get("reason"),
+        }
+        for index, suggestion in enumerate(suggestions[:8])
+    ]
+
+    prompt = f"""
+    Role: Senior engineering manager.
+    Convert deterministic workload balancing signals into concise, professional explanations.
+    Keep the recommended reassignment targets unchanged. Do not invent new tasks or users.
+
+    Project summary JSON:
+    {json.dumps(workload.get("summary", {}), default=str)}
+
+    Members JSON:
+    {json.dumps(compact_members, default=str)}
+
+    Deterministic suggestions JSON:
+    {json.dumps(compact_suggestions, default=str)}
+
+    Return ONLY valid JSON:
+    {{
+      "summary": "one concise paragraph",
+      "suggestions": [
+        {{
+          "index": 0,
+          "severity": "low | medium | high",
+          "reason": "clear explanation grounded in the data"
+        }}
+      ]
+    }}
+    """
+
+    try:
+        text = _generate_text(prompt, ai_config=ai_config, temperature=0.2)
+        parsed = _extract_json_object(text or "{}")
+        suggestions_by_index = {}
+        for item in parsed.get("suggestions", []):
+            try:
+                index = int(item.get("index"))
+            except (TypeError, ValueError):
+                continue
+            suggestions_by_index[index] = item
+
+        enhanced = []
+        for index, suggestion in enumerate(suggestions):
+            ai_item = suggestions_by_index.get(index, {})
+            severity = str(ai_item.get("severity") or suggestion.get("severity") or "medium").lower()
+            if severity not in {"low", "medium", "high"}:
+                severity = suggestion.get("severity") or "medium"
+            enhanced.append(
+                {
+                    **suggestion,
+                    "severity": severity,
+                    "reason": str(ai_item.get("reason") or suggestion.get("reason") or ""),
+                }
+            )
+
+        return {
+            "summary": str(parsed.get("summary") or ""),
+            "suggestions": enhanced,
+            "source": _provider_source(ai_config),
+        }
+    except Exception as exc:
+        print(f"AI Workload Explanation Error: {exc}")
+        return {
+            "summary": "",
+            "suggestions": suggestions,
+            "source": "fallback_after_error",
+            "error": str(exc),
+        }
 
 
 def generate_release_notes(

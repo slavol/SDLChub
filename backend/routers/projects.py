@@ -24,7 +24,7 @@ from backend.schemas.project import (
     ProjectOut,
 )
 from backend.services.ai_advisor import get_methodology_recommendation, get_role_suggestions
-from backend.services.ai_service import test_ai_provider
+from backend.services.ai_service import enhance_workload_suggestions, resolve_project_ai_config, test_ai_provider
 from backend.config import get_settings
 from backend.utils.email import send_project_invitation_email
 from backend.utils.permissions import check_project_permission, parse_role_permissions, require_project_permission
@@ -472,8 +472,17 @@ class UpdateRolePermissionsRequest(BaseModel):
     permissions: dict[str, bool]
 
 
+class WorkflowColumnConfigRequest(BaseModel):
+    key: str
+    label: str | None = None
+    enabled: bool | None = None
+    order: int | None = None
+    color: str | None = None
+
+
 class WorkflowConfigUpdateRequest(BaseModel):
     wip_limits: dict[str, int | None] | None = None
+    columns: list[WorkflowColumnConfigRequest] | None = None
 
 
 class ProjectAiSettingsUpdateRequest(BaseModel):
@@ -518,7 +527,13 @@ DEFAULT_WORKFLOW_CONFIG = {
         "IN_PROGRESS": 3,
         "REVIEW": 2,
         "DONE": None,
-    }
+    },
+    "columns": [
+        {"key": "TODO", "label": "To Do", "enabled": True, "order": 0, "color": "bg-slate-500"},
+        {"key": "IN_PROGRESS", "label": "In Progress", "enabled": True, "order": 1, "color": "bg-blue-500"},
+        {"key": "REVIEW", "label": "Code Review", "enabled": True, "order": 2, "color": "bg-purple-500"},
+        {"key": "DONE", "label": "Done", "enabled": True, "order": 3, "color": "bg-green-500"},
+    ],
 }
 
 
@@ -550,6 +565,35 @@ def _parse_workflow_config(raw_config: str | None) -> dict:
 
             config["wip_limits"][status_key] = max(0, normalized_value)
 
+    allowed_statuses = set(DEFAULT_WORKFLOW_CONFIG["wip_limits"].keys())
+    default_columns = {
+        column["key"]: column.copy()
+        for column in DEFAULT_WORKFLOW_CONFIG["columns"]
+    }
+    raw_columns = parsed.get("columns")
+    if isinstance(raw_columns, list):
+        for raw_column in raw_columns:
+            if not isinstance(raw_column, dict):
+                continue
+
+            status_key = str(raw_column.get("key", "")).upper()
+            if status_key not in allowed_statuses:
+                continue
+
+            next_column = default_columns[status_key].copy()
+            label = str(raw_column.get("label") or next_column["label"]).strip()
+            next_column["label"] = label[:40] or next_column["label"]
+            next_column["enabled"] = bool(raw_column.get("enabled", True))
+            next_column["color"] = str(raw_column.get("color") or next_column["color"])[:80]
+
+            try:
+                next_column["order"] = int(raw_column.get("order", next_column["order"]))
+            except (TypeError, ValueError):
+                next_column["order"] = int(next_column["order"])
+
+            default_columns[status_key] = next_column
+
+    config["columns"] = sorted(default_columns.values(), key=lambda column: (column["order"], column["key"]))
     return config
 
 
@@ -1422,6 +1466,7 @@ def update_project_workflow(
     if not project:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found.")
 
+    old_config = project.workflow_config
     config = _parse_workflow_config(project.workflow_config)
 
     if data.wip_limits is not None:
@@ -1438,6 +1483,38 @@ def update_project_workflow(
 
         config["wip_limits"] = next_limits
 
+    if data.columns is not None:
+        allowed_statuses = set(DEFAULT_WORKFLOW_CONFIG["wip_limits"].keys())
+        default_columns = {
+            column["key"]: column.copy()
+            for column in DEFAULT_WORKFLOW_CONFIG["columns"]
+        }
+        next_columns = {
+            column["key"]: column.copy()
+            for column in config.get("columns", DEFAULT_WORKFLOW_CONFIG["columns"])
+            if column.get("key") in allowed_statuses
+        }
+
+        for raw_column in data.columns:
+            status_key = raw_column.key.upper()
+            if status_key not in allowed_statuses:
+                continue
+
+            base_column = next_columns.get(status_key) or default_columns[status_key].copy()
+            if raw_column.label is not None:
+                label = raw_column.label.strip()
+                base_column["label"] = label[:40] or default_columns[status_key]["label"]
+            if raw_column.enabled is not None:
+                base_column["enabled"] = bool(raw_column.enabled)
+            if raw_column.order is not None:
+                base_column["order"] = int(raw_column.order)
+            if raw_column.color is not None:
+                base_column["color"] = raw_column.color[:80] or default_columns[status_key]["color"]
+
+            next_columns[status_key] = base_column
+
+        config["columns"] = sorted(next_columns.values(), key=lambda column: (column["order"], column["key"]))
+
     project.workflow_config = json.dumps(config)
 
     db.add(
@@ -1446,7 +1523,7 @@ def update_project_workflow(
             actor_id=current_user.id,
             action="PROJECT_WORKFLOW_UPDATED",
             field="workflow_config",
-            old_value=None,
+            old_value=old_config,
             new_value=project.workflow_config,
         )
     )
@@ -3304,20 +3381,34 @@ def get_project_workload_suggestions(
             }
         )
 
+    project = db.query(Project).filter(Project.id == project_id).first()
+    ai_result = enhance_workload_suggestions(
+        workload=workload,
+        suggestions=suggestions,
+        ai_config=resolve_project_ai_config(project),
+    )
+    enhanced_suggestions = ai_result.get("suggestions") or suggestions
+    default_summary = (
+        "Workload suggestions combine active tasks, story points, overdue work, stale flow, "
+        "review queues, critical priority and near-term deadlines."
+    )
+    summary = ai_result.get("summary") or default_summary
+    source = ai_result.get("source") or "algorithm"
+
     record_ai_usage(
         db,
         user_id=current_user.id,
         project_id=project_id,
         feature="WORKLOAD_BALANCER",
-        source="algorithm",
+        source=source,
+        status="ERROR" if str(source).startswith("fallback_after_error") else "SUCCESS",
+        detail=ai_result.get("error"),
     )
 
     return {
-        "summary": (
-            "Workload suggestions combine active tasks, story points, overdue work, stale flow, "
-            "review queues, critical priority and near-term deadlines."
-        ),
-        "suggestions": suggestions,
+        "summary": summary,
+        "source": source,
+        "suggestions": enhanced_suggestions,
     }
 
 

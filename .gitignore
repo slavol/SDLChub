@@ -9,6 +9,9 @@ venv/
 .env
 .coverage
 htmlcov/
+*.db
+*.sqlite
+*.sqlite3
 
 # --- Node.js / Next.js Frontend ---
 node_modules/

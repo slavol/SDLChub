@@ -28,3 +28,18 @@ class DocumentationPageOut(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class DocumentationRevisionOut(BaseModel):
+    id: int
+    page_id: int
+    project_id: int
+    task_id: Optional[int] = None
+    title: str
+    content: str
+    action: str
+    actor_id: Optional[int] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True

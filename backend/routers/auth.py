@@ -14,6 +14,7 @@ from backend.models.project import Invitation, Project, ProjectMember
 from backend.realtime import broadcast_project_event, broadcast_user_event
 from backend.schemas.auth import (
     AccountPasswordUpdateRequest,
+    AccountNotificationPreferencesUpdate,
     AccountUpdateRequest,
     AuthUser,
     PasswordResetConfirm,
@@ -51,6 +52,13 @@ def broadcast_user_profile_changed(db: Session, user: User) -> None:
         "full_name": user.full_name,
         "email": user.email,
         "avatar_url": user.avatar_url,
+        "notification_in_app_enabled": user.notification_in_app_enabled,
+        "notification_email_enabled": user.notification_email_enabled,
+        "notify_task_assignments": user.notify_task_assignments,
+        "notify_mentions": user.notify_mentions,
+        "notify_calendar": user.notify_calendar,
+        "notify_due_dates": user.notify_due_dates,
+        "notify_ai_risk": user.notify_ai_risk,
     }
 
     broadcast_user_event(user.id, "user.updated", payload)
@@ -431,3 +439,19 @@ def update_current_user_password(
     current_user.hashed_password = get_password_hash(data.new_password)
     db.commit()
     return {"message": "Password updated successfully."}
+
+
+@router.put("/me/notification-preferences", response_model=AuthUser)
+def update_current_user_notification_preferences(
+    data: AccountNotificationPreferencesUpdate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    for key, value in data.model_dump(exclude_unset=True).items():
+        if value is not None:
+            setattr(current_user, key, bool(value))
+
+    db.commit()
+    db.refresh(current_user)
+    broadcast_user_profile_changed(db, current_user)
+    return current_user

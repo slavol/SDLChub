@@ -1,8 +1,13 @@
-from fastapi_mail import FastMail, MessageSchema, ConnectionConfig, MessageType
-from pydantic import EmailStr
 import os
-from jose import jwt
+import smtplib
+from html import escape
 from datetime import datetime, timedelta
+from email.message import EmailMessage
+
+from fastapi_mail import FastMail, MessageSchema, ConnectionConfig, MessageType
+from jose import jwt
+from pydantic import EmailStr
+
 from backend.config import get_settings
 
 settings = get_settings()
@@ -31,6 +36,7 @@ else:
         MAIL_SSL_TLS=settings.mail_ssl_tls,
         USE_CREDENTIALS=settings.use_credentials,
         VALIDATE_CERTS=settings.validate_certs,
+        TIMEOUT=settings.mail_timeout,
     )
 
 SECRET_KEY = os.getenv("SECRET_KEY", "secret_cheie_default")
@@ -41,6 +47,82 @@ def build_frontend_link(path: str, token: str):
 
 def is_email_enabled():
     return smtp_enabled
+
+
+def send_notification_email_sync(
+    *,
+    recipient: str,
+    subject: str,
+    title: str,
+    body: str | None = None,
+    link_url: str | None = None,
+    action_label: str = "Open in SDLC Hub",
+) -> None:
+    """Send a small transactional email from sync code paths."""
+    if not smtp_enabled:
+        print(f"⚠️ SMTP disabled, skipping notification email to {recipient}.")
+        return
+
+    absolute_link = None
+    if link_url:
+        absolute_link = link_url if link_url.startswith("http") else f"{DOMAIN}{link_url}"
+
+    safe_title = escape(title)
+    safe_body = escape(body or "You have a new update in SDLC Hub.")
+    safe_action_label = escape(action_label)
+
+    html = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="utf-8">
+        <style>
+            body {{ font-family: Arial, sans-serif; background: #f3f4f6; color: #111827; margin: 0; padding: 0; }}
+            .container {{ max-width: 580px; margin: 36px auto; background: #ffffff; border-radius: 10px; overflow: hidden; border: 1px solid #e5e7eb; }}
+            .header {{ padding: 24px 30px; border-bottom: 1px solid #e5e7eb; font-weight: 700; }}
+            .header span {{ color: #2563eb; }}
+            .content {{ padding: 30px; }}
+            h2 {{ margin: 0 0 16px; font-size: 21px; color: #111827; }}
+            p {{ line-height: 1.6; color: #4b5563; font-size: 15px; }}
+            .button {{ display: inline-block; margin-top: 20px; padding: 12px 20px; background: #2563eb; color: #ffffff !important; text-decoration: none; border-radius: 8px; font-weight: 700; }}
+            .footer {{ padding: 18px 30px; border-top: 1px solid #e5e7eb; color: #9ca3af; font-size: 12px; }}
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="header">SDLC <span>Hub</span></div>
+            <div class="content">
+                <h2>{safe_title}</h2>
+                <p>{safe_body}</p>
+                {f'<a href="{escape(absolute_link)}" class="button">{safe_action_label}</a>' if absolute_link else ""}
+            </div>
+            <div class="footer">Automated notification from SDLC Hub.</div>
+        </div>
+    </body>
+    </html>
+    """
+
+    message = EmailMessage()
+    message["Subject"] = subject
+    message["From"] = MAIL_FROM
+    message["To"] = recipient
+    message.set_content(f"{title}\n\n{body or ''}\n\n{absolute_link or DOMAIN}")
+    message.add_alternative(html, subtype="html")
+
+    timeout = getattr(settings, "mail_timeout", 20)
+    if settings.mail_ssl_tls:
+        with smtplib.SMTP_SSL(MAIL_SERVER, MAIL_PORT, timeout=timeout) as smtp:
+            if settings.use_credentials:
+                smtp.login(MAIL_USERNAME, MAIL_PASSWORD)
+            smtp.send_message(message)
+        return
+
+    with smtplib.SMTP(MAIL_SERVER, MAIL_PORT, timeout=timeout) as smtp:
+        if settings.mail_starttls:
+            smtp.starttls()
+        if settings.use_credentials:
+            smtp.login(MAIL_USERNAME, MAIL_PASSWORD)
+        smtp.send_message(message)
 
 def create_verification_token(email: str):
     """Generează un token JWT special doar pentru verificare email, expiră în 24h"""

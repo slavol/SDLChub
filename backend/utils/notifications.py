@@ -11,6 +11,27 @@ from backend.models.notification import Notification
 from backend.models.project import CalendarEvent, ProjectMember, Task, TaskComment
 from backend.models.user import User
 from backend.realtime import broadcast_user_event
+from backend.utils.email import send_notification_email_sync
+
+NOTIFICATION_TYPE_PREFERENCE = {
+    "TASK_ASSIGNED": "notify_task_assignments",
+    "MENTION": "notify_mentions",
+    "CALENDAR_INVITE": "notify_calendar",
+    "CALENDAR_REMINDER": "notify_calendar",
+    "TASK_DUE_SOON": "notify_due_dates",
+    "TASK_OVERDUE": "notify_due_dates",
+    "AI_RISK": "notify_ai_risk",
+}
+
+EMAIL_NOTIFICATION_TYPES = {
+    "TASK_ASSIGNED",
+    "MENTION",
+    "CALENDAR_INVITE",
+    "CALENDAR_REMINDER",
+    "TASK_DUE_SOON",
+    "TASK_OVERDUE",
+    "AI_RISK",
+}
 
 
 def enum_value(value) -> str:
@@ -19,6 +40,22 @@ def enum_value(value) -> str:
     if hasattr(value, "value"):
         return str(value.value)
     return str(value)
+
+
+def _notification_type_enabled(user: User, notification_type: str) -> bool:
+    preference_attr = NOTIFICATION_TYPE_PREFERENCE.get(notification_type)
+    if not preference_attr:
+        return True
+    return bool(getattr(user, preference_attr, True))
+
+
+def _email_channel_enabled(user: User, notification_type: str) -> bool:
+    return (
+        notification_type in EMAIL_NOTIFICATION_TYPES
+        and bool(getattr(user, "notification_email_enabled", True))
+        and _notification_type_enabled(user, notification_type)
+        and bool(user.email)
+    )
 
 
 def create_notification(
@@ -37,6 +74,11 @@ def create_notification(
     if actor_id is not None and actor_id == user_id:
         return None
 
+    recipient = db.query(User).filter(User.id == user_id).first()
+    if not recipient or not _notification_type_enabled(recipient, notification_type):
+        return None
+
+    in_app_enabled = bool(getattr(recipient, "notification_in_app_enabled", True))
     notification = Notification(
         user_id=user_id,
         project_id=project_id,
@@ -46,21 +88,37 @@ def create_notification(
         message=message,
         link_url=link_url,
         metadata_json=json.dumps(metadata or {}),
+        read_at=None if in_app_enabled else datetime.utcnow(),
     )
     db.add(notification)
     db.flush()
-    broadcast_user_event(
-        user_id,
-        "notification.created",
-        {
-            "id": notification.id,
-            "project_id": project_id,
-            "task_id": task_id,
-            "notification_type": notification_type,
-            "title": title,
-            "link_url": link_url,
-        },
-    )
+
+    if in_app_enabled:
+        broadcast_user_event(
+            user_id,
+            "notification.created",
+            {
+                "id": notification.id,
+                "project_id": project_id,
+                "task_id": task_id,
+                "notification_type": notification_type,
+                "title": title,
+                "link_url": link_url,
+            },
+        )
+
+    if _email_channel_enabled(recipient, notification_type):
+        try:
+            send_notification_email_sync(
+                recipient=recipient.email,
+                subject=f"SDLC Hub: {title}",
+                title=title,
+                body=message,
+                link_url=link_url,
+            )
+        except Exception as exc:
+            print(f"⚠️ Notification email failed for user {user_id}: {exc}")
+
     return notification
 
 

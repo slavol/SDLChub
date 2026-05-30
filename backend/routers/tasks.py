@@ -1,3 +1,5 @@
+import json
+from datetime import datetime, timedelta
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -7,6 +9,7 @@ from sqlalchemy.orm import Session
 from backend.database.session import get_db
 from backend.models.project import (
     Project,
+    ProjectAuditLog,
     ProjectMember,
     ProjectTeam,
     Sprint,
@@ -28,23 +31,35 @@ from backend.schemas.task import (
     TaskCommentOut,
     TaskCommentUpdate,
     TaskCreate,
+    TaskDeleteRequest,
     TaskDetailOut,
+    EstimateInvalidationRequest,
     TaskOut,
     TaskUpdate,
 )
 from backend.services.documentation_service import enum_value, upsert_task_documentation_page
 from backend.services.ai_service import (
+    analyze_comment_risk,
     estimate_story_points,
     generate_task_metadata,
     refine_task_spec,
     resolve_project_ai_config,
 )
 from backend.utils.permissions import check_project_permission, require_project_permission
-from backend.utils.notifications import notify_comment_mentions, notify_task_assigned
+from backend.utils.notifications import create_notification, notification_exists_recently, notify_comment_mentions, notify_task_assigned
 from backend.utils.ai_usage import record_ai_usage
 
 
 router = APIRouter(prefix="/tasks", tags=["Tasks"])
+
+
+GOVERNANCE_ROLE_NAMES = {
+    "Project Admin",
+    "Scrum Master",
+    "Product Owner",
+    "Project Manager",
+    "Tech Lead",
+}
 
 
 def _ai_usage_status(result: dict) -> str:
@@ -202,6 +217,114 @@ def ensure_team_belongs_to_project(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Team does not belong to this project.",
         )
+
+
+def ensure_task_governance_actor(member: ProjectMember, task: Task, current_user: User, action_label: str) -> None:
+    role_name = member.role.name if member and member.role else "Member"
+    is_allowed = task.project.owner_id == current_user.id or role_name in GOVERNANCE_ROLE_NAMES
+
+    if not is_allowed:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=(
+                f"Governance: Only Project Admin, Product Owner, Scrum Master, "
+                f"Project Manager or Tech Lead can {action_label}."
+            ),
+        )
+
+
+RISK_NOTIFICATION_ROLE_NAMES = {
+    "Project Admin",
+    "Product Owner",
+    "Project Manager",
+    "Scrum Master",
+    "Flow Manager",
+    "Tech Lead",
+}
+
+
+def analyze_and_record_comment_risk(
+    db: Session,
+    *,
+    task: Task,
+    comment: TaskComment,
+    current_user: User,
+) -> dict:
+    analysis = analyze_comment_risk(
+        task_title=task.title,
+        task_key=task.key,
+        task_status=enum_value(task.status),
+        task_priority=enum_value(task.priority),
+        comment_body=comment.body,
+        ai_config=resolve_project_ai_config(task.project),
+    )
+
+    if not analysis.get("risk_detected"):
+        return analysis
+
+    metadata = {
+        "comment_id": comment.id,
+        "severity": analysis.get("severity"),
+        "category": analysis.get("category"),
+        "confidence": analysis.get("confidence"),
+        "source": analysis.get("source"),
+        "recommended_action": analysis.get("recommended_action"),
+    }
+    add_audit_log(
+        db,
+        task.id,
+        current_user.id,
+        "COMMENT_RISK_DETECTED",
+        "comment.risk",
+        None,
+        json.dumps(metadata, ensure_ascii=False),
+    )
+
+    recipients: set[int] = set()
+    if task.assignee_id:
+        recipients.add(task.assignee_id)
+    if task.project and task.project.owner_id:
+        recipients.add(task.project.owner_id)
+
+    memberships = (
+        db.query(ProjectMember)
+        .filter(ProjectMember.project_id == task.project_id)
+        .all()
+    )
+    for membership in memberships:
+        role_name = membership.role.name if membership.role else ""
+        if role_name in RISK_NOTIFICATION_ROLE_NAMES and membership.user_id:
+            recipients.add(membership.user_id)
+
+    dedupe_since = datetime.utcnow() - timedelta(hours=6)
+    for user_id in recipients:
+        if notification_exists_recently(
+            db,
+            user_id=user_id,
+            notification_type="AI_RISK",
+            task_id=task.id,
+            since=dedupe_since,
+            metadata_contains=f'"comment_id": {comment.id}',
+        ):
+            continue
+
+        create_notification(
+            db,
+            user_id=user_id,
+            notification_type="AI_RISK",
+            title=f"{analysis.get('severity', 'medium').title()} risk on {task.key}",
+            message=(
+                f"{analysis.get('summary')} "
+                f"Recommended action: {analysis.get('recommended_action')}"
+            ),
+            project_id=task.project_id,
+            task_id=task.id,
+            link_url=f"/dashboard/tasks/{task.id}",
+            metadata=metadata,
+            actor_id=current_user.id,
+        )
+
+    return analysis
 
 
 # Static routes first, before dynamic /{task_id}.
@@ -537,6 +660,7 @@ def update_task(
         "Scrum Master",
         "Tech Lead",
         "Project Manager",
+        "Product Owner",
         "Project Admin",
     ]
 
@@ -569,7 +693,7 @@ def update_task(
         if not is_tech_admin:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Governance: Only Project Admin, Scrum Master, Project Manager or Tech Lead can change Story Points.",
+                detail="Governance: Only Project Admin, Product Owner, Scrum Master, Project Manager or Tech Lead can change Story Points.",
             )
 
         add_audit_log(
@@ -719,6 +843,118 @@ def update_task(
     return task
 
 
+@router.post("/{task_id}/estimate/invalidate", response_model=TaskOut)
+def invalidate_task_estimate(
+    task_id: int,
+    data: EstimateInvalidationRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    task = db.query(Task).filter(Task.id == task_id).first()
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    member = require_project_permission(db, current_user.id, task.project_id, "TASK_UPDATE")
+    ensure_task_governance_actor(member, task, current_user, "invalidate estimates")
+
+    if task.project.methodology == "KANBAN":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Kanban projects do not use story point estimation.",
+        )
+
+    if task.story_points is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This task does not have an estimate to invalidate.",
+        )
+
+    reason = data.reason.strip()
+    old_points = task.story_points
+    task.story_points = None
+
+    add_audit_log(
+        db,
+        task.id,
+        current_user.id,
+        "ESTIMATE_INVALIDATED",
+        "story_points",
+        old_points,
+        reason,
+    )
+
+    db.commit()
+    db.refresh(task)
+    broadcast_project_event(
+        task.project_id,
+        "task.changed",
+        {"action": "estimate_invalidated", "task_id": task.id, "task_key": task.key},
+    )
+    return task
+
+
+@router.delete("/{task_id}")
+def delete_task(
+    task_id: int,
+    data: TaskDeleteRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    task = db.query(Task).filter(Task.id == task_id).first()
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    member = require_project_permission(db, current_user.id, task.project_id, "TASK_DELETE")
+    ensure_task_governance_actor(member, task, current_user, "delete tasks")
+
+    if data.confirm_key.strip().upper() != task.key.upper():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f'Type "{task.key}" to confirm task deletion.',
+        )
+
+    reason = data.reason.strip()
+    project_id = task.project_id
+    task_key = task.key
+    task_title = task.title
+
+    db.add(
+        ProjectAuditLog(
+            project_id=project_id,
+            actor_id=current_user.id,
+            action="TASK_DELETED",
+            field="task",
+            old_value=f"{task_key}: {task_title}",
+            new_value=reason,
+            metadata_json=json.dumps(
+                {
+                    "task_id": task.id,
+                    "task_key": task_key,
+                    "task_title": task_title,
+                    "reason": reason,
+                    "assignee_id": task.assignee_id,
+                    "status": enum_value(task.status),
+                    "story_points": task.story_points,
+                }
+            ),
+        )
+    )
+    db.delete(task)
+    db.commit()
+
+    broadcast_project_event(
+        project_id,
+        "task.changed",
+        {"action": "deleted", "task_id": task_id, "task_key": task_key},
+    )
+    broadcast_project_event(
+        project_id,
+        "project.changed",
+        {"action": "task_deleted", "task_id": task_id, "task_key": task_key},
+    )
+    return {"message": "Task deleted"}
+
+
 @router.post("/{task_id}/subtasks", response_model=SubtaskOut)
 def create_subtask(
     task_id: int,
@@ -788,6 +1024,37 @@ def update_subtask(
     return subtask
 
 
+@router.delete("/{task_id}/subtasks/{subtask_id}")
+def delete_subtask(
+    task_id: int,
+    subtask_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    task = get_task_for_user(task_id, db, current_user)
+    require_project_permission(db, current_user.id, task.project_id, "TASK_UPDATE")
+
+    subtask = db.query(Subtask).filter(
+        Subtask.id == subtask_id,
+        Subtask.task_id == task.id,
+    ).first()
+
+    if not subtask:
+        raise HTTPException(status_code=404, detail="Subtask not found")
+
+    old_title = subtask.title
+    db.delete(subtask)
+    add_audit_log(db, task.id, current_user.id, "SUBTASK_DELETED", "subtask", old_title, None)
+
+    db.commit()
+    broadcast_project_event(
+        task.project_id,
+        "task.changed",
+        {"action": "subtask_deleted", "task_id": task.id, "task_key": task.key},
+    )
+    return {"message": "Subtask deleted"}
+
+
 @router.post("/{task_id}/comments", response_model=TaskCommentOut)
 def create_comment(
     task_id: int,
@@ -813,7 +1080,22 @@ def create_comment(
     db.refresh(comment)
 
     notify_comment_mentions(db, task, comment, current_user)
+    risk_analysis = analyze_and_record_comment_risk(
+        db,
+        task=task,
+        comment=comment,
+        current_user=current_user,
+    )
     db.commit()
+    record_ai_usage(
+        db,
+        user_id=current_user.id,
+        project_id=task.project_id,
+        feature="COMMENT_RISK_ANALYSIS",
+        source=risk_analysis.get("source"),
+        status=_ai_usage_status(risk_analysis),
+        detail=_ai_usage_detail(risk_analysis),
+    )
     db.refresh(comment)
     broadcast_project_event(
         task.project_id,
@@ -853,8 +1135,23 @@ def update_comment(
     comment.body = comment_in.body
 
     add_audit_log(db, task.id, current_user.id, "COMMENT_UPDATED", "comment", old_body, comment.body)
+    risk_analysis = analyze_and_record_comment_risk(
+        db,
+        task=task,
+        comment=comment,
+        current_user=current_user,
+    )
 
     db.commit()
+    record_ai_usage(
+        db,
+        user_id=current_user.id,
+        project_id=task.project_id,
+        feature="COMMENT_RISK_ANALYSIS",
+        source=risk_analysis.get("source"),
+        status=_ai_usage_status(risk_analysis),
+        detail=_ai_usage_detail(risk_analysis),
+    )
     db.refresh(comment)
     broadcast_project_event(
         task.project_id,

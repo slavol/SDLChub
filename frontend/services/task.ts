@@ -150,6 +150,21 @@ export const updateTask = async (taskId: number, updates: Partial<Task>): Promis
     return response.data;
 };
 
+export const invalidateTaskEstimate = async (
+    taskId: number,
+    reason: string
+): Promise<Task> => {
+    const response = await api.post(`/tasks/${taskId}/estimate/invalidate`, { reason });
+    return response.data;
+};
+
+export const deleteTask = async (
+    taskId: number,
+    data: { reason: string; confirm_key: string }
+): Promise<void> => {
+    await api.delete(`/tasks/${taskId}`, { data });
+};
+
 export const createSubtask = async (taskId: number, title: string): Promise<Subtask> => {
     const response = await api.post(`/tasks/${taskId}/subtasks`, { title });
     return response.data;
@@ -158,6 +173,10 @@ export const createSubtask = async (taskId: number, title: string): Promise<Subt
 export const updateSubtask = async (taskId: number, subtaskId: number, updates: Partial<Subtask>): Promise<Subtask> => {
     const response = await api.put(`/tasks/${taskId}/subtasks/${subtaskId}`, updates);
     return response.data;
+};
+
+export const deleteSubtask = async (taskId: number, subtaskId: number): Promise<void> => {
+    await api.delete(`/tasks/${taskId}/subtasks/${subtaskId}`);
 };
 
 export const createTaskComment = async (taskId: number, body: string): Promise<TaskComment> => {

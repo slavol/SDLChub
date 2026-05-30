@@ -28,6 +28,7 @@ import { Label } from "@/components/ui/label";
 import { UserAvatar } from "@/components/user-avatar";
 import { useRealtimeEvent } from "@/hooks/use-realtime-event";
 import { hasProjectPermission } from "@/lib/project-permissions";
+import { cn } from "@/lib/utils";
 import {
   Select,
   SelectContent,
@@ -206,6 +207,37 @@ export default function TeamPage() {
     }
     return children;
   }, [teams]);
+
+  const membersByTeam = useMemo(() => {
+    const grouped: Record<number, ProjectMember[]> = {};
+    for (const member of members) {
+      if (!member.team?.id) continue;
+      grouped[member.team.id] = [...(grouped[member.team.id] || []), member];
+    }
+    return grouped;
+  }, [members]);
+
+  const myTeam = useMemo(
+    () => teams.find((team) => team.id === myMembership?.team?.id) || myMembership?.team || null,
+    [myMembership?.team, teams]
+  );
+
+  const myTeamMembers = useMemo(
+    () => (myTeam?.id ? membersByTeam[myTeam.id] || [] : []),
+    [membersByTeam, myTeam?.id]
+  );
+
+  const myTeamChildren = useMemo(
+    () => (myTeam?.id ? childTeamsByParent[myTeam.id] || [] : []),
+    [childTeamsByParent, myTeam?.id]
+  );
+
+  const isTeamLeadershipRole = Boolean(
+    isProjectOwner ||
+      ["Project Admin", "Project Manager", "Product Owner", "Scrum Master", "Flow Manager", "Tech Lead"].some(
+        (role) => (myMembership?.role?.name || "").includes(role)
+      )
+  );
 
   const filteredMembers = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -523,6 +555,96 @@ export default function TeamPage() {
     }
   };
 
+  const renderTeamTreeNode = (team: ProjectTeam, depth = 0) => {
+    const children = childTeamsByParent[team.id] || [];
+    const teamMembers = membersByTeam[team.id] || [];
+    const isMyTeam = myTeam?.id === team.id;
+
+    return (
+      <div key={team.id} className={depth > 0 ? "relative border-l border-slate-800 pl-4" : ""}>
+        {depth > 0 && (
+          <span className="absolute left-0 top-6 h-px w-4 bg-slate-800" />
+        )}
+        <div
+          className={cn(
+            "rounded-2xl border bg-slate-950 p-4",
+            isMyTeam ? "border-cyan-400/40 shadow-lg shadow-cyan-950/20" : "border-slate-800"
+          )}
+        >
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <GitBranch className="h-4 w-4 text-cyan-300" />
+                <p className="truncate font-semibold text-white">{team.name}</p>
+                {isMyTeam && (
+                  <Badge className="bg-cyan-500/10 text-cyan-200 hover:bg-cyan-500/10">
+                    My team
+                  </Badge>
+                )}
+              </div>
+              <p className="mt-1 text-sm leading-6 text-slate-500">
+                {team.description || "No description"}
+              </p>
+            </div>
+            {canManageTeams && (
+              <Button
+                variant="ghost"
+                className="h-8 w-8 p-0 text-slate-500 hover:bg-red-950/30 hover:text-red-400"
+                onClick={() => handleDeleteTeam(team)}
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            )}
+          </div>
+
+          <div className="mt-4 grid grid-cols-2 gap-3">
+            <div className="rounded-xl border border-slate-800 bg-slate-900 p-3">
+              <p className="text-xs text-slate-500">Members</p>
+              <p className="mt-1 text-lg font-bold text-white">{team.member_count}</p>
+            </div>
+            <div className="rounded-xl border border-slate-800 bg-slate-900 p-3">
+              <p className="text-xs text-slate-500">Assigned tasks</p>
+              <p className="mt-1 text-lg font-bold text-white">{team.task_count}</p>
+            </div>
+          </div>
+
+          {teamMembers.length > 0 && (
+            <div className="mt-4 flex flex-wrap gap-2">
+              {teamMembers.slice(0, 6).map((member) => (
+                <div
+                  key={member.membership_id}
+                  className="flex items-center gap-2 rounded-full border border-slate-800 bg-slate-900 px-2 py-1"
+                >
+                  <UserAvatar
+                    name={member.user.full_name}
+                    email={member.user.email}
+                    src={member.user.avatar_url}
+                    className="h-6 w-6"
+                    fallbackClassName="text-[9px]"
+                  />
+                  <span className="max-w-32 truncate text-xs text-slate-300">
+                    {member.user.full_name || member.user.email}
+                  </span>
+                </div>
+              ))}
+              {teamMembers.length > 6 && (
+                <Badge variant="outline" className="border-slate-700 bg-slate-900 text-slate-400">
+                  +{teamMembers.length - 6}
+                </Badge>
+              )}
+            </div>
+          )}
+        </div>
+
+        {children.length > 0 && (
+          <div className="mt-3 space-y-3">
+            {children.map((child) => renderTeamTreeNode(child, depth + 1))}
+          </div>
+        )}
+      </div>
+    );
+  };
+
   if (loading) {
     return (
       <div className="flex h-full items-center justify-center bg-slate-950 text-blue-500">
@@ -700,69 +822,47 @@ export default function TeamPage() {
             </div>
           )}
 
-          <div className="grid gap-3 lg:grid-cols-2">
-            {rootTeams.map((team) => (
-              <div key={team.id} className="rounded-2xl border border-slate-800 bg-slate-950 p-4">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <GitBranch className="h-4 w-4 text-cyan-300" />
-                      <p className="font-semibold text-white">{team.name}</p>
-                    </div>
-                    <p className="mt-1 text-sm leading-6 text-slate-500">
-                      {team.description || "No description"}
-                    </p>
+          {isTeamLeadershipRole && (
+            <div className="mb-5 rounded-2xl border border-cyan-500/20 bg-cyan-500/10 p-4">
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                <div>
+                  <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-cyan-100">
+                    <Users className="h-4 w-4" />
+                    My team view
                   </div>
-                  {canManageTeams && (
-                    <Button
-                      variant="ghost"
-                      className="text-slate-500 hover:bg-red-950/30 hover:text-red-400"
-                      onClick={() => handleDeleteTeam(team)}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  )}
+                  <p className="text-xl font-bold text-white">
+                    {myTeam ? myTeam.name : "No delivery team assigned"}
+                  </p>
+                  <p className="mt-1 text-sm leading-6 text-cyan-100/70">
+                    {myTeam
+                      ? `${myTeamMembers.length} direct members, ${myTeamChildren.length} subteams and ${myTeam.task_count} assigned tasks.`
+                      : "Assign yourself to a team to get a focused leadership view here."}
+                  </p>
                 </div>
 
-                <div className="mt-4 grid grid-cols-2 gap-3">
-                  <div className="rounded-xl border border-slate-800 bg-slate-900 p-3">
-                    <p className="text-xs text-slate-500">Members</p>
-                    <p className="mt-1 text-lg font-bold text-white">{team.member_count}</p>
-                  </div>
-                  <div className="rounded-xl border border-slate-800 bg-slate-900 p-3">
-                    <p className="text-xs text-slate-500">Assigned tasks</p>
-                    <p className="mt-1 text-lg font-bold text-white">{team.task_count}</p>
-                  </div>
-                </div>
-
-                {(childTeamsByParent[team.id] || []).length > 0 && (
-                  <div className="mt-4 space-y-2 border-l border-slate-800 pl-3">
-                    {childTeamsByParent[team.id].map((child) => (
-                      <div key={child.id} className="flex items-center justify-between rounded-xl border border-slate-800 bg-slate-900 px-3 py-2">
-                        <div>
-                          <p className="text-sm font-semibold text-slate-100">{child.name}</p>
-                          <p className="text-xs text-slate-500">
-                            {child.member_count} members · {child.task_count} tasks
-                          </p>
-                        </div>
-                        {canManageTeams && (
-                          <Button
-                            variant="ghost"
-                            className="h-8 w-8 p-0 text-slate-500 hover:bg-red-950/30 hover:text-red-400"
-                            onClick={() => handleDeleteTeam(child)}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        )}
-                      </div>
+                {myTeam && (
+                  <div className="flex flex-wrap gap-2">
+                    {myTeamMembers.slice(0, 8).map((member) => (
+                      <UserAvatar
+                        key={member.membership_id}
+                        name={member.user.full_name}
+                        email={member.user.email}
+                        src={member.user.avatar_url}
+                        className="h-10 w-10 border-cyan-400/20"
+                        fallbackClassName="text-xs"
+                      />
                     ))}
                   </div>
                 )}
               </div>
-            ))}
+            </div>
+          )}
+
+          <div className="space-y-3">
+            {rootTeams.map((team) => renderTeamTreeNode(team))}
 
             {teams.length === 0 && (
-              <div className="rounded-2xl border border-dashed border-slate-800 bg-slate-950/70 p-8 text-center lg:col-span-2">
+              <div className="rounded-2xl border border-dashed border-slate-800 bg-slate-950/70 p-8 text-center">
                 <Network className="mx-auto mb-3 h-8 w-8 text-slate-600" />
                 <p className="text-sm text-slate-500">No teams created yet.</p>
               </div>

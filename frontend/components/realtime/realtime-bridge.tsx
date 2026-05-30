@@ -67,6 +67,34 @@ export function RealtimeBridge() {
                 typeof payload.avatar_url === "string"
                   ? payload.avatar_url
                 : currentUser.avatar_url,
+              notification_in_app_enabled:
+                typeof payload.notification_in_app_enabled === "boolean"
+                  ? payload.notification_in_app_enabled
+                  : currentUser.notification_in_app_enabled,
+              notification_email_enabled:
+                typeof payload.notification_email_enabled === "boolean"
+                  ? payload.notification_email_enabled
+                  : currentUser.notification_email_enabled,
+              notify_task_assignments:
+                typeof payload.notify_task_assignments === "boolean"
+                  ? payload.notify_task_assignments
+                  : currentUser.notify_task_assignments,
+              notify_mentions:
+                typeof payload.notify_mentions === "boolean"
+                  ? payload.notify_mentions
+                  : currentUser.notify_mentions,
+              notify_calendar:
+                typeof payload.notify_calendar === "boolean"
+                  ? payload.notify_calendar
+                  : currentUser.notify_calendar,
+              notify_due_dates:
+                typeof payload.notify_due_dates === "boolean"
+                  ? payload.notify_due_dates
+                  : currentUser.notify_due_dates,
+              notify_ai_risk:
+                typeof payload.notify_ai_risk === "boolean"
+                  ? payload.notify_ai_risk
+                  : currentUser.notify_ai_risk,
             });
           }
 

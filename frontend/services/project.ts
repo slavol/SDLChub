@@ -18,6 +18,15 @@ export interface Project {
 
 export interface ProjectWorkflowConfig {
   wip_limits?: Record<string, number | null>;
+  columns?: ProjectWorkflowColumn[];
+}
+
+export interface ProjectWorkflowColumn {
+  key: string;
+  label: string;
+  enabled: boolean;
+  order: number;
+  color?: string | null;
 }
 
 export interface ProjectAiConfig {
@@ -738,6 +747,7 @@ export interface WorkloadSuggestion {
 
 export interface WorkloadSuggestionsResponse {
   summary: string;
+  source?: string;
   suggestions: WorkloadSuggestion[];
 }
 

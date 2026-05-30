@@ -18,6 +18,13 @@ export interface AuthUser {
   avatar_url?: string | null;
   is_active: boolean;
   is_global_admin?: boolean;
+  notification_in_app_enabled?: boolean;
+  notification_email_enabled?: boolean;
+  notify_task_assignments?: boolean;
+  notify_mentions?: boolean;
+  notify_calendar?: boolean;
+  notify_due_dates?: boolean;
+  notify_ai_risk?: boolean;
 }
 
 export interface AccountProjectSummary {
@@ -114,6 +121,23 @@ export const updateCurrentUserPassword = async (data: {
   new_password: string;
 }): Promise<GenericMessageResponse> => {
   const response = await api.put("/auth/me/password", data);
+  return response.data;
+};
+
+export interface NotificationPreferencesUpdate {
+  notification_in_app_enabled?: boolean;
+  notification_email_enabled?: boolean;
+  notify_task_assignments?: boolean;
+  notify_mentions?: boolean;
+  notify_calendar?: boolean;
+  notify_due_dates?: boolean;
+  notify_ai_risk?: boolean;
+}
+
+export const updateNotificationPreferences = async (
+  data: NotificationPreferencesUpdate
+): Promise<AuthUser> => {
+  const response = await api.put("/auth/me/notification-preferences", data);
   return response.data;
 };
 
