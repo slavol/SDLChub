@@ -188,6 +188,8 @@ def generate_due_task_reminders(
 def generate_calendar_event_reminders(
     db: Session,
     *,
+    user_id: int | None = None,
+    project_id: int | None = None,
     now: datetime | None = None,
     lookahead_minutes: int = 30,
     dedupe_hours: int = 20,
@@ -200,8 +202,12 @@ def generate_calendar_event_reminders(
         db.query(CalendarEvent)
         .filter(CalendarEvent.starts_at >= current_time)
         .filter(CalendarEvent.starts_at <= starts_before)
-        .all()
     )
+
+    if project_id is not None:
+        events = events.filter(CalendarEvent.project_id == project_id)
+
+    events = events.all()
     created = 0
 
     for event in events:
@@ -209,6 +215,9 @@ def generate_calendar_event_reminders(
         minutes_until = max(0, round((starts_at - current_time).total_seconds() / 60))
 
         for attendee_id in set(_calendar_attendee_ids(event)):
+            if user_id is not None and attendee_id != user_id:
+                continue
+
             if notification_exists_recently(
                 db,
                 user_id=attendee_id,
@@ -235,7 +244,8 @@ def generate_calendar_event_reminders(
                 metadata={
                     "event_id": event.id,
                     "starts_at": starts_at.isoformat(),
-                    "generated_by": "scheduler",
+                    "generated_by": "scheduler" if user_id is None else "manual",
+                    "lookahead_minutes": lookahead_minutes,
                 },
             )
 

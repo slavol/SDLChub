@@ -11,7 +11,7 @@ from backend.models.user import User
 from backend.realtime import broadcast_project_event
 from backend.routers.auth import get_current_user
 from backend.schemas.sprint import SprintOut
-from backend.services.ai_service import generate_release_notes
+from backend.services.ai_service import generate_release_notes, resolve_project_ai_config
 from backend.utils.permissions import check_project_permission, require_project_permission
 from backend.utils.ai_usage import record_ai_usage
 
@@ -26,6 +26,14 @@ SPRINT_MANAGEMENT_ROLES = [
     "Product Owner",
     "Tech Lead",
 ]
+
+
+def _ai_usage_status(result: dict) -> str:
+    return "ERROR" if str(result.get("source", "")).startswith("fallback_after_error") else "SUCCESS"
+
+
+def _ai_usage_detail(result: dict) -> str | None:
+    return result.get("error") or result.get("error_detail")
 
 
 class SprintCreate(BaseModel):
@@ -231,6 +239,7 @@ def generate_sprint_release_notes(
         completed_tasks=completed_tasks,
         unfinished_tasks=unfinished_tasks,
         context="Software sprint release notes for SDLC Hub project management",
+        ai_config=resolve_project_ai_config(sprint.project),
     )
     record_ai_usage(
         db,
@@ -238,5 +247,7 @@ def generate_sprint_release_notes(
         project_id=sprint.project_id,
         feature="RELEASE_NOTES",
         source=result.get("source"),
+        status=_ai_usage_status(result),
+        detail=_ai_usage_detail(result),
     )
     return result

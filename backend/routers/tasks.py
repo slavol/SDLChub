@@ -33,13 +33,26 @@ from backend.schemas.task import (
     TaskUpdate,
 )
 from backend.services.documentation_service import enum_value, upsert_task_documentation_page
-from backend.services.ai_service import estimate_story_points, generate_task_metadata, refine_task_spec
+from backend.services.ai_service import (
+    estimate_story_points,
+    generate_task_metadata,
+    refine_task_spec,
+    resolve_project_ai_config,
+)
 from backend.utils.permissions import check_project_permission, require_project_permission
 from backend.utils.notifications import notify_comment_mentions, notify_task_assigned
 from backend.utils.ai_usage import record_ai_usage
 
 
 router = APIRouter(prefix="/tasks", tags=["Tasks"])
+
+
+def _ai_usage_status(result: dict) -> str:
+    return "ERROR" if str(result.get("source", "")).startswith("fallback_after_error") else "SUCCESS"
+
+
+def _ai_usage_detail(result: dict) -> str | None:
+    return result.get("error") or result.get("error_detail")
 
 
 class AIRequest(BaseModel):
@@ -198,11 +211,18 @@ def generate_task_ai(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    project = None
     if req.project_id:
         require_project_permission(db, current_user.id, req.project_id, "AI_USE")
+        project = db.query(Project).filter(Project.id == req.project_id).first()
 
     try:
-        description = generate_task_metadata(req.title, req.priority, req.context)
+        description = generate_task_metadata(
+            req.title,
+            req.priority,
+            req.context,
+            ai_config=resolve_project_ai_config(project),
+        )
         record_ai_usage(
             db,
             user_id=current_user.id,
@@ -230,14 +250,17 @@ def refine_task_ai(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    project = None
     if req.project_id:
         require_project_permission(db, current_user.id, req.project_id, "AI_USE")
+        project = db.query(Project).filter(Project.id == req.project_id).first()
 
     result = refine_task_spec(
         title=req.title,
         description=req.description,
         priority=req.priority,
         context=req.context,
+        ai_config=resolve_project_ai_config(project),
     )
     record_ai_usage(
         db,
@@ -245,6 +268,8 @@ def refine_task_ai(
         project_id=req.project_id,
         feature="SPEC_REFINER",
         source=result.get("source"),
+        status=_ai_usage_status(result),
+        detail=_ai_usage_detail(result),
     )
     return result
 
@@ -255,14 +280,17 @@ def estimate_task_ai(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    project = None
     if req.project_id:
         require_project_permission(db, current_user.id, req.project_id, "AI_USE")
+        project = db.query(Project).filter(Project.id == req.project_id).first()
 
     result = estimate_story_points(
         title=req.title,
         description=req.description,
         priority=req.priority,
         context=req.context,
+        ai_config=resolve_project_ai_config(project),
     )
     record_ai_usage(
         db,
@@ -270,6 +298,8 @@ def estimate_task_ai(
         project_id=req.project_id,
         feature="POKER_ESTIMATOR",
         source=result.get("source"),
+        status=_ai_usage_status(result),
+        detail=_ai_usage_detail(result),
     )
     return result
 

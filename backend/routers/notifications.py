@@ -11,7 +11,10 @@ from backend.models.user import User
 from backend.realtime import broadcast_user_event
 from backend.routers.auth import get_current_user
 from backend.schemas.notification import NotificationOut
-from backend.utils.notifications import generate_due_task_reminders as generate_due_task_reminders_for_scope
+from backend.utils.notifications import (
+    generate_calendar_event_reminders as generate_calendar_event_reminders_for_scope,
+    generate_due_task_reminders as generate_due_task_reminders_for_scope,
+)
 from backend.utils.permissions import check_project_permission, require_project_permission
 
 
@@ -143,19 +146,34 @@ def _create_notification(
 @router.post("/generate-reminders")
 def generate_due_task_reminders_endpoint(
     project_id: int | None = Query(None),
+    include_calendar: bool = Query(True),
+    calendar_lookahead_minutes: int = Query(60, ge=5, le=1440),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     if project_id is not None:
         check_project_permission(db, current_user.id, project_id)
 
-    created = generate_due_task_reminders_for_scope(
+    due_task_created = generate_due_task_reminders_for_scope(
         db,
         user_id=current_user.id,
         project_id=project_id,
     )
+    calendar_created = 0
+    if include_calendar:
+        calendar_created = generate_calendar_event_reminders_for_scope(
+            db,
+            user_id=current_user.id,
+            project_id=project_id,
+            lookahead_minutes=calendar_lookahead_minutes,
+        )
     db.commit()
-    return {"created": created}
+    return {
+        "created": due_task_created + calendar_created,
+        "due_task_created": due_task_created,
+        "calendar_created": calendar_created,
+        "calendar_lookahead_minutes": calendar_lookahead_minutes if include_calendar else 0,
+    }
 
 
 @router.post("/generate-risk/{project_id}")

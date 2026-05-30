@@ -822,20 +822,52 @@ export default function DashboardPage() {
             </CardHeader>
             <CardContent className="space-y-3 p-5">
               {dashboard.risk_cards.map((risk) => (
-                <div
-                  key={`${risk.title}-${risk.value}`}
-                  className="rounded-2xl border border-slate-800 bg-slate-950/75 p-4"
-                >
+                <div key={`${risk.title}-${risk.value}`} className="group rounded-2xl border border-slate-800 bg-slate-950/75 p-4 transition-colors hover:border-slate-700 hover:bg-slate-950">
                   <div className="mb-2 flex items-start justify-between gap-3">
-                    <p className="font-semibold text-white">{risk.title}</p>
-                    <Badge
-                      variant="outline"
-                      className={severityStyles[risk.severity]}
-                    >
-                      {risk.value}
-                    </Badge>
+                    <div className="min-w-0">
+                      <p className="truncate font-semibold text-white">{risk.title}</p>
+                      {(risk.status || risk.priority || risk.assignee_name) && (
+                        <div className="mt-2 flex flex-wrap items-center gap-2">
+                          {risk.status && (
+                            <Badge variant="outline" className={statusStyles[risk.status] || "border-slate-700 text-slate-300"}>
+                              {statusLabels[risk.status] || risk.status}
+                            </Badge>
+                          )}
+                          {risk.priority && (
+                            <Badge variant="outline" className={priorityStyles[risk.priority] || "border-slate-700 text-slate-300"}>
+                              {risk.priority}
+                            </Badge>
+                          )}
+                          {risk.assignee_name && (
+                            <span className="text-xs text-slate-500">{risk.assignee_name}</span>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex shrink-0 items-center gap-2">
+                      <Badge
+                        variant="outline"
+                        className={severityStyles[risk.severity]}
+                      >
+                        {risk.value}
+                      </Badge>
+                      {risk.task_id && (
+                        <Link
+                          href={`/dashboard/tasks/${risk.task_id}`}
+                          className="rounded-full border border-slate-800 p-1.5 text-slate-500 transition-colors hover:border-blue-500/40 hover:text-blue-300"
+                          aria-label={`Open ${risk.task_key || "task"}`}
+                        >
+                          <ArrowRight className="h-3.5 w-3.5" />
+                        </Link>
+                      )}
+                    </div>
                   </div>
                   <p className="text-sm text-slate-500">{risk.detail}</p>
+                  {risk.category && (
+                    <p className="mt-3 text-[11px] uppercase tracking-[0.18em] text-slate-600">
+                      {risk.category} signal
+                    </p>
+                  )}
                 </div>
               ))}
             </CardContent>

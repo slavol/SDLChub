@@ -16,6 +16,7 @@ import {
   ServerCrash,
   ShieldCheck,
   Send,
+  SlidersHorizontal,
   Ticket,
   Trash2,
   UserCog,
@@ -48,6 +49,7 @@ import {
   deleteSupportTicket,
   deleteSupportTicketComment,
   downloadAdminCsv,
+  downloadAdminPlatformPdf,
   getAdminAiUsage,
   getAdminErrors,
   getAdminOverview,
@@ -123,6 +125,10 @@ export default function AdminConsolePage() {
   const [ticketFilter, setTicketFilter] = useState("ALL");
   const [errorFilter, setErrorFilter] = useState("ALL");
   const [projectStatusFilter, setProjectStatusFilter] = useState("ACTIVE");
+  const [aiFeatureFilter, setAiFeatureFilter] = useState("ALL");
+  const [aiStatusFilter, setAiStatusFilter] = useState("ALL");
+  const [aiProjectFilter, setAiProjectFilter] = useState("ALL");
+  const [aiTimeFilter, setAiTimeFilter] = useState("ALL");
   const [commentDrafts, setCommentDrafts] = useState<Record<number, string>>({});
   const [projectToDelete, setProjectToDelete] = useState<AdminProject | null>(null);
   const [deleteConfirmation, setDeleteConfirmation] = useState("");
@@ -229,13 +235,68 @@ export default function AdminConsolePage() {
   const filteredAiUsage = useMemo(
     () =>
       aiUsage.filter((item) => {
-        if (!normalizedQuery) return true;
-        return `${item.feature} ${item.source || ""} ${item.user_name || ""} ${item.project_name || ""}`
-          .toLowerCase()
-          .includes(normalizedQuery);
+        const queryMatches =
+          !normalizedQuery ||
+          `${item.feature} ${item.source || ""} ${item.user_name || ""} ${item.project_name || ""}`
+            .toLowerCase()
+            .includes(normalizedQuery);
+        const featureMatches =
+          aiFeatureFilter === "ALL" || item.feature === aiFeatureFilter;
+        const statusMatches =
+          aiStatusFilter === "ALL" || item.status === aiStatusFilter;
+        const projectMatches =
+          aiProjectFilter === "ALL" ||
+          (aiProjectFilter === "NONE" && !item.project_id) ||
+          String(item.project_id) === aiProjectFilter;
+        const timeMatches =
+          aiTimeFilter === "ALL" ||
+          Boolean(
+            item.created_at &&
+              new Date(item.created_at).getTime() >=
+                Date.now() - Number(aiTimeFilter) * 24 * 60 * 60 * 1000
+          );
+
+        return (
+          queryMatches &&
+          featureMatches &&
+          statusMatches &&
+          projectMatches &&
+          timeMatches
+        );
       }),
-    [aiUsage, normalizedQuery]
+    [
+      aiFeatureFilter,
+      aiProjectFilter,
+      aiStatusFilter,
+      aiTimeFilter,
+      aiUsage,
+      normalizedQuery,
+    ]
   );
+
+  const aiFeatureOptions = useMemo(
+    () => Array.from(new Set(aiUsage.map((item) => item.feature))).sort(),
+    [aiUsage]
+  );
+
+  const aiProjectOptions = useMemo(() => {
+    const map = new Map<number, string>();
+    aiUsage.forEach((item) => {
+      if (item.project_id) {
+        map.set(item.project_id, item.project_name || `Project #${item.project_id}`);
+      }
+    });
+    return Array.from(map.entries()).sort((first, second) =>
+      first[1].localeCompare(second[1])
+    );
+  }, [aiUsage]);
+
+  const resetAiFilters = () => {
+    setAiFeatureFilter("ALL");
+    setAiStatusFilter("ALL");
+    setAiProjectFilter("ALL");
+    setAiTimeFilter("ALL");
+  };
 
   const globalAdmins = users.filter((user) => user.is_global_admin).length;
   const activeUsers = users.filter((user) => user.is_active).length;
@@ -342,6 +403,15 @@ export default function AdminConsolePage() {
     }
   };
 
+  const handlePlatformPdfExport = async () => {
+    try {
+      await downloadAdminPlatformPdf();
+      toast.success("Platform PDF export started.");
+    } catch (error: unknown) {
+      toast.error(getApiErrorMessage(error, "PDF export failed."));
+    }
+  };
+
   const handleProjectArchive = async (project: AdminProject) => {
     setProjectActionId(project.id);
     try {
@@ -398,23 +468,31 @@ export default function AdminConsolePage() {
           </div>
 
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-          <div className="relative">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
-            <Input
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="Search console..."
-              className="h-11 w-full rounded-xl border-slate-800 bg-slate-950 pl-10 text-slate-100 placeholder:text-slate-600 sm:w-72"
-            />
-          </div>
-          <Button
-            onClick={loadAdminData}
-            disabled={loading}
-            className="h-11 rounded-xl bg-blue-600 text-white hover:bg-blue-500"
-          >
-            <RefreshCw className="mr-2 h-4 w-4" />
-            Refresh
-          </Button>
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+              <Input
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="Search console..."
+                className="h-11 w-full rounded-xl border-slate-800 bg-slate-950 pl-10 text-slate-100 placeholder:text-slate-600 sm:w-72"
+              />
+            </div>
+            <Button
+              onClick={handlePlatformPdfExport}
+              variant="outline"
+              className="h-11 rounded-xl border-emerald-500/30 bg-emerald-500/10 text-emerald-100 hover:bg-emerald-500/15"
+            >
+              <Download className="mr-2 h-4 w-4" />
+              PDF Report
+            </Button>
+            <Button
+              onClick={loadAdminData}
+              disabled={loading}
+              className="h-11 rounded-xl bg-blue-600 text-white hover:bg-blue-500"
+            >
+              <RefreshCw className="mr-2 h-4 w-4" />
+              Refresh
+            </Button>
           </div>
         </div>
 
@@ -960,6 +1038,87 @@ export default function AdminConsolePage() {
             >
               <Download className="mr-2 h-4 w-4 text-violet-300" />
               CSV
+            </Button>
+          </div>
+        </div>
+
+        <div className="grid gap-3 border-b border-slate-800 p-5 lg:grid-cols-[1fr_160px_180px_160px_auto]">
+          <div className="min-w-0">
+            <label className="mb-2 block text-xs font-medium uppercase tracking-[0.16em] text-slate-600">
+              Feature
+            </label>
+            <select
+              value={aiFeatureFilter}
+              onChange={(event) => setAiFeatureFilter(event.target.value)}
+              className="h-10 w-full rounded-xl border border-slate-800 bg-slate-950 px-3 text-sm text-slate-200 outline-none transition focus:border-blue-500"
+            >
+              <option value="ALL">All features</option>
+              {aiFeatureOptions.map((feature) => (
+                <option key={feature} value={feature}>
+                  {feature.replace("_", " ")}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="mb-2 block text-xs font-medium uppercase tracking-[0.16em] text-slate-600">
+              Status
+            </label>
+            <select
+              value={aiStatusFilter}
+              onChange={(event) => setAiStatusFilter(event.target.value)}
+              className="h-10 w-full rounded-xl border border-slate-800 bg-slate-950 px-3 text-sm text-slate-200 outline-none transition focus:border-blue-500"
+            >
+              <option value="ALL">All statuses</option>
+              <option value="SUCCESS">Success</option>
+              <option value="ERROR">Error</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="mb-2 block text-xs font-medium uppercase tracking-[0.16em] text-slate-600">
+              Project
+            </label>
+            <select
+              value={aiProjectFilter}
+              onChange={(event) => setAiProjectFilter(event.target.value)}
+              className="h-10 w-full rounded-xl border border-slate-800 bg-slate-950 px-3 text-sm text-slate-200 outline-none transition focus:border-blue-500"
+            >
+              <option value="ALL">All projects</option>
+              <option value="NONE">No project</option>
+              {aiProjectOptions.map(([projectId, projectName]) => (
+                <option key={projectId} value={String(projectId)}>
+                  {projectName}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="mb-2 block text-xs font-medium uppercase tracking-[0.16em] text-slate-600">
+              Period
+            </label>
+            <select
+              value={aiTimeFilter}
+              onChange={(event) => setAiTimeFilter(event.target.value)}
+              className="h-10 w-full rounded-xl border border-slate-800 bg-slate-950 px-3 text-sm text-slate-200 outline-none transition focus:border-blue-500"
+            >
+              <option value="ALL">All time</option>
+              <option value="1">Last 24h</option>
+              <option value="7">Last 7 days</option>
+              <option value="30">Last 30 days</option>
+            </select>
+          </div>
+
+          <div className="flex items-end">
+            <Button
+              variant="outline"
+              className="h-10 w-full rounded-xl border-slate-700 bg-slate-950 text-slate-300 hover:bg-slate-800 hover:text-white lg:w-auto"
+              onClick={resetAiFilters}
+            >
+              <SlidersHorizontal className="mr-2 h-4 w-4 text-violet-300" />
+              Reset
             </Button>
           </div>
         </div>

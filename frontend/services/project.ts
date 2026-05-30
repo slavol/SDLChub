@@ -9,6 +9,7 @@ export interface Project {
   description?: string | null;
   methodology: Methodology | string;
   workflow_config?: ProjectWorkflowConfig | null;
+  ai_config?: ProjectAiConfig | null;
   is_archived?: boolean;
   owner_id: number;
   created_at?: string;
@@ -17,6 +18,26 @@ export interface Project {
 
 export interface ProjectWorkflowConfig {
   wip_limits?: Record<string, number | null>;
+}
+
+export interface ProjectAiConfig {
+  mode: "PLATFORM" | "PROJECT";
+  provider: "GEMINI" | string;
+  provider_name?: string | null;
+  base_url?: string | null;
+  model?: string | null;
+  has_project_key: boolean;
+  platform_configured: boolean;
+}
+
+export interface ProjectAiSettingsUpdate {
+  mode: "PLATFORM" | "PROJECT";
+  provider?: "GEMINI" | string;
+  provider_name?: string;
+  base_url?: string;
+  model?: string;
+  api_key?: string;
+  clear_api_key?: boolean;
 }
 
 export interface AIRecommendationRequest {
@@ -220,6 +241,20 @@ export interface MethodologyTransitionResult {
   message: string;
 }
 
+export interface ProjectAuditLog {
+  id: number;
+  project_id: number;
+  actor_id?: number | null;
+  actor_name?: string | null;
+  actor_avatar_url?: string | null;
+  action: string;
+  field?: string | null;
+  old_value?: string | null;
+  new_value?: string | null;
+  metadata?: Record<string, unknown> | null;
+  created_at: string;
+}
+
 export interface InviteProjectMemberRequest {
   email: string;
   role_id: number;
@@ -246,6 +281,28 @@ export const updateProjectWorkflow = async (
   return response.data;
 };
 
+export const getProjectAiSettings = async (
+  projectId: number
+): Promise<ProjectAiConfig> => {
+  const response = await api.get(`/projects/${projectId}/ai-settings`);
+  return response.data;
+};
+
+export const updateProjectAiSettings = async (
+  projectId: number,
+  data: ProjectAiSettingsUpdate
+): Promise<ProjectAiConfig> => {
+  const response = await api.put(`/projects/${projectId}/ai-settings`, data);
+  return response.data;
+};
+
+export const testProjectAiSettings = async (
+  projectId: number
+): Promise<{ ok: boolean; message: string }> => {
+  const response = await api.post(`/projects/${projectId}/ai-settings/test`);
+  return response.data;
+};
+
 export const getMethodologyTransitionPreview = async (
   projectId: number,
   target: Methodology | string
@@ -264,6 +321,16 @@ export const applyMethodologyTransition = async (
   const response = await api.post(`/projects/${projectId}/methodology-transition`, {
     target_methodology: targetMethodology,
     strategy,
+  });
+  return response.data;
+};
+
+export const getProjectAuditLogs = async (
+  projectId: number,
+  limit = 40
+): Promise<ProjectAuditLog[]> => {
+  const response = await api.get(`/projects/${projectId}/audit-logs`, {
+    params: { limit },
   });
   return response.data;
 };
@@ -558,6 +625,14 @@ export interface DashboardRiskCard {
   value: string;
   severity: "low" | "medium" | "high";
   detail: string;
+  category?: string;
+  task_id?: number | null;
+  task_key?: string | null;
+  task_title?: string | null;
+  status?: string | null;
+  priority?: string | null;
+  assignee_name?: string | null;
+  age_days?: number | null;
 }
 
 export interface ProjectDashboardData {
@@ -621,8 +696,12 @@ export interface WorkloadMember {
   overdue_tasks: number;
   review_tasks: number;
   critical_tasks: number;
+  stale_review_tasks?: number;
+  stale_progress_tasks?: number;
+  due_soon_tasks?: number;
   risk_score: number;
   load_label: "Available" | "Balanced" | "Busy" | "Overloaded" | string;
+  risk_factors?: string[];
   tasks: WorkloadTask[];
 }
 
@@ -638,6 +717,7 @@ export interface ProjectWorkload {
     overdue_tasks: number;
     review_tasks: number;
     overloaded_members: number;
+    stale_flow_tasks?: number;
   };
   members: WorkloadMember[];
   unassigned_tasks: WorkloadTask[];

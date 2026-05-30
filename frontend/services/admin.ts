@@ -87,6 +87,14 @@ export interface AiUsageLog {
   created_at?: string | null;
 }
 
+export interface AdminAiUsageFilters {
+  feature?: string;
+  status?: string;
+  project_id?: number;
+  days?: number;
+  limit?: number;
+}
+
 export const getAdminOverview = async (): Promise<AdminOverview> => {
   const response = await api.get("/admin/overview");
   return response.data;
@@ -124,8 +132,12 @@ export const getAdminUsers = async (): Promise<AdminUser[]> => {
   return response.data;
 };
 
-export const getAdminAiUsage = async (): Promise<AiUsageLog[]> => {
-  const response = await api.get("/admin/ai-usage");
+export const getAdminAiUsage = async (
+  filters: AdminAiUsageFilters = {}
+): Promise<AiUsageLog[]> => {
+  const response = await api.get("/admin/ai-usage", {
+    params: filters,
+  });
   return response.data;
 };
 
@@ -140,6 +152,21 @@ export const downloadAdminCsv = async (
   const link = document.createElement("a");
   link.href = url;
   link.download = `sdlc-hub-${kind}.csv`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.URL.revokeObjectURL(url);
+};
+
+export const downloadAdminPlatformPdf = async (): Promise<void> => {
+  const response = await api.get("/admin/export/platform.pdf", {
+    responseType: "blob",
+  });
+
+  const url = window.URL.createObjectURL(new Blob([response.data]));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "sdlc-hub-platform-report.pdf";
   document.body.appendChild(link);
   link.click();
   link.remove();

@@ -463,6 +463,12 @@ export default function CalendarPage() {
   const [editingEvent, setEditingEvent] = useState<CalendarEvent | null>(null);
   const [creatingEvent, setCreatingEvent] = useState(false);
   const [generatingReminders, setGeneratingReminders] = useState(false);
+  const [lastReminderResult, setLastReminderResult] = useState<{
+    created: number;
+    due_task_created?: number;
+    calendar_created?: number;
+    calendar_lookahead_minutes?: number;
+  } | null>(null);
   const [eventToDelete, setEventToDelete] = useState<CalendarEvent | null>(null);
   const [deleteEntireSeries, setDeleteEntireSeries] = useState(false);
   const [deletingEvent, setDeletingEvent] = useState(false);
@@ -846,10 +852,11 @@ export default function CalendarPage() {
     setGeneratingReminders(true);
     try {
       const result = await generateDueTaskReminders(project.id);
+      setLastReminderResult(result);
       toast.success(
         result.created > 0
           ? `${result.created} reminder${result.created === 1 ? "" : "s"} created`
-          : "No new due-date reminders needed"
+          : "No new task or calendar reminders needed"
       );
     } catch (error: unknown) {
       toast.error(getApiErrorMessage(error, "Could not generate reminders."));
@@ -916,7 +923,7 @@ export default function CalendarPage() {
                 ) : (
                   <BellRing className="mr-2 h-4 w-4" />
                 )}
-                Reminders
+                Smart reminders
               </Button>
 
               <Dialog
@@ -1209,6 +1216,39 @@ export default function CalendarPage() {
             <p className="mt-1 text-2xl font-semibold text-white">{overdueTasks.length}</p>
           </div>
         </div>
+
+        {lastReminderResult && (
+          <div className="border-t border-slate-800/80 bg-slate-950/45 px-5 py-4">
+            <div className="flex flex-col gap-3 rounded-2xl border border-blue-500/20 bg-blue-500/10 p-4 md:flex-row md:items-center md:justify-between">
+              <div className="flex items-start gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-blue-400/20 bg-blue-400/10">
+                  <BellRing className="h-5 w-5 text-blue-200" />
+                </div>
+                <div>
+                  <p className="font-semibold text-white">Reminder sweep completed</p>
+                  <p className="mt-1 text-sm text-slate-400">
+                    Checked your due tasks and meetings starting in the next{" "}
+                    {lastReminderResult.calendar_lookahead_minutes || 60} minutes.
+                  </p>
+                </div>
+              </div>
+              <div className="grid grid-cols-3 gap-2 text-center sm:min-w-80">
+                <div className="rounded-xl border border-slate-800 bg-slate-950/70 px-3 py-2">
+                  <p className="text-lg font-semibold text-white">{lastReminderResult.created}</p>
+                  <p className="text-[11px] text-slate-500">total</p>
+                </div>
+                <div className="rounded-xl border border-slate-800 bg-slate-950/70 px-3 py-2">
+                  <p className="text-lg font-semibold text-white">{lastReminderResult.due_task_created || 0}</p>
+                  <p className="text-[11px] text-slate-500">tasks</p>
+                </div>
+                <div className="rounded-xl border border-slate-800 bg-slate-950/70 px-3 py-2">
+                  <p className="text-lg font-semibold text-white">{lastReminderResult.calendar_created || 0}</p>
+                  <p className="text-[11px] text-slate-500">events</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </section>
 
       <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_380px]">

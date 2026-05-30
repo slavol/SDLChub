@@ -16,6 +16,7 @@ import {
   Github,
   KanbanSquare,
   LayoutDashboard,
+  ListChecks,
   LogOut,
   MessageSquareWarning,
   PlusCircle,
@@ -174,6 +175,7 @@ export function AppSidebar({ methodology, role, projectName }: SidebarProps) {
     { name: "Activity", href: "/dashboard/activity", icon: Activity },
     { name: "Calendar", href: "/dashboard/calendar", icon: CalendarDays },
     { name: "Board", href: "/dashboard/board", icon: KanbanSquare },
+    { name: "Tasks", href: "/dashboard/tasks", icon: ListChecks },
     ...(isScrum
       ? [{ name: "Backlog", href: "/dashboard/backlog", icon: FileText }]
       : []),

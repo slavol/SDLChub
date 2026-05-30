@@ -35,6 +35,9 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { UserAvatar } from "@/components/user-avatar";
+import { formatAiSource, isAiFallback } from "@/lib/ai-source";
+import { getApiErrorMessage } from "@/lib/api-error";
+import { cn } from "@/lib/utils";
 
 // Asigură-te că generateTaskDescription este exportată din services/task
 import {
@@ -60,6 +63,15 @@ const formSchema = z.object({
   team_id: z.string().optional(),
 });
 
+const SDLC_CHECKLIST = [
+  "Planificare - clarificare scop si dependinte",
+  "Analiza - definire user story si criterii de acceptare",
+  "Design - propunere solutie tehnica si impact UI/API",
+  "Implementare - dezvoltare functionalitate",
+  "Integrare - conectare cu modulele existente",
+  "Testare - validare functionalitate si regresii",
+];
+
 interface CreateTaskDialogProps {
   projectId: number;
   sprintId?: number | null;
@@ -76,6 +88,7 @@ export function CreateTaskDialog({ projectId, sprintId, methodology, onTaskCreat
   const [isEstimateLoading, setIsEstimateLoading] = useState(false);
   const [lastEstimate, setLastEstimate] = useState<StoryPointEstimate | null>(null);
   const [lastRefinedSpec, setLastRefinedSpec] = useState<RefinedTaskSpec | null>(null);
+  const [templateSubtasks, setTemplateSubtasks] = useState<string[]>([]);
   const [createAiSubtasks, setCreateAiSubtasks] = useState(true);
   
   // State pentru membrii echipei
@@ -83,6 +96,9 @@ export function CreateTaskDialog({ projectId, sprintId, methodology, onTaskCreat
   const [teams, setTeams] = useState<ProjectTeam[]>([]);
   const [loadingMembers, setLoadingMembers] = useState(false);
   const supportsStoryPoints = methodology !== "KANBAN";
+  const suggestedSubtasks = lastRefinedSpec?.suggested_subtasks?.length
+    ? lastRefinedSpec.suggested_subtasks
+    : templateSubtasks;
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -168,7 +184,7 @@ export function CreateTaskDialog({ projectId, sprintId, methodology, onTaskCreat
         shouldDirty: true,
       });
       toast.success(
-        refined.source?.startsWith("fallback")
+        isAiFallback(refined.source)
           ? "Spec refined with local fallback."
           : "Spec refined with AI."
       );
@@ -209,6 +225,13 @@ export function CreateTaskDialog({ projectId, sprintId, methodology, onTaskCreat
     }
   };
 
+  const handleUseSdlcChecklist = () => {
+    setLastRefinedSpec(null);
+    setTemplateSubtasks(SDLC_CHECKLIST);
+    setCreateAiSubtasks(true);
+    toast.success("SDLC checklist prepared for this issue.");
+  };
+
   async function onSubmit(values: z.infer<typeof formSchema>) {
     setIsLoading(true);
     try {
@@ -234,7 +257,7 @@ export function CreateTaskDialog({ projectId, sprintId, methodology, onTaskCreat
         team_id: teamId,
         sprint_id: sprintId,
         subtasks: createAiSubtasks
-          ? (lastRefinedSpec?.suggested_subtasks || [])
+          ? suggestedSubtasks
               .map((item) => item.trim())
               .filter(Boolean)
               .slice(0, 20)
@@ -246,10 +269,11 @@ export function CreateTaskDialog({ projectId, sprintId, methodology, onTaskCreat
       setOpen(false);
       setLastEstimate(null);
       setLastRefinedSpec(null);
+      setTemplateSubtasks([]);
       form.reset();
     } catch (error) {
       console.error(error);
-      toast.error("Failed to create task");
+      toast.error(getApiErrorMessage(error, "Failed to create task"));
     } finally {
       setIsLoading(false);
     }
@@ -436,6 +460,29 @@ export function CreateTaskDialog({ projectId, sprintId, methodology, onTaskCreat
               )}
             />
 
+            <div className="rounded-2xl border border-slate-800 bg-slate-900/70 p-3">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-sm font-semibold text-slate-200">
+                    SDLC checklist
+                  </p>
+                  <p className="mt-1 text-xs leading-5 text-slate-500">
+                    Add standard subtasks for planning, analysis, design, implementation, integration and testing.
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={handleUseSdlcChecklist}
+                  className="border-slate-700 bg-slate-950 text-slate-200 hover:bg-slate-900"
+                >
+                  <CheckCircle2 className="mr-2 h-4 w-4" />
+                  Use checklist
+                </Button>
+              </div>
+            </div>
+
             {/* ROW 3: Description cu buton AI funcțional */}
             <FormField
               control={form.control}
@@ -492,7 +539,7 @@ export function CreateTaskDialog({ projectId, sprintId, methodology, onTaskCreat
                     Estimate confidence: {lastEstimate.confidence}%
                   </span>
                   <span className="rounded-full border border-blue-400/30 px-2 py-0.5">
-                    {lastEstimate.source || "ai"}
+                    {formatAiSource(lastEstimate.source)}
                   </span>
                 </div>
                 <p className="mt-2 leading-5 text-blue-100/80">
@@ -501,12 +548,39 @@ export function CreateTaskDialog({ projectId, sprintId, methodology, onTaskCreat
               </div>
             )}
 
-            {lastRefinedSpec?.suggested_subtasks?.length ? (
+            {lastRefinedSpec && (
+              <div
+                className={cn(
+                  "rounded-2xl border p-3 text-xs",
+                  isAiFallback(lastRefinedSpec.source)
+                    ? "border-amber-500/20 bg-amber-500/10 text-amber-100"
+                    : "border-emerald-500/20 bg-emerald-500/10 text-emerald-100"
+                )}
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <span className="font-semibold">
+                    {isAiFallback(lastRefinedSpec.source)
+                      ? "Spec generated with local fallback"
+                      : "Spec refined"}
+                  </span>
+                  <span className="rounded-full border border-current/25 px-2 py-0.5">
+                    {formatAiSource(lastRefinedSpec.source)}
+                  </span>
+                </div>
+                <p className="mt-2 leading-5 opacity-80">
+                  {isAiFallback(lastRefinedSpec.source)
+                    ? "Gemini was unavailable or returned an invalid response, so SDLC Hub used a structured local template."
+                    : "The generated description is ready to be saved with this issue."}
+                </p>
+              </div>
+            )}
+
+            {suggestedSubtasks.length ? (
               <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 p-3">
                 <div className="mb-3 flex items-center justify-between gap-3">
                   <div className="flex items-center gap-2 text-sm font-semibold text-emerald-100">
                     <CheckCircle2 className="h-4 w-4 text-emerald-300" />
-                    AI suggested checklist
+                    {lastRefinedSpec ? "AI suggested checklist" : "SDLC checklist"}
                   </div>
                   <button
                     type="button"
@@ -517,7 +591,7 @@ export function CreateTaskDialog({ projectId, sprintId, methodology, onTaskCreat
                   </button>
                 </div>
                 <div className="space-y-2">
-                  {lastRefinedSpec.suggested_subtasks.slice(0, 6).map((subtask) => (
+                  {suggestedSubtasks.slice(0, 6).map((subtask) => (
                     <div key={subtask} className="flex items-start gap-2 text-xs leading-5 text-emerald-50/85">
                       <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-300" />
                       <span>{subtask}</span>

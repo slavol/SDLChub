@@ -1,8 +1,8 @@
 from datetime import datetime, timedelta, timezone
-from io import StringIO
+from io import BytesIO, StringIO
 import csv
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -72,6 +72,49 @@ def csv_response(filename: str, rows: list[dict]) -> StreamingResponse:
         media_type="text/csv",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+def _pdf_safe(value) -> str:
+    if value is None:
+        return "-"
+
+    text = str(value)
+    replacements = {
+        "ă": "a",
+        "â": "a",
+        "î": "i",
+        "ș": "s",
+        "ş": "s",
+        "ț": "t",
+        "ţ": "t",
+        "Ă": "A",
+        "Â": "A",
+        "Î": "I",
+        "Ș": "S",
+        "Ş": "S",
+        "Ț": "T",
+        "Ţ": "T",
+        "–": "-",
+        "—": "-",
+        "“": '"',
+        "”": '"',
+        "„": '"',
+        "’": "'",
+    }
+
+    for old, new in replacements.items():
+        text = text.replace(old, new)
+
+    return text.encode("latin-1", "replace").decode("latin-1")
+
+
+def _pdf_datetime(value) -> str:
+    if not value:
+        return "-"
+    try:
+        return value.strftime("%Y-%m-%d %H:%M")
+    except AttributeError:
+        return str(value)
 
 
 def delete_project_tree(db: Session, project_id: int) -> None:
@@ -415,15 +458,27 @@ def list_admin_errors(
 
 @router.get("/ai-usage", response_model=list[AiUsageLogOut])
 def list_ai_usage(
+    feature: str | None = Query(default=None),
+    status_filter: str | None = Query(default=None, alias="status"),
+    project_id: int | None = Query(default=None),
+    days: int | None = Query(default=None, ge=1, le=365),
+    limit: int = Query(default=200, ge=1, le=1000),
     _: User = Depends(require_global_admin),
     db: Session = Depends(get_db),
 ):
-    return (
-        db.query(AiUsageLog)
-        .order_by(AiUsageLog.created_at.desc())
-        .limit(200)
-        .all()
-    )
+    query = db.query(AiUsageLog)
+
+    if feature:
+        query = query.filter(AiUsageLog.feature == feature)
+    if status_filter:
+        query = query.filter(AiUsageLog.status == status_filter.upper())
+    if project_id is not None:
+        query = query.filter(AiUsageLog.project_id == project_id)
+    if days is not None:
+        since = datetime.now(timezone.utc) - timedelta(days=days)
+        query = query.filter(AiUsageLog.created_at >= since)
+
+    return query.order_by(AiUsageLog.created_at.desc()).limit(limit).all()
 
 
 @router.get("/export/projects.csv")
@@ -500,6 +555,218 @@ def export_ai_usage_csv(
         for log in logs
     ]
     return csv_response("sdlc-hub-ai-usage.csv", rows)
+
+
+@router.get("/export/platform.pdf")
+def export_platform_pdf(
+    current_user: User = Depends(require_global_admin),
+    db: Session = Depends(get_db),
+):
+    from fpdf import FPDF
+
+    settings = get_settings()
+
+    overview = read_admin_overview(current_user, db)
+    projects = list_admin_projects(current_user, db)
+    users = list_admin_users(current_user, db)
+    tickets = list_support_tickets(current_user, db)
+    errors = list_admin_errors(current_user, db)
+    ai_logs = list_ai_usage(
+        feature=None,
+        status_filter=None,
+        project_id=None,
+        days=None,
+        limit=100,
+        _=current_user,
+        db=db,
+    )
+
+    active_projects = sum(1 for project in projects if not project["is_archived"])
+    archived_projects = sum(1 for project in projects if project["is_archived"])
+    active_users = sum(1 for user in users if user["is_active"])
+    global_admins = sum(1 for user in users if user["is_global_admin"])
+    critical_tickets = sum(
+        1
+        for ticket in tickets
+        if ticket.priority in {"HIGH", "CRITICAL"}
+        and ticket.status in {"OPEN", "IN_PROGRESS"}
+    )
+
+    ticket_status_counts = {
+        status_name: db.query(SupportTicket)
+        .filter(SupportTicket.status == status_name)
+        .count()
+        for status_name in ["OPEN", "IN_PROGRESS", "RESOLVED", "CLOSED"]
+    }
+
+    ai_status_counts = {
+        status_name: db.query(AiUsageLog)
+        .filter(AiUsageLog.status == status_name)
+        .count()
+        for status_name in ["SUCCESS", "ERROR"]
+    }
+
+    top_projects = sorted(
+        projects,
+        key=lambda project: (project["tasks_count"], project["members_count"]),
+        reverse=True,
+    )[:8]
+
+    pdf = FPDF()
+    pdf.set_auto_page_break(auto=True, margin=15)
+    pdf.add_page()
+
+    pdf.set_fill_color(15, 23, 42)
+    pdf.rect(0, 0, 210, 30, "F")
+    pdf.set_text_color(255, 255, 255)
+    pdf.set_font("Helvetica", "B", 18)
+    pdf.set_xy(12, 8)
+    pdf.cell(0, 8, _pdf_safe("SDLC Hub - Platform Operations Report"), ln=True)
+    pdf.set_font("Helvetica", "", 10)
+    pdf.set_text_color(203, 213, 225)
+    pdf.set_x(12)
+    pdf.cell(
+        0,
+        6,
+        _pdf_safe(
+            f"Generated by {current_user.full_name or current_user.email} on "
+            f"{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}"
+        ),
+        ln=True,
+    )
+
+    pdf.ln(12)
+
+    def section(title: str) -> None:
+        pdf.set_font("Helvetica", "B", 14)
+        pdf.set_text_color(15, 23, 42)
+        pdf.cell(0, 8, _pdf_safe(title), ln=True)
+
+    def metric_row(label: str, value) -> None:
+        pdf.set_font("Helvetica", "B", 10)
+        pdf.set_text_color(30, 41, 59)
+        pdf.cell(70, 7, _pdf_safe(label), border=1)
+        pdf.set_font("Helvetica", "", 10)
+        pdf.set_text_color(51, 65, 85)
+        pdf.cell(0, 7, _pdf_safe(value), border=1, ln=True)
+
+    section("1. Platform snapshot")
+    metric_row("Users", f"{overview['users']} total / {active_users} active / {global_admins} admins")
+    metric_row("Projects", f"{overview['projects']} total / {active_projects} active / {archived_projects} archived")
+    metric_row("Tasks", overview["tasks"])
+    metric_row("Support queue", f"{overview['open_tickets']} open / {critical_tickets} critical")
+    metric_row("Server errors 24h", overview["errors_last_24h"])
+    metric_row("AI requests", f"{overview['ai_requests']} total / {overview['ai_requests_24h']} in 24h")
+    metric_row("AI configured", "Yes" if settings.gemini_api_key else "No")
+
+    pdf.ln(7)
+    section("2. Project registry")
+    pdf.set_font("Helvetica", "B", 9)
+    pdf.set_fill_color(226, 232, 240)
+    pdf.set_text_color(15, 23, 42)
+    pdf.cell(42, 7, _pdf_safe("Project"), border=1, fill=True)
+    pdf.cell(24, 7, _pdf_safe("Method"), border=1, fill=True)
+    pdf.cell(22, 7, _pdf_safe("State"), border=1, fill=True)
+    pdf.cell(22, 7, _pdf_safe("Members"), border=1, fill=True)
+    pdf.cell(20, 7, _pdf_safe("Tasks"), border=1, fill=True)
+    pdf.cell(60, 7, _pdf_safe("Owner"), border=1, ln=True, fill=True)
+    pdf.set_font("Helvetica", "", 8)
+    pdf.set_text_color(51, 65, 85)
+    if top_projects:
+        for project in top_projects:
+            pdf.cell(42, 7, _pdf_safe(f"{project['key']} - {project['name']}")[:27], border=1)
+            pdf.cell(24, 7, _pdf_safe(project["methodology"]), border=1)
+            pdf.cell(22, 7, _pdf_safe("Archived" if project["is_archived"] else "Active"), border=1)
+            pdf.cell(22, 7, _pdf_safe(project["members_count"]), border=1)
+            pdf.cell(20, 7, _pdf_safe(project["tasks_count"]), border=1)
+            pdf.cell(60, 7, _pdf_safe(project.get("owner_email") or "-")[:42], border=1, ln=True)
+    else:
+        pdf.cell(190, 7, _pdf_safe("No projects found."), border=1, ln=True)
+
+    pdf.ln(7)
+    section("3. Support and incidents")
+    metric_row("Tickets by status", " / ".join(f"{key}: {value}" for key, value in ticket_status_counts.items()))
+    metric_row("AI by status", " / ".join(f"{key}: {value}" for key, value in ai_status_counts.items()))
+
+    pdf.set_font("Helvetica", "B", 9)
+    pdf.set_fill_color(226, 232, 240)
+    pdf.set_text_color(15, 23, 42)
+    pdf.cell(65, 7, _pdf_safe("Recent ticket"), border=1, fill=True)
+    pdf.cell(25, 7, _pdf_safe("Priority"), border=1, fill=True)
+    pdf.cell(32, 7, _pdf_safe("Status"), border=1, fill=True)
+    pdf.cell(68, 7, _pdf_safe("Reporter"), border=1, ln=True, fill=True)
+    pdf.set_font("Helvetica", "", 8)
+    pdf.set_text_color(51, 65, 85)
+    for ticket in tickets[:6]:
+        pdf.cell(65, 7, _pdf_safe(ticket.title)[:45], border=1)
+        pdf.cell(25, 7, _pdf_safe(ticket.priority), border=1)
+        pdf.cell(32, 7, _pdf_safe(ticket.status), border=1)
+        pdf.cell(68, 7, _pdf_safe(ticket.reporter_email or "-")[:47], border=1, ln=True)
+    if not tickets:
+        pdf.cell(190, 7, _pdf_safe("No support tickets found."), border=1, ln=True)
+
+    pdf.ln(7)
+    section("4. AI and error trail")
+    pdf.set_font("Helvetica", "B", 9)
+    pdf.set_fill_color(226, 232, 240)
+    pdf.set_text_color(15, 23, 42)
+    pdf.cell(44, 7, _pdf_safe("AI feature"), border=1, fill=True)
+    pdf.cell(30, 7, _pdf_safe("Status"), border=1, fill=True)
+    pdf.cell(62, 7, _pdf_safe("Project"), border=1, fill=True)
+    pdf.cell(54, 7, _pdf_safe("Created"), border=1, ln=True, fill=True)
+    pdf.set_font("Helvetica", "", 8)
+    pdf.set_text_color(51, 65, 85)
+    for log in ai_logs[:8]:
+        pdf.cell(44, 7, _pdf_safe(log.feature)[:28], border=1)
+        pdf.cell(30, 7, _pdf_safe(log.status), border=1)
+        pdf.cell(62, 7, _pdf_safe(log.project_name or "-")[:43], border=1)
+        pdf.cell(54, 7, _pdf_safe(_pdf_datetime(log.created_at)), border=1, ln=True)
+    if not ai_logs:
+        pdf.cell(190, 7, _pdf_safe("No AI usage logged yet."), border=1, ln=True)
+
+    pdf.ln(4)
+    pdf.set_font("Helvetica", "B", 9)
+    pdf.set_fill_color(226, 232, 240)
+    pdf.set_text_color(15, 23, 42)
+    pdf.cell(25, 7, _pdf_safe("Status"), border=1, fill=True)
+    pdf.cell(68, 7, _pdf_safe("Path"), border=1, fill=True)
+    pdf.cell(43, 7, _pdf_safe("User"), border=1, fill=True)
+    pdf.cell(54, 7, _pdf_safe("Created"), border=1, ln=True, fill=True)
+    pdf.set_font("Helvetica", "", 8)
+    pdf.set_text_color(51, 65, 85)
+    for error in errors[:8]:
+        pdf.cell(25, 7, _pdf_safe(error.status_code), border=1)
+        pdf.cell(68, 7, _pdf_safe(f"{error.method} {error.path}")[:48], border=1)
+        pdf.cell(43, 7, _pdf_safe(error.user_name or "-")[:30], border=1)
+        pdf.cell(54, 7, _pdf_safe(_pdf_datetime(error.created_at)), border=1, ln=True)
+    if not errors:
+        pdf.cell(190, 7, _pdf_safe("No HTTP errors logged."), border=1, ln=True)
+
+    pdf.ln(8)
+    pdf.set_font("Helvetica", "I", 8)
+    pdf.set_text_color(100, 116, 139)
+    pdf.multi_cell(
+        0,
+        5,
+        _pdf_safe(
+            "This report is generated from the Global Admin console and is intended "
+            "for platform supervision, support triage and license/demo documentation."
+        ),
+    )
+
+    output = pdf.output(dest="S")
+    if isinstance(output, str):
+        pdf_bytes = output.encode("latin-1")
+    else:
+        pdf_bytes = bytes(output)
+
+    return StreamingResponse(
+        BytesIO(pdf_bytes),
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": 'attachment; filename="sdlc-hub-platform-report.pdf"',
+        },
+    )
 
 
 @router.get("/tickets", response_model=list[SupportTicketOut])

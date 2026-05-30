@@ -1,0 +1,1875 @@
+PLAN CONTINUARE LICENTA - SDLC AI HUB
+Document unificat din PLAN_CONTINUARE_LICENTA_SDLC_HUB.txt si PLAN_CONTINUARE_LICENTA_SDLC_HUB_1.txt.
+Generat pentru stadiul curent al aplicatiei: 18 mai 2026
+Actualizat/contopit: 29 mai 2026
+Update 18 mai 2026:
+- Prioritatea 1 a fost inceputa si implementata functional:
+  - tabela project_audit_logs;
+  - endpoint preview: GET /projects/{project_id}/methodology-transition-preview?target=KANBAN;
+  - endpoint apply: POST /projects/{project_id}/methodology-transition;
+  - modal in Settings pentru impact preview, blockers, warnings si apply controlat;
+  - migrare Alembic: 3c4d5e6f7a8b_add_project_audit_logs.py.
+- Ramane de facut pentru Prioritatea 1:
+  - testare manuala completa pe proiecte reale SCRUM/KANBAN/SCRUMBAN;
+  - eventual afisarea Project Audit Log in UI;
+  - eventual reguli mai fine pentru strategii multiple, nu doar recommended.
+- Cerinte adaugate:
+  - trebuie implementata pagina Account Settings pentru fiecare utilizator;
+  - sidebar-ul trebuie sa ofere acces jos la setarile contului;
+  - aplicatia trebuie sa primeasca iconita/logo de produs si favicon actualizat.
+- Update curent dupa ultimul batch:
+  - Account Settings exista la /dashboard/account;
+  - avatarul se incarca din fisier local prin POST /auth/me/avatar, nu prin URL manual;
+  - avatar_url este servit static din /uploads si apare in sidebar, account, team, create issue, board, backlog, task detail, comments, audit log, calendar si activity;
+  - raspunsurile de task/comment/audit includ assignee_avatar_url, author_avatar_url si actor_avatar_url;
+  - Activity Center foloseste actor_avatar_url;
+  - Prioritatea 2 a fost inceputa: backend-ul verifica acum permission keys reale pentru task-uri, sprinturi, membri, roluri si setari.
+
+Update 27 mai 2026:
+- Am recitit planul si am verificat codul actual. Documentul istoric de mai jos era partial ramas in urma fata de implementari.
+- Prioritatile implementate/partial implementate in cod acum:
+  - Prioritatea 1 Methodology Transition Wizard: implementat functional cu preview/apply, blockers, warnings si audit log pe proiect.
+  - Prioritatea 2 Permissions: implementat pe task-uri, sprinturi, team, settings si calendar; exista si GET /projects/{project_id}/my-permissions.
+  - Prioritatea 3 Workload Balancer: implementat backend + pagina /dashboard/workload + sugestii de redistribuire bazate pe reguli/risk score.
+  - Prioritatea 4 Reporting: implementat /dashboard/reports, charts cu Recharts, overview metrics si export PDF prin /projects/{id}/reports/status.pdf.
+  - Prioritatea 5 Notifications: implementat model/tabela notifications, centru /dashboard/notifications, unread count in sidebar, notificari pentru assignari, mentiuni, calendar, reminders si AI risk.
+  - Prioritatea 6 Documentation/Wiki: implementat /dashboard/documentation, CRUD pagini si generare documentatie din task Done.
+  - Prioritatea 7 GitHub/DevOps: implementat /github/webhook cu verificare semnatura, auto-link commit -> task comment, PR open -> REVIEW, PR merged -> DONE si pagina /dashboard/devops.
+  - Prioritatea 9 Account Settings: implementat cu upload local avatar, editare nume/email/parola si lista de proiecte/roluri.
+  - Prioritatea 10 Iconita aplicatie: implementata in batch-ul curent.
+- Batch curent branding/iconita:
+  - frontend/components/brand-mark.tsx
+  - frontend/app/icon.svg
+  - frontend/app/apple-icon.svg
+  - frontend/app/manifest.webmanifest
+  - frontend/app/layout.tsx
+  - frontend/app/page.tsx
+  - frontend/components/dashboard/app-sidebar.tsx
+- Verificari rulate dupa batch-ul curent:
+  - .venv/bin/python -m compileall backend: OK
+  - npm run lint in frontend: OK
+  - npm run build in frontend: OK
+- Batch Calendar V2 inceput dupa branding:
+  - frontend/services/calendar.ts: adaugat updateProjectCalendarEvent.
+  - frontend/app/dashboard/calendar/page.tsx:
+    - edit event UI folosind acelasi modal ca la create;
+    - butoane edit/delete pe event cards in functie de permisiuni sau autor;
+    - Day view dedicat;
+    - sprint start/end apar ca milestone-uri virtuale in calendar pentru SCRUM/SCRUMBAN;
+    - filtru nou pentru Sprint milestones;
+    - KPI nou pentru Sprint milestones.
+- Verificari rulate dupa Calendar V2:
+  - npm run lint in frontend: OK
+  - npm run build in frontend: OK
+  - ./start.sh: backend/frontend pornite
+  - curl http://127.0.0.1:8000/health: OK
+  - curl -I http://127.0.0.1:3000/dashboard/calendar: 200 OK
+  - curl -I http://127.0.0.1:3000/icon.svg: 200 OK
+- Batch WebSocket / realtime implementat:
+  - backend/realtime.py: connection manager pe user si proiect, broadcast user/project events.
+  - backend/main.py: endpoint WebSocket /ws?token=JWT, autentificat cu token JWT, abonare la proiectele userului.
+  - backend/utils/notifications.py si backend/routers/notifications.py: broadcast notification.created/read/read_all.
+  - backend/routers/tasks.py: broadcast task.changed pentru create/update/subtask/comment.
+  - backend/routers/calendar.py: broadcast calendar.changed pentru create/update/delete events.
+  - backend/routers/sprints.py: broadcast sprint.changed pentru create/start/complete sprint.
+  - backend/routers/auth.py: broadcast user.updated la schimbare profil/avatar.
+  - frontend/components/realtime/realtime-bridge.tsx: conexiune WebSocket, reconnect automat, dispatch event global si toast pentru notificari noi.
+  - frontend/hooks/use-realtime-event.ts: hook comun pentru pagini.
+  - frontend/app/dashboard/layout.tsx: RealtimeBridge montat global in dashboard.
+  - frontend/components/dashboard/app-sidebar.tsx: unread notifications se actualizeaza live.
+  - frontend/app/dashboard/notifications/page.tsx: lista de notificari se reîncarca live.
+  - frontend/app/dashboard/calendar/page.tsx: calendarul se reîncarca live la task/calendar/sprint changes.
+  - frontend/app/dashboard/page.tsx: dashboard metrics se reîncarca live.
+  - frontend/app/dashboard/board/page.tsx: board-ul se reîncarca live la task/sprint changes.
+  - frontend/app/dashboard/backlog/page.tsx: backlog-ul se reîncarca live la task/sprint changes.
+  - frontend/app/dashboard/tasks/[taskId]/page.tsx: task detail se reîncarca live pentru task-ul curent.
+  - frontend/app/dashboard/team/page.tsx: team se reîncarca live la user.updated.
+  - verificare suplimentara in log: conexiunile WebSocket /ws?token=JWT sunt acceptate de backend.
+- Verificari rulate dupa WebSocket batch:
+  - .venv/bin/python -m compileall backend: OK
+  - npm run lint in frontend: OK
+  - npm run build in frontend: OK
+  - ./start.sh: backend/frontend pornite
+  - curl http://127.0.0.1:8000/health: OK
+  - curl -I http://127.0.0.1:3000/dashboard: 200 OK
+  - curl -I http://127.0.0.1:3000/dashboard/calendar: 200 OK
+  - curl -I http://127.0.0.1:3000/manifest.webmanifest: 200 OK
+  - dupa optimizarea RealtimeBridge ca sa nu reconecteze cand se actualizeaza userul, npm run lint si npm run build au ramas OK.
+- Fix UX realtime dupa feedback:
+  - Problema observata: nu era refresh de browser, dar unele pagini intrau in loading state complet la evenimente WebSocket si se simtea ca reload.
+  - Calendar, Notifications, Task Detail si Team folosesc acum refresh silentios la evenimente realtime.
+  - Calendar nu mai declanseaza reload suplimentar cand seteaza automat attendee-ul curent.
+  - Team nu mai declanseaza reload suplimentar cand seteaza rolul default pentru invitatii.
+  - Verificari dupa fix: npm run lint OK, npm run build OK.
+- Calendar reminders:
+  - frontend/services/notification.ts: generateDueTaskReminders(projectId).
+  - frontend/app/dashboard/calendar/page.tsx: buton Reminders care genereaza notificari pentru task-urile due soon/overdue ale utilizatorului curent din proiect.
+  - Verificari dupa reminders: .venv/bin/python -m compileall backend OK, npm run lint OK, npm run build OK, ./start.sh OK, health OK, /dashboard/calendar 200 OK.
+- Calendar recurring events:
+  - frontend/app/dashboard/calendar/page.tsx permite la creare: Does not repeat, Daily, Weekdays, Weekly.
+  - Recurenta este expandata frontend in evenimente calendaristice normale, fara migrare DB.
+  - Limitare: maximum 60 intrari generate la o creare.
+  - Daily Standup preset seteaza automat titlu, tip DAILY, ora 09:15-09:30, Weekdays pe 2 saptamani si selecteaza toti membrii.
+  - Verificari dupa recurring/preset: npm run lint OK, npm run build OK.
+- AI V2 task intelligence:
+  - backend/services/ai_service.py suporta acum GEMINI_API_KEY sau GOOGLE_API_KEY si fallback local daca nu exista cheie.
+  - backend/routers/tasks.py are endpointuri:
+    - POST /tasks/ai-refine pentru Spec Refiner structurat;
+    - POST /tasks/ai-estimate pentru Poker Estimator/story points;
+    - /tasks/ai-generate verifica AI_USE daca primeste project_id.
+  - frontend/services/task.ts expune refineTaskSpec si estimateTaskStoryPoints.
+  - frontend/components/dashboard/create-task-dialog.tsx are:
+    - Generate with AI;
+    - Refine spec;
+    - Estimate story points;
+    - card cu confidence/reasoning pentru estimare.
+- AI V2 release notes:
+  - backend/services/ai_service.py are generate_release_notes cu fallback local.
+  - backend/routers/sprints.py are POST /sprints/{sprint_id}/release-notes cu permisiune AI_USE.
+  - frontend/services/sprint.ts expune generateSprintReleaseNotes.
+  - frontend/app/dashboard/reports/page.tsx are buton Release Notes pentru ultimul sprint inchis din velocity si afiseaza markdown-ul generat.
+- AI V2 subtasks + Task Detail:
+  - Create Issue poate trimite catre backend subtasks generate de Spec Refiner, nu doar text in descriere.
+  - backend/schemas/task.py accepta TaskCreate.subtasks.
+  - backend/routers/tasks.py creeaza Subtask + audit log pentru subtasks generate la creare.
+  - frontend/app/dashboard/tasks/[taskId]/page.tsx are AI refine pentru descriere, AI estimate pentru story points si Apply checklist pentru subtasks sugerate.
+- Documentation automation:
+  - backend/services/documentation_service.py centralizeaza generarea/upsert-ul paginii de documentatie din task.
+  - cand un task trece in Done prin update normal, backend-ul genereaza/actualizeaza automat pagina de documentatie si adauga audit log DOCUMENTATION_GENERATED.
+  - cand un PR GitHub este merged si muta task-ul in Done, se genereaza/actualizeaza automat documentatia.
+  - backend/routers/documentation.py trimite realtime documentation.changed pentru create/update/delete/generate.
+  - frontend/app/dashboard/documentation/page.tsx asculta documentation.changed/task.changed si se actualizeaza silentios.
+- Calendar V2 automatic reminders:
+  - backend/config.py are setari pentru scheduler: enable_notification_scheduler, notification_scheduler_interval_seconds, notification_scheduler_initial_delay_seconds.
+  - backend/main.py porneste un background loop la startup si il opreste la shutdown.
+  - backend/utils/notifications.py genereaza automat notificari pentru task-uri overdue/due soon si evenimente calendaristice care incep in urmatoarele 30 minute.
+  - deduplicarea se face pe notificari recente, ca sa nu se creeze spam daca userul marcheaza notificarea ca read.
+  - backend/routers/notifications.py foloseste acelasi generator pentru butonul manual Reminders.
+  - frontend/app/dashboard/notifications/page.tsx afiseaza corect tipurile TASK_OVERDUE, TASK_DUE_SOON, CALENDAR_REMINDER si AI_RISK.
+- Realtime V2 presence:
+  - backend/realtime.py transmite presence.changed cu online_user_ids pe proiect la connect/disconnect WebSocket.
+  - frontend/store/use-presence-store.ts tine starea globala de prezenta.
+  - frontend/components/realtime/realtime-bridge.tsx actualizeaza store-ul de presence.
+  - frontend/app/dashboard/team/page.tsx afiseaza Online now si indicator/badge Online pe membri.
+- Reporting V2:
+  - backend/routers/projects.py calculeaza sprint_burndown pentru sprintul activ, cumulative_flow pe baza audit log/status istoric si lead_time_distribution pe prioritati.
+  - frontend/services/project.ts contine tipurile ReportLeadTimePoint, ReportCumulativeFlowPoint si ReportSprintBurndownPoint.
+  - frontend/app/dashboard/reports/page.tsx afiseaza grafice noi: Sprint burndown, Cumulative flow si Lead time by priority.
+- Team Hierarchy V1:
+  - backend/models/project.py are ProjectTeam, ProjectMember.team_id si Task.team_id.
+  - migrare Alembic: backend/alembic/versions/9c0d1e2f3a4b_add_project_teams.py.
+  - backend/routers/teams.py expune list/create/update/delete teams si update member team.
+  - backend/routers/tasks.py accepta team_id la create/update task si face audit log cand se schimba echipa task-ului.
+  - backend/schemas/task.py si backend/schemas/project.py expun team_id/team_name/team pe raspunsuri.
+  - frontend/services/project.ts expune ProjectTeam si functii CRUD pentru teams.
+  - frontend/app/dashboard/team/page.tsx are Team hierarchy, creare echipa/subechipa, stergere echipa si asignare membru la echipa.
+  - frontend/components/dashboard/create-task-dialog.tsx poate asigna Delivery Team la creare task.
+  - frontend/app/dashboard/tasks/[taskId]/page.tsx poate schimba Delivery Team din Properties.
+  - frontend/app/dashboard/settings/page.tsx include permisiunea TEAM_MANAGE.
+- Calendar Recurrence V2:
+  - backend/models/project.py are recurrence_series_id, recurrence_mode si recurrence_until pe CalendarEvent.
+  - migrare Alembic: backend/alembic/versions/ad1e2f3a4b5c_add_calendar_recurrence.py.
+  - backend/routers/calendar.py creeaza serii recurente persistente pe backend, maximum 60 aparitii, folosind daily/weekdays/weekly.
+  - backend/routers/calendar.py are DELETE /calendar/{event_id}/series pentru stergerea intregii serii.
+  - frontend/services/calendar.ts include recurrence metadata si deleteCalendarEventSeries.
+  - frontend/app/dashboard/calendar/page.tsx trimite recurrence_mode/recurrence_until la backend si afiseaza badge SERIES; exista actiune separata pentru delete entire series.
+- Verificari dupa AI V2:
+  - .venv/bin/python -m compileall backend: OK
+  - npm run lint in frontend: OK
+  - npm run build in frontend: OK
+- Verificari dupa AI subtasks + auto documentation:
+  - .venv/bin/python -m compileall backend: OK
+  - npm run lint in frontend: OK
+  - npm run build in frontend: OK
+- Verificari dupa Calendar automatic reminders + Realtime presence:
+  - .venv/bin/python -m compileall backend: OK
+  - npm run lint in frontend: OK
+  - npm run build in frontend: OK
+- Verificari dupa Reporting V2:
+  - .venv/bin/python -m compileall backend: OK
+  - npm run lint in frontend: OK
+  - npm run build in frontend: OK
+- Verificari dupa Team Hierarchy V1:
+  - .venv/bin/python -m compileall backend: OK
+  - npm run lint in frontend: OK
+  - npm run build in frontend: OK
+  - .venv/bin/alembic -c backend/alembic.ini upgrade head: OK
+  - ./start.sh: OK
+  - curl http://127.0.0.1:8000/health: OK
+  - curl -I http://127.0.0.1:3000/dashboard/team: 200 OK
+  - curl -I http://127.0.0.1:3000/dashboard/tasks/1: 200 OK
+- Verificari dupa Calendar Recurrence V2:
+  - .venv/bin/python -m compileall backend: OK
+  - npm run lint in frontend: OK
+  - npm run build in frontend: OK
+  - .venv/bin/alembic -c backend/alembic.ini upgrade head: OK
+  - ./start.sh: OK
+  - curl http://127.0.0.1:8000/health: OK
+  - curl -I http://127.0.0.1:3000/dashboard/calendar: 200 OK
+- Avertisment ramas la build:
+  - Next afiseaza warning Node: `--localstorage-file` was provided without a valid path. Build-ul trece; pare warning de mediu/runtime, nu eroare de cod.
+- Urmatoarea prioritate recomandata dupa acest update:
+  1. Admin Global: dashboard global, lista proiecte, statistici AI/API/errors si support tickets.
+  2. Stabilizare UI/UX pe fluxurile principale dupa toate feature-urile mari.
+  3. Verificare functionala manuala la finalul functionalitatilor principale.
+
+Scopul fisierului:
+- Sa poata fi folosit ca handoff rapid daca se termina tokenii in Codex.
+- Sa explice ce este deja implementat, ce lipseste fata de master plan si in ce ordine trebuie continuat.
+- Sa puna accent pe trecerile intre metodologii: SCRUM, KANBAN, SCRUMBAN.
+
+
+1. STADIUL ACTUAL AL APLICATIEI
+
+Stack actual:
+- Backend: FastAPI, SQLAlchemy, Alembic, PostgreSQL, JWT, email, Gemini prin google-genai.
+- Frontend: Next.js App Router, TypeScript, Tailwind, componente shadcn/Radix locale, Zustand, Axios, dnd-kit, Lucide.
+- Aplicatia ruleaza local prin ./start.sh:
+  - backend: http://127.0.0.1:8000
+  - frontend: http://127.0.0.1:3000
+
+Module implementate partial sau complet:
+- Landing page: exista pagina publica /.
+- Auth:
+  - register/login/verify email/forgot password/reset password exista.
+  - exista trimitere email si flux de verificare.
+  - exista redirect spre verificare email cand userul nu este verificat.
+- Onboarding:
+  - pagina /onboarding exista.
+  - utilizatorul poate intra in proiect pe baza de cod.
+  - utilizatorul poate crea proiect nou prin /project-wizard.
+- Project Wizard:
+  - identitate proiect: nume, key, descriere.
+  - AI methodology advisor: intrebari + recomandare SCRUM/KANBAN/SCRUMBAN.
+  - roluri default in functie de metodologie.
+  - AI role suggestions.
+  - invitatii pe email pe roluri.
+- Workspace / sidebar:
+  - selector de proiecte/workspaces.
+  - link-uri dinamice: Backlog apare doar pentru SCRUM/SCRUMBAN.
+  - sign out trimite in /.
+- Dashboard:
+  - metrice principale: velocity/throughput, completion, my active work, team health.
+  - Work Distribution.
+  - Active Sprint / Flow Status in functie de metodologie.
+  - Delivery Signals: overdue, due soon, critical open, review queue, unassigned, backlog.
+  - AI Risk Radar bazat momentan pe reguli simple din datele task-urilor.
+  - Project Activity jos, cu audit events.
+- Activity Center:
+  - pagina /dashboard/activity exista.
+  - are filtre mai avansate si afisare moderna a auditului.
+- Board:
+  - pagina /dashboard/board exista.
+  - drag and drop intre coloane.
+  - pentru SCRUM/SCRUMBAN foloseste sprint activ.
+  - pentru KANBAN functioneaza ca board continuu.
+  - Complete Sprint foloseste modal modern.
+- Backlog:
+  - pagina /dashboard/backlog exista.
+  - doar pentru SCRUM/SCRUMBAN in sidebar.
+  - creare sprint cu nume, goal, start date, end date.
+  - start sprint / complete sprint.
+  - task-uri cu afisare mai moderna.
+- Task Detail / TaskID:
+  - pagina /dashboard/tasks/[taskId] exista.
+  - editare titlu, descriere, status, prioritate, story points, due date, assignee.
+  - properties sticky.
+  - subtasks/checklist.
+  - comentarii.
+  - userul care a postat comentariul il poate edita/sterge.
+  - delete comment foloseste modal modern.
+  - audit log per task.
+- Create Issue:
+  - title, description, priority, assignee.
+  - story points doar cand metodologia permite.
+  - target date / due date.
+  - AI generate description.
+- Team:
+  - pagina /dashboard/team exista.
+  - membri, invitatii, roluri custom.
+  - schimbare rol membru.
+  - resend/cancel invitations.
+  - delete role cu modal modern.
+- Settings:
+  - pagina /dashboard/settings exista.
+  - modificare nume, descriere, metodologie.
+  - role permissions.
+  - delete project securizat prin cheia proiectului + modal.
+- Calendar:
+  - pagina /dashboard/calendar exista.
+  - afiseaza task-uri dupa due date.
+  - afiseaza evenimente/meeting-uri.
+  - se pot crea evenimente cu titlu, tip, data, ora start/end, link meeting, locatie, descriere, participanti.
+  - filtre pe membru, tip si "my schedule".
+  - month/week/agenda view.
+- Backend calendar:
+  - tabela calendar_events.
+  - list/create/update/delete events.
+  - participantii sunt validati ca membri ai proiectului.
+- Migrations importante:
+  - 8f4b0e2b7d91_task_detail_tables.py
+  - 1a2b3c4d5e6f_add_task_due_date.py
+  - 2b7c8d9e0f1a_add_calendar_events.py
+
+
+2. CE NU ESTE IMPLEMENTAT SAU ESTE DOAR PARTIAL
+
+2.1. Metodologii si tranzitii SCRUM/KANBAN/SCRUMBAN
+Stadiu actual:
+- Metodologia exista pe Project.
+- Sidebar-ul ascunde Backlog pentru KANBAN.
+- Backend-ul blocheaza trecerea la KANBAN daca exista sprint activ.
+- Create Issue ascunde story points pentru KANBAN.
+- Sprint endpoints blocheaza sprinturile pentru KANBAN.
+
+Ce lipseste:
+- Nu exista inca un "Methodology Transition Wizard" real.
+- Nu exista preview al impactului cand schimbi metodologia.
+- Nu exista reguli complete pentru migrarea datelor intre moduri:
+  - SCRUM -> KANBAN: ce se intampla cu backlog-ul, sprinturile viitoare si task-urile din sprinturi inactive.
+  - KANBAN -> SCRUM: cum se creeaza primul backlog/sprint si ce task-uri intra unde.
+  - SCRUM -> SCRUMBAN: se pastreaza backlog-ul si sprinturile, dar executia trebuie sa fie mai flexibila.
+  - SCRUMBAN -> SCRUM: trebuie verificat daca exista task-uri neplanificate care ar trebui mutate in backlog.
+- Nu exista adaptare automata a rolurilor la schimbarea metodologiei:
+  - Scrum Master pentru SCRUM.
+  - Flow Manager pentru KANBAN.
+  - ambele sau un hibrid pentru SCRUMBAN.
+- Nu exista audit log pentru schimbarea metodologiei la nivel de proiect.
+- Nu exista confirm modal specific pentru schimbarea metodologiei, cu explicatii si pasi.
+- Nu exista inca un document complet de verificare manuala pentru aceste tranzitii.
+
+2.2. Task Management
+Implementat:
+- task title, description, priority, story points, due date, assignee, status.
+- subtasks.
+- comments.
+- audit log.
+- board drag and drop.
+
+Lipseste / partial:
+- descriere Rich Text reala cu Tiptap. Acum este textarea simplu.
+- subtask-uri SDLC predefinite: Planificare, Analiza, Design, Implementare, Integrare, Testare.
+- delete task cu governance complet.
+- restrictii granulare bazate pe permisiuni pentru fiecare actiune UI/API.
+- WIP limits pentru Kanban.
+- coloane dinamice configurabile pe proiect.
+- List View tabelar.
+- task teams / echipa asignata pe task, nu doar assignee individual.
+- invalidarea estimarii cu motiv si audit special.
+
+2.3. AI
+Implementat:
+- AI methodology advisor.
+- AI role suggestions.
+- AI task description/spec generation in Create Issue.
+- AI Risk Radar este momentan bazat pe reguli simple, nu analiza Gemini profunda.
+- Workload suggestions exista, dar sunt bazate pe reguli/risk score, nu pe Gemini profund.
+
+Lipseste:
+- Spec Refiner complet: user story + acceptance criteria + subtasks generate structurat.
+- Poker Estimator: sugestie AI pentru story points.
+- Release Notes: rezumat sprint generat automat.
+- Analiza comentariilor pentru bottleneck/risk.
+- contorizare API calls AI pentru Global Admin.
+- fallback UX mai clar cand GEMINI_API_KEY lipseste.
+
+2.4. DevOps Integration
+Implementat:
+- GitHub Webhooks.
+- validare semnatura webhook cu GITHUB_WEBHOOK_SECRET.
+- Auto-link commit message -> task comment.
+- Smart transition: PR open -> task mutat in Review.
+- PR merged -> task mutat in Done.
+- pagina /dashboard/devops listeaza evenimentele GitHub legate de proiect.
+
+Lipseste / partial:
+- pagina PR dedicata cu actiuni de confirmare manuala.
+- ngrok flow documentat pentru webhooks.
+- mapping GitHub user -> user SDLC Hub.
+
+2.5. Reporting
+Implementat:
+- dashboard are metrice operationale.
+- activity center exista.
+- pagina /dashboard/reports foloseste Recharts.
+- Velocity Chart pe sprinturi inchise.
+- status/priority distribution.
+- bottleneck/status age pe baza audit log.
+- average cycle time.
+- Export PDF raport stare proiect prin /projects/{id}/reports/status.pdf.
+
+Lipseste / partial:
+- Burndown/Burnup chart.
+- lead time separat pentru Kanban.
+- CFD/WIP historical chart.
+
+2.6. Notifications
+Implementat:
+- notificari in-app cu clopotel/unread count in sidebar.
+- pagina /dashboard/notifications.
+- @mentions in comentarii prin parser simplu.
+- notificari la task assigned, mention, calendar attendee, due soon/overdue si AI risk.
+- model/tabela Notification.
+- stare read/unread.
+- WebSocket pentru update live: notification.created/read/read_all.
+
+Lipseste / partial:
+- notificari email pentru task assigned, mention si meeting reminder.
+- realtime mai avansat: presence online, typing/comments live fara refetch complet si debounce pentru evenimente rapide.
+
+2.7. Calendar
+Implementat recent:
+- evenimente/meeting-uri cu link, locatie, participanti.
+- task-uri vizibile dupa due date.
+- month/week/agenda.
+- day view dedicat.
+- edit event UI.
+- sprint start/end apar ca evenimente virtuale pentru proiectele SCRUM/SCRUMBAN.
+
+Lipseste:
+- reminder notifications.
+- disponibilitate/concedii.
+- recurent events: Daily Standup repetitiv.
+- sincronizare cu Google Calendar/Outlook este in afara scope-ului actual.
+
+2.8. Documentatie/Wiki
+Implementat:
+- pagina /dashboard/documentation.
+- tabela documentation_pages.
+- CRUD pentru pagini.
+- generare documentatie din task Done.
+- legare task -> documentatie.
+
+Lipseste / partial:
+- istoric modificari pe documentatie.
+- generare automata imediat cand task-ul ajunge Done, fara actiune manuala.
+
+2.9. Team Hierarchy
+Partial:
+- Team page are membri si roluri.
+
+Lipseste:
+- arbore ierarhic echipe.
+- echipe/subechipe.
+- asignare task la echipa.
+- vizualizare "echipa mea" pentru Project Manager/Tech Lead/Flow Manager.
+
+2.10. Admin Global
+Neimplementat:
+- rol global admin separat.
+- dashboard global cu toate proiectele.
+- statistici globale AI/API/errors.
+- support tickets catre admin global.
+- panou erori 400/500.
+
+2.11. Profil Utilizator
+In curs de implementare:
+- pagina profil/account settings.
+- schimbare nume, email, avatar prin upload local.
+- schimbare parola din profil.
+- afisare proiecte in care se afla utilizatorul si rolul pe fiecare proiect.
+
+Ramane de facut ulterior:
+- preferinte notificari.
+- sesiuni active / security log.
+
+2.12. Testare si calitate
+Lipseste:
+- teste automate backend.
+- teste frontend.
+- checklist manual complet pentru fluxurile principale.
+- seed data/dev fixtures.
+- document de testare pentru licenta.
+
+
+3. PLANIFICARE RECOMANDATA DE CONTINUARE
+
+Prioritatea 0 - Stabilizare inainte de features noi
+1. Ruleaza mereu:
+   - npm run lint in frontend
+   - npm run build in frontend
+   - .venv/bin/python -m compileall backend
+   - .venv/bin/alembic -c backend/alembic.ini upgrade head
+2. Curata warning-uri/riscuri evidente:
+   - frontend/app/project-wizard/page.tsx foloseste <img>; optional trecere la next/image.
+   - verifica in .env diferenta intre GOOGLE_API_KEY si GEMINI_API_KEY. Codul nou foloseste settings.gemini_api_key, dar ai_service.py cauta GOOGLE_API_KEY. Recomand standardizare pe GEMINI_API_KEY sau suport pentru ambele.
+3. Verifica manual principalele rute:
+   - /
+   - /login
+   - /register
+   - /onboarding
+   - /project-wizard
+   - /dashboard
+   - /dashboard/board
+   - /dashboard/backlog
+   - /dashboard/tasks/[id]
+   - /dashboard/activity
+   - /dashboard/calendar
+   - /dashboard/team
+   - /dashboard/settings
+
+Prioritatea 1 - Methodology Transition Wizard
+Scop: sa ne asiguram ca trecerile intre tipuri de proiect functioneaza elegant si sigur.
+
+Backend de facut:
+1. Endpoint nou:
+   - GET /projects/{project_id}/methodology-transition-preview?target=KANBAN
+   - returneaza:
+     - current_methodology
+     - target_methodology
+     - blockers
+     - warnings
+     - actions
+     - affected_counts: active_sprints, future_sprints, backlog_tasks, sprint_tasks, story_point_tasks
+2. Endpoint nou:
+   - POST /projects/{project_id}/methodology-transition
+   - body:
+     - target_methodology
+     - strategy
+     - confirm_key sau confirm_text
+   - executa tranzitia in tranzactie DB.
+3. Reguli recomandate:
+   - SCRUM -> KANBAN:
+     - blocat daca exista sprint activ, sau cere complete sprint inainte.
+     - pastreaza task-urile, seteaza sprint_id = null pentru task-uri neterminate daca strategia este "flatten_to_flow".
+     - ascunde/dezactiveaza sprints/backlog in UI.
+     - story_points raman in DB ca istoric, dar nu se mai editeaza in UI.
+   - KANBAN -> SCRUM:
+     - task-urile existente devin backlog.
+     - userul este invitat sa creeze primul sprint.
+     - story points se reactiveaza.
+   - SCRUM -> SCRUMBAN:
+     - pastreaza backlog si sprinturi.
+     - board poate arata sprint activ, dar permite flux mai flexibil.
+   - SCRUMBAN -> SCRUM:
+     - verifica daca exista task-uri fara sprint.
+     - pastreaza backlog, dar cere planificare sprint pentru executie.
+   - SCRUMBAN -> KANBAN:
+     - similar SCRUM -> KANBAN, dar backlog-ul devine intake/To Do.
+4. Audit:
+   - adauga tabela project_audit_logs sau foloseste un audit generic:
+     - PROJECT_METHODOLOGY_CHANGED
+     - old_value
+     - new_value
+     - actor_id
+     - created_at
+
+Frontend de facut:
+1. In Settings, cand userul schimba metodologia, nu se salveaza direct.
+2. Se deschide un modal "Change Methodology".
+3. Modalul afiseaza:
+   - impact preview.
+   - blockers.
+   - ce pagini/functionalitati se activeaza/dezactiveaza.
+   - actiuni automate propuse.
+4. Buton final:
+   - "Apply Methodology Change".
+5. Dupa aplicare:
+   - refresh currentProject in store.
+   - redirect:
+     - target KANBAN -> /dashboard/board
+     - target SCRUM/SCRUMBAN -> /dashboard/backlog sau /dashboard
+   - sidebar se actualizeaza.
+
+Criterii de acceptare:
+- Nu pot trece la KANBAN cu sprint activ fara sa il finalizez.
+- Dupa trecerea la KANBAN, Backlog dispare din sidebar.
+- Dupa trecerea la SCRUM/SCRUMBAN, Backlog reapare.
+- Create Issue afiseaza story points pentru SCRUM/SCRUMBAN si le ascunde pentru KANBAN.
+- Sprint endpoints refuza KANBAN.
+- Board nu ramane gol din greseala dupa tranzitii.
+
+Prioritatea 2 - Permissions reale end-to-end
+Scop: rolurile si permisiunile sa nu fie doar afisate, ci aplicate real peste tot.
+
+Implementat:
+1. utils/permissions.py verifica permission key din role.permissions, cu bypass pentru project owner si Project Admin.
+2. Backend-ul aplica deja chei reale pentru:
+   - task create/update/assign/move/comment;
+   - subtask create/update prin TASK_UPDATE;
+   - sprint create/start/close;
+   - project update/delete/settings manage;
+   - invite/resend/cancel invitation;
+   - member role change/remove;
+   - role create/update/delete/permissions.
+3. Activity Center primeste actor_avatar_url si afiseaza poza reala.
+4. UI permission-aware implementat pe:
+   - Board: create task, drag/drop status si complete sprint respecta permisiunile;
+   - Backlog: create task, create sprint, start sprint si mutare task in sprint respecta permisiunile;
+   - Task Detail: save, status, assignee, priority/story points/due date, subtasks si comments respecta permisiunile;
+   - Team: invite, change role, remove member si role management respecta permission keys;
+   - Settings: accesul la settings si editarea role permissions folosesc permission keys.
+5. ProjectMember.role trimite acum permissions catre frontend.
+
+Ramane de facut:
+1. Extinde verificarea si pe Calendar cu chei dedicate daca decidem ca meeting-urile nu trebuie create de oricine.
+2. Adauga mesaje UX mai clare cand backend returneaza 403.
+3. Verifica/completeaza rolurile existente din DB care nu au cheile noi:
+   - TASK_CREATE
+   - TASK_UPDATE
+   - TASK_ASSIGN
+   - TASK_MOVE
+   - TASK_COMMENT
+   - SPRINT_CREATE
+   - SPRINT_START
+   - SPRINT_CLOSE
+   - MEMBER_INVITE
+   - MEMBER_REMOVE
+   - ROLE_MANAGE
+   - SETTINGS_MANAGE
+4. Optional: adauga un endpoint /projects/{id}/my-permissions ca UI-ul sa nu mai incarce membrii proiectului doar ca sa calculeze permisiunile curente.
+
+Prioritatea 3 - Workload Balancer
+Scop: functionalitate puternica pentru licenta si diferentiere AI.
+
+Stadiu 27 mai 2026: implementat functional.
+
+Backend:
+- GET /projects/{project_id}/workload
+- returneaza per membru:
+  - active_tasks
+  - story_points
+  - overdue_tasks
+  - review_tasks
+  - risk_score
+- POST /projects/{project_id}/workload/ai-suggestions
+  - Gemini recomanda redistribuire.
+
+Frontend:
+- pagina /dashboard/workload
+- carduri per membru.
+- drag and drop task intre membri.
+- filtre: sprint/current board/overdue/critical.
+
+Criterii:
+- Se vede cine este supraincarcat.
+- Se poate schimba assignee prin drag/drop.
+- AI explica redistribuirea.
+
+Ramane:
+- DnD direct intre membri pe workload page, daca se doreste UX mai spectaculos.
+- Gemini prompt real pentru explicatii mai contextuale; acum logica este determinista/risk-score.
+
+Prioritatea 4 - Reporting
+Stadiu 27 mai 2026: implementat functional pentru overview, charts si PDF.
+
+Implementat:
+1. Velocity Chart:
+   - foloseste sprinturi inchise.
+   - story_points_done per sprint.
+2. Bottleneck Analysis:
+   - necesita timp petrecut in status.
+   - extinde audit log ca sa calculezi duration per status.
+3. Export PDF:
+   - backend endpoint /projects/{id}/reports/status.pdf
+   - fpdf2.
+   - include dashboard metrics, active sprint, risks, overdue, velocity.
+
+Ramane:
+- Burndown/Burnup.
+- lead time si CFD pentru Kanban.
+- WIP historical warnings.
+
+Prioritatea 5 - Notifications si @mentions
+Stadiu 27 mai 2026: implementat functional fara canal live.
+
+Backend:
+- tabela notifications:
+  - id, user_id, project_id, type, title, body, href, read_at, created_at.
+- creare notificari la:
+  - task assigned.
+  - mention in comment.
+  - event attendee added.
+  - due soon/overdue.
+  - AI risk.
+- canal live WebSocket sau SSE:
+  - refresh avatar/nume in team, comments, assignee chips;
+  - push notificari in-app;
+  - invalidare cache task/board/calendar cand alt utilizator modifica datele.
+
+Frontend:
+- clopotel in topbar/sidebar.
+- dropdown notifications.
+- pagina /dashboard/notifications.
+- parser @Name in comments.
+
+Ramane:
+- WebSocket/SSE.
+- email notifications pentru task/mention/meeting.
+- preferences per utilizator.
+
+Prioritatea 6 - Documentation/Wiki
+Stadiu 27 mai 2026: implementat functional.
+
+Backend:
+- tabela documentation_pages:
+  - project_id, task_id optional, title, content, created_by_id, updated_at.
+- endpoint generate from task.
+
+Frontend:
+- pagina /dashboard/documentation.
+- la task Done se poate genera pagina.
+- AI poate crea sumar tehnic.
+
+Ramane:
+- istoric editari documentatie.
+- auto-trigger la trecere in Done.
+
+Prioritatea 7 - GitHub/DevOps
+Stadiu 27 mai 2026: implementat functional.
+
+Backend:
+- endpoint /github/webhook.
+- verifica semnatura cu github_webhook_secret.
+- parse commit messages: KEY-123.
+- parse PR opened/closed.
+
+Comportament:
+- commit cu TASKKEY adauga comment automat.
+- PR open muta task in REVIEW.
+- PR merged poate muta task in DONE sau cere confirmare.
+
+Frontend:
+- pagina /dashboard/devops sau /dashboard/pr.
+- listare PR events/task links.
+
+Ramane:
+- documentare ngrok/GitHub setup.
+- mapping GitHub user -> user intern.
+- pagina PR dedicata daca mai este timp.
+
+Prioritatea 8 - Admin Global
+De facut doar daca mai ramane timp:
+- global role pe User.
+- /admin dashboard.
+- proiecte, useri, AI usage, erori, support tickets.
+
+Prioritatea 9 - Account Settings si identitate utilizator
+Scop: fiecare utilizator sa poata gestiona datele contului si sa vada contextul sau in platforma.
+
+Backend:
+- extinde User cu avatar_url.
+- endpoint GET /auth/me/account-summary:
+  - user;
+  - projects_count;
+  - projects: id, name, key, methodology, role_name, owner flag.
+- endpoint PUT /auth/me:
+  - full_name;
+  - email.
+- endpoint POST /auth/me/avatar:
+  - upload fisier imagine;
+  - salveaza avatarul local in /uploads/avatars;
+  - actualizeaza avatar_url cu path-ul servit static.
+- endpoint PUT /auth/me/password:
+  - current_password;
+  - new_password.
+
+Frontend:
+- pagina /dashboard/account.
+- cardul utilizatorului din sidebar este link direct catre Account Settings.
+- formular profil:
+  - nume;
+  - email;
+  - upload avatar din calculator;
+  - preview avatar.
+- formular securitate:
+  - parola curenta;
+  - parola noua;
+  - confirmare parola.
+- sectiune "My projects":
+  - lista proiecte;
+  - metodologia fiecaruia;
+  - rolul userului;
+  - owner/project admin indicator.
+
+Prioritatea 10 - Iconita aplicatie
+Scop: branding coerent in sidebar, favicon si metadata.
+
+Stadiu 27 mai 2026: implementat.
+
+Implementat:
+- brand mark geometric de tip hub/lifecycle loop.
+- logo in sidebar.
+- logo in landing page header, mockup si footer.
+- metadata app icons.
+- app/icon.svg.
+- app/apple-icon.svg.
+- app/manifest.webmanifest.
+
+Fisiere:
+- frontend/components/brand-mark.tsx
+- frontend/app/layout.tsx
+- frontend/app/page.tsx
+- frontend/components/dashboard/app-sidebar.tsx
+- frontend/app/icon.svg
+- frontend/app/apple-icon.svg
+- frontend/app/manifest.webmanifest
+
+Prioritatea finala - verificare functionala manuala
+Scop: dupa ce functionalitatile principale sunt gata, verificam aplicatia ca produs, direct in browser.
+
+Pregatire:
+- porneste aplicatia cu ./start.sh.
+- foloseste useri reali/demo si proiecte SCRUM, KANBAN si SCRUMBAN.
+- verifica si roluri diferite: Global Admin, Project Admin, Tech Lead/Flow Manager si Developer/QA.
+
+Fluxuri minime:
+- register -> verify -> login.
+- onboarding -> create project cu wizard.
+- schimbare metodologie SCRUM -> KANBAN -> SCRUM/SCRUMBAN.
+- creare sprint, start sprint, complete sprint.
+- create issue, assign, due date, story points.
+- board drag/drop.
+- task detail: subtask, comment edit/delete.
+- calendar: create event cu link si participanti.
+- team: invite/resend/cancel, role change.
+- settings: update project si transition modal.
+- account settings: update profile, avatar si schimbare parola.
+- support tickets user/admin, comentarii si stergere.
+
+
+4. PLAN DE TESTARE MANUALA PENTRU TRECERI METODOLOGIE
+
+Pregatire:
+1. Creeaza proiect SCRUM.
+2. Creeaza 5 task-uri:
+   - 2 in backlog, 3 in sprint.
+   - story points setate.
+   - due dates setate.
+3. Creeaza sprint activ.
+
+Teste:
+1. SCRUM -> KANBAN cu sprint activ:
+   - trebuie blocat sau sa ceara complete sprint.
+   - nu trebuie sa corupa task-urile.
+2. Complete sprint:
+   - DONE ramane istoric.
+   - unfinished se muta in backlog.
+3. SCRUM -> KANBAN dupa complete:
+   - Backlog dispare.
+   - Board arata task-urile.
+   - Create Issue nu mai arata Story Points.
+   - Sprint create/start este refuzat.
+4. KANBAN -> SCRUM:
+   - Backlog reapare.
+   - Task-urile existente sunt disponibile pentru planificare.
+   - Create Sprint merge.
+   - Create Issue arata Story Points.
+5. SCRUM -> SCRUMBAN:
+   - Backlog ramane.
+   - Sprinturi raman.
+   - Board functioneaza.
+6. SCRUMBAN -> KANBAN:
+   - aceeasi protectie ca SCRUM -> KANBAN.
+7. Calendar:
+   - task-urile cu due date apar.
+   - meeting-urile create raman dupa refresh.
+8. Dashboard:
+   - Delivery Signals se actualizeaza dupa due date/status/priority.
+
+
+5. PROMPT DE CONTINUARE PENTRU CHATGPT WEB
+
+Copiaza textul de mai jos cand vrei sa continui in interfata web:
+
+---
+Lucrez la proiectul de licenta "SDLC AI Hub", in repo-ul /home/slavoliu/SDLChub.
+Stack: FastAPI + SQLAlchemy + Alembic + PostgreSQL pe backend, Next.js App Router + TypeScript + Tailwind + shadcn/Radix + Zustand pe frontend.
+
+Stadiu actual:
+- Auth + email verification exista.
+- Onboarding + Project Wizard cu AI methodology advisor si AI role suggestions exista.
+- Dashboard, Activity, Board, Backlog, Task Detail, Team, Settings si Calendar exista.
+- Task-uri au due_date, story_points, assignee, subtasks, comments, audit log.
+- Calendarul are events/meetings cu link, locatie, participanti si afiseaza task due dates.
+- Sidebar-ul ascunde Backlog pentru KANBAN si il arata pentru SCRUM/SCRUMBAN.
+- Methodology Transition Wizard este implementat functional in Settings cu preview impact, blockers, warnings si apply controlat.
+- Backend blocheaza sprinturile pentru KANBAN si blocheaza switch la KANBAN daca exista sprint activ.
+- Account Settings exista, avatarul se incarca din fisier local si poza este propagata in sidebar/activity/board/backlog/team/calendar/task detail/comments.
+- Permissions reale sunt aplicate pe task-uri, sprinturi, membri, roluri, setari si calendar.
+- Workload Balancer exista la /dashboard/workload cu sugestii de redistribuire.
+- Reports exista la /dashboard/reports cu Recharts si export PDF.
+- Notifications exista la /dashboard/notifications cu unread count in sidebar.
+- Documentation/Wiki exista la /dashboard/documentation.
+- GitHub/DevOps exista la /dashboard/devops si /github/webhook.
+- Iconita/branding aplicatie au fost adaugate in frontend/app/icon.svg, apple-icon.svg, manifest si BrandMark.
+
+Vreau sa continuam cu:
+1. Calendar V2 continuare: reminder flow mai clar si recurring events pentru Daily Standup.
+2. Realtime V2 optional: presence online, debounce/refetch controlat si events mai fine pe comentarii.
+3. AI V2: Poker Estimator, Spec Refiner structurat si Release Notes generate din sprint.
+4. Dupa functionalitati: verificare manuala pe fluxurile principale.
+5. Sa se respecte batch-urile de fisiere din sectiunea 6.1.
+
+Te rog sa citesti PLAN_CONTINUARE_LICENTA_SDLC_HUB.txt si sa implementezi urmatorul pas.
+---
+
+
+6. COMENZI UTILE
+
+Pornire:
+./start.sh
+
+Migrare DB:
+.venv/bin/alembic -c backend/alembic.ini upgrade head
+
+Backend compile:
+.venv/bin/python -m compileall backend
+
+Frontend lint:
+cd frontend
+npm run lint
+
+Frontend build:
+cd frontend
+npm run build
+
+Verificare health:
+curl http://127.0.0.1:8000/health
+
+
+6.1. BATCH-URI DE FISIERE DE VERIFICAT LA CONTINUARE
+
+Batch A - Avatar, Account Settings si identitate
+- backend/main.py
+- backend/models/user.py
+- backend/routers/auth.py
+- backend/schemas/auth.py
+- backend/schemas/user.py
+- backend/alembic/versions/4d5e6f7a8b9c_add_user_avatar_url.py
+- frontend/app/dashboard/account/page.tsx
+- frontend/components/dashboard/app-sidebar.tsx
+- frontend/components/user-avatar.tsx
+- frontend/services/auth.ts
+- frontend/store/use-auth-store.ts
+
+Batch B - Avataruri propagate in proiect
+- backend/models/project.py
+- backend/schemas/task.py
+- backend/routers/projects.py
+- backend/routers/tasks.py
+- backend/routers/activity.py
+- frontend/services/project.ts
+- frontend/services/task.ts
+- frontend/services/activity.ts
+- frontend/app/dashboard/activity/page.tsx
+- frontend/app/dashboard/board/page.tsx
+- frontend/app/dashboard/backlog/page.tsx
+- frontend/app/dashboard/tasks/[taskId]/page.tsx
+- frontend/app/dashboard/team/page.tsx
+- frontend/app/dashboard/calendar/page.tsx
+- frontend/components/dashboard/create-task-dialog.tsx
+
+Batch C - Methodology Transition Wizard
+- backend/models/project.py
+- backend/routers/projects.py
+- backend/alembic/versions/3c4d5e6f7a8b_add_project_audit_logs.py
+- frontend/services/project.ts
+- frontend/app/dashboard/settings/page.tsx
+- frontend/components/dashboard/app-sidebar.tsx
+- frontend/components/dashboard/create-task-dialog.tsx
+- frontend/app/dashboard/board/page.tsx
+- frontend/app/dashboard/backlog/page.tsx
+
+Batch D - Permissions reale end-to-end
+- backend/utils/permissions.py
+- backend/routers/tasks.py
+- backend/routers/sprints.py
+- backend/routers/projects.py
+- backend/routers/calendar.py
+- backend/schemas/project.py
+- frontend/lib/project-permissions.ts
+- frontend/hooks/use-project-permissions.ts
+- frontend/app/dashboard/settings/page.tsx
+- frontend/app/dashboard/team/page.tsx
+- frontend/app/dashboard/board/page.tsx
+- frontend/app/dashboard/backlog/page.tsx
+- frontend/app/dashboard/tasks/[taskId]/page.tsx
+- frontend/app/dashboard/calendar/page.tsx
+
+Batch E - Urmatoarea prioritate recomandata
+Calendar V2:
+- backend/models/project.py
+- backend/schemas/calendar.py
+- backend/routers/calendar.py
+- backend/routers/projects.py
+- frontend/services/calendar.ts
+- frontend/app/dashboard/calendar/page.tsx
+- frontend/components/dashboard/app-sidebar.tsx
+- frontend/hooks/use-project-permissions.ts
+
+Status Calendar V2 27 mai 2026:
+- edit event UI: implementat.
+- day view: implementat.
+- sprint start/end virtual events: implementat frontend, pe baza getProjectSprints.
+- reminder flow/recurring events: urmatorul pas ramas.
+
+Batch F - AI V2 recomandat dupa Calendar
+- backend/services/ai_service.py
+- backend/services/documentation_service.py
+- backend/schemas/task.py
+- backend/routers/tasks.py
+- backend/routers/sprints.py
+- backend/routers/projects.py
+- backend/routers/documentation.py
+- backend/routers/github.py
+- frontend/components/dashboard/create-task-dialog.tsx
+- frontend/app/dashboard/tasks/[taskId]/page.tsx
+- frontend/app/dashboard/backlog/page.tsx
+- frontend/app/dashboard/reports/page.tsx
+- frontend/app/dashboard/documentation/page.tsx
+
+Batch G - Branding/iconita batch 27 mai 2026
+- frontend/components/brand-mark.tsx
+- frontend/app/icon.svg
+- frontend/app/apple-icon.svg
+- frontend/app/manifest.webmanifest
+- frontend/app/layout.tsx
+- frontend/app/page.tsx
+- frontend/components/dashboard/app-sidebar.tsx
+
+Batch H - WebSocket / realtime batch 27 mai 2026
+- backend/realtime.py
+- backend/main.py
+- backend/utils/notifications.py
+- backend/routers/notifications.py
+- backend/routers/tasks.py
+- backend/routers/calendar.py
+- backend/routers/sprints.py
+- backend/routers/auth.py
+- frontend/components/realtime/realtime-bridge.tsx
+- frontend/hooks/use-realtime-event.ts
+- frontend/app/dashboard/layout.tsx
+- frontend/components/dashboard/app-sidebar.tsx
+- frontend/app/dashboard/notifications/page.tsx
+- frontend/app/dashboard/calendar/page.tsx
+- frontend/app/dashboard/page.tsx
+- frontend/app/dashboard/board/page.tsx
+- frontend/app/dashboard/backlog/page.tsx
+- frontend/app/dashboard/tasks/[taskId]/page.tsx
+- frontend/app/dashboard/team/page.tsx
+- frontend/store/use-presence-store.ts
+
+Batch I - Calendar automatic reminders batch 27 mai 2026
+- backend/config.py
+- backend/main.py
+- backend/utils/notifications.py
+- backend/routers/notifications.py
+- frontend/app/dashboard/notifications/page.tsx
+
+Batch J - Reporting V2 batch 27 mai 2026
+- backend/routers/projects.py
+- frontend/services/project.ts
+- frontend/app/dashboard/reports/page.tsx
+
+Batch K - Team Hierarchy V1 batch 28 mai 2026
+- backend/alembic/versions/9c0d1e2f3a4b_add_project_teams.py
+- backend/models/project.py
+- backend/models/__init__.py
+- backend/main.py
+- backend/routers/teams.py
+- backend/routers/projects.py
+- backend/routers/tasks.py
+- backend/schemas/team.py
+- backend/schemas/project.py
+- backend/schemas/task.py
+- frontend/services/project.ts
+- frontend/services/task.ts
+- frontend/app/dashboard/team/page.tsx
+- frontend/app/dashboard/settings/page.tsx
+- frontend/app/dashboard/tasks/[taskId]/page.tsx
+- frontend/components/dashboard/create-task-dialog.tsx
+
+Batch L - Calendar Recurrence V2 batch 29 mai 2026
+- backend/alembic/versions/ad1e2f3a4b5c_add_calendar_recurrence.py
+- backend/models/project.py
+- backend/schemas/calendar.py
+- backend/routers/calendar.py
+- frontend/services/calendar.ts
+- frontend/app/dashboard/calendar/page.tsx
+
+Batch M - Global Admin V1/V2 batch 29 mai 2026
+Implementat:
+- flag is_global_admin pe user; primul utilizator existent este promovat prin migrare, iar primul cont nou dintr-o baza goala devine automat Global Admin.
+- consola separata /admin, cu layout propriu, sidebar propriu si fara dependenta de workspace/proiect curent.
+- /dashboard/admin a ramas doar redirect legacy catre /admin.
+- in sidebar-ul de proiect exista doar o iesire jos catre "Global Admin Console", vizibila doar pentru Global Admin.
+- metrici platforma: users, projects, tasks, tichete deschise, erori HTTP 4xx/5xx in ultimele 24h, status AI configurat.
+- lista proiecte globale cu owner, metodologie, membri si task-uri.
+- lista utilizatori in consola, cu activare/dezactivare si promovare/retragere Global Admin; exista protectie sa nu ramana platforma fara Global Admin si sa nu iti dezactivezi propriul cont.
+- suport tickets: tabela backend, creare din /dashboard/support de catre utilizatori, listare in /admin, schimbare status si prioritate din consola.
+- log automat de erori HTTP 4xx/5xx prin middleware FastAPI.
+
+Fisiere batch M:
+- backend/alembic/versions/be2f3a4b5c6d_add_global_admin_console.py
+- backend/models/user.py
+- backend/models/admin.py
+- backend/models/__init__.py
+- backend/schemas/auth.py
+- backend/schemas/user.py
+- backend/schemas/admin.py
+- backend/routers/auth.py
+- backend/routers/admin.py
+- backend/main.py
+- frontend/services/auth.ts
+- frontend/store/use-auth-store.ts
+- frontend/services/admin.ts
+- frontend/components/dashboard/app-sidebar.tsx
+- frontend/app/admin/layout.tsx
+- frontend/app/admin/page.tsx
+- frontend/app/dashboard/admin/page.tsx
+- frontend/app/dashboard/support/page.tsx
+
+Verificari batch M:
+- .venv/bin/alembic -c backend/alembic.ini upgrade head: OK
+- .venv/bin/python -m compileall backend: OK
+- npm run lint: OK
+- npm run build: OK, ramane doar warning-ul existent Next `--localstorage-file` fara path valid.
+- ./start.sh: OK
+- curl http://127.0.0.1:8000/health: OK
+- curl -I http://127.0.0.1:3000/admin: 200 OK
+- curl -I http://127.0.0.1:3000/dashboard/support: 200 OK
+
+Batch N - Support Ticketing si Global Admin UX polish batch 29 mai 2026
+Implementat:
+- suport tickets au acum comentarii persistente in baza de date.
+- utilizatorul vede dupa trimitere tichetul creat in /dashboard/support, cu status/progres, lista tichete proprii si conversatie.
+- utilizatorul poate adauga comentarii pe tichetul propriu.
+- Global Admin poate raspunde direct pe cardurile din /admin; comentariile admin sunt marcate separat.
+- /admin Support Desk a fost refacut ca board pe statusuri: OPEN, IN_PROGRESS, RESOLVED, CLOSED.
+- Global Admin poate schimba status si prioritate din board.
+- sidebar-ul /admin a fost redesenat ca operations rail cu zone clare: Command Center, Identity, Project Registry, Support Desk, System Health.
+- acces backend controlat: userii vad doar tichetele lor, Global Admin vede toate tichetele.
+
+Fisiere batch N:
+- backend/alembic/versions/cf3a4b5c6d7e_add_support_ticket_comments.py
+- backend/models/admin.py
+- backend/models/__init__.py
+- backend/schemas/admin.py
+- backend/routers/admin.py
+- frontend/services/admin.ts
+- frontend/app/dashboard/support/page.tsx
+- frontend/app/admin/layout.tsx
+- frontend/app/admin/page.tsx
+
+Verificari batch N:
+- .venv/bin/alembic -c backend/alembic.ini upgrade head: OK
+- .venv/bin/python -m compileall backend: OK
+- npm run lint: OK
+- npm run build: OK, ramane doar warning-ul existent Next `--localstorage-file` fara path valid.
+- ./start.sh: OK
+- curl http://127.0.0.1:8000/health: OK
+- curl -I http://127.0.0.1:3000/admin: 200 OK
+- curl -I http://127.0.0.1:3000/dashboard/support: 200 OK
+
+Batch O - Methodology Transition Hardening batch 29 mai 2026
+Implementat:
+- schimbarea metodologiei se face doar prin endpoint-ul dedicat /projects/{id}/methodology-transition; update-ul simplu de proiect refuza modificari directe de methodology.
+- tranzitia spre KANBAN poate inchide automat sprintul activ si muta task-urile neterminate in flow, fara sa blocheze schimbarea.
+- backend-ul refuza in KANBAN story_points si sprint_id pe create/update task, ca sa nu ramana date invalide din UI stale sau requesturi manuale.
+- /dashboard/backlog afiseaza un ecran dedicat Kanban Flow si link catre Board daca proiectul este KANBAN.
+- Board-ul ascunde story points pentru KANBAN si le pastreaza vizibile pentru SCRUM/SCRUMBAN.
+- proiect.changed se emite prin realtime la schimbari de settings/metodologie.
+- RealtimeBridge actualizeaza currentProject in store cand primeste project.changed, deci sidebarul/metodologia se sincronizeaza fara refresh manual.
+
+Fisiere batch O:
+- backend/routers/projects.py
+- backend/routers/tasks.py
+- frontend/components/realtime/realtime-bridge.tsx
+- frontend/app/dashboard/backlog/page.tsx
+- frontend/app/dashboard/board/page.tsx
+
+Verificari batch O:
+- .venv/bin/python -m compileall backend: OK
+- npm run lint: OK
+- npm run build: OK, ramane doar warning-ul existent Next `--localstorage-file` fara path valid.
+- ./start.sh: OK
+- curl http://127.0.0.1:8000/health: OK
+- curl -I http://127.0.0.1:3000/dashboard/settings: 200 OK
+- curl -I http://127.0.0.1:3000/dashboard/backlog: 200 OK
+- curl -I http://127.0.0.1:3000/dashboard/board: 200 OK
+
+Batch P - WIP Limits pentru Kanban/Scrumban batch 29 mai 2026
+Implementat:
+- proiectele au workflow_config persistat in baza de date.
+- endpoint nou PUT /projects/{project_id}/workflow pentru configurarea limitelor WIP.
+- settings afiseaza card WIP limits pentru KANBAN si SCRUMBAN.
+- limite configurabile per status: TODO, IN_PROGRESS, REVIEW, DONE; camp gol inseamna fara limita.
+- board-ul incarca workflow_config din project detail.
+- board-ul afiseaza badge WIP x/y si border rosu + icon de alerta cand o coloana depaseste limita.
+- realtime project.changed sincronizeaza si workflow_config in currentProject.
+- settings marcheaza permisiunile de Sprint ca "Disabled by Kanban" si dezactiveaza toggle-urile cand metodologia este KANBAN.
+
+Fisiere batch P:
+- backend/alembic/versions/d0e1f2a3b4c5_add_project_workflow_config.py
+- backend/models/project.py
+- backend/routers/projects.py
+- frontend/services/project.ts
+- frontend/components/realtime/realtime-bridge.tsx
+- frontend/app/dashboard/settings/page.tsx
+- frontend/app/dashboard/board/page.tsx
+
+Verificari batch P:
+- .venv/bin/alembic -c backend/alembic.ini upgrade head: OK
+- .venv/bin/python -m compileall backend: OK
+- npm run lint: OK
+- npm run build: OK, ramane doar warning-ul existent Next `--localstorage-file` fara path valid.
+- ./start.sh: OK
+- curl http://127.0.0.1:8000/health: OK
+- curl -I http://127.0.0.1:3000/dashboard/settings: 200 OK
+- curl -I http://127.0.0.1:3000/dashboard/board: 200 OK
+
+Batch Q - Board reload loop fix si redesign partial batch 29 mai 2026
+Problema observata:
+- backend.log arata requesturi repetate in bucla pe /projects/mine, /projects/1, /sprints/project/1 si /tasks/project/1?view=board.
+- cauza principala era in frontend/app/dashboard/board/page.tsx: loadBoard facea setCurrentProject(freshProject) la fiecare incarcare; store-ul se schimba cu un obiect nou, callback-ul loadBoard se recrea si useEffect-ul pornea din nou.
+
+Implementat:
+- functie projectSnapshotChanged ca setCurrentProject sa fie apelat doar cand proiectul chiar s-a schimbat.
+- board-ul pastreaza sincronizarea cu project detail, dar nu mai retrigger-uie incarcarea in lant.
+- header board redesenat: titlu cu icon, metodologie/status, metrici Active/In progress/Review/Done si badge Flow healthy/WIP alerts.
+- eliminat butonul inert "Filters".
+- coloane si task cards curatate vizual: border/radius mai profesionist, badges compacte, WIP alert in headerul coloanei.
+- board-ul ramane compatibil cu SCRUM, KANBAN si SCRUMBAN.
+
+Fisiere batch Q:
+- frontend/app/dashboard/board/page.tsx
+
+Verificari batch Q:
+- .venv/bin/python -m compileall backend: OK
+- npm run lint: OK
+- npm run build: OK, ramane doar warning-ul existent Next `--localstorage-file` fara path valid.
+- ./start.sh: OK
+- curl http://127.0.0.1:8000/health: OK
+- curl -I http://127.0.0.1:3000/dashboard/board: 200 OK
+
+Batch R - Global Admin AI Usage si export CSV batch 29 mai 2026
+Implementat:
+- tabel nou ai_usage_logs pentru contorizarea reala a cererilor AI.
+- helper backend record_ai_usage, folosit de endpoint-urile principale AI: methodology advisor, AI roles, task generate, spec refiner, poker estimator, release notes si workload balancer.
+- consola Global Admin afiseaza AI requests total si AI requests in ultimele 24h.
+- endpoint nou GET /admin/ai-usage pentru auditul ultimelor evenimente AI.
+- sectiune noua AI Usage in /admin, cu feature, provider/source, proiect, utilizator, status si data.
+- sidebar-ul /admin are link dedicat catre AI Usage.
+- export CSV din consola pentru projects, users si ai-usage.
+
+Fisiere batch R:
+- backend/alembic/versions/e1f2a3b4c5d6_add_ai_usage_logs.py
+- backend/models/admin.py
+- backend/models/__init__.py
+- backend/schemas/admin.py
+- backend/utils/ai_usage.py
+- backend/routers/admin.py
+- backend/routers/projects.py
+- backend/routers/sprints.py
+- backend/routers/tasks.py
+- frontend/services/admin.ts
+- frontend/app/admin/layout.tsx
+- frontend/app/admin/page.tsx
+
+Verificari batch R:
+- .venv/bin/alembic -c backend/alembic.ini upgrade head: OK
+- .venv/bin/python -m compileall backend: OK
+- npm run lint: OK
+- npm run build: OK, ramane doar warning-ul existent Next `--localstorage-file` fara path valid.
+- ./start.sh: OK
+- curl http://127.0.0.1:8000/health: OK
+- curl -I http://127.0.0.1:3000/admin: 200 OK
+- backend.log: /admin/overview, /admin/projects, /admin/users, /admin/tickets, /admin/errors si /admin/ai-usage raspund 200 OK.
+
+Batch S - Global Admin redesign si proiecte arhivabile batch 29 mai 2026
+Implementat:
+- proiectele au flag persistent is_archived.
+- /projects/mine nu mai returneaza proiectele arhivate, ca utilizatorii sa nu le vada in workspace-ul normal.
+- endpoint Global Admin PUT /admin/projects/{project_id}/archive pentru arhivare/dezarhivare.
+- endpoint Global Admin DELETE /admin/projects/{project_id} cu confirmare pe cheia proiectului.
+- stergerea din Global Admin curata task-uri, subtasks, comments, audit logs, sprints, invitatii, membri, echipe, roluri, calendar events, documentation pages si GitHub events; AI usage logs si notificari raman pentru audit, dar se detaseaza de proiect.
+- /admin sidebar refacut: mai compact, fara cardul inutil "Separate Admin Surface", navigatie cu hash activ pe sectiuni.
+- /admin header refacut ca operation center cu status strip: active projects, archived, critical tickets, server errors.
+- Project Registry refacut ca tabel operational, cu filtre ACTIVE/ARCHIVED/ALL, export CSV, archive/restore si delete.
+- delete project foloseste modal Radix/shadcn, nu confirm nativ de browser.
+- export CSV pentru users si AI usage mutat contextual in sectiunile lor.
+
+Fisiere batch S:
+- backend/alembic/versions/f2a3b4c5d6e7_add_project_archive_flag.py
+- backend/models/project.py
+- backend/schemas/project.py
+- backend/schemas/admin.py
+- backend/routers/projects.py
+- backend/routers/admin.py
+- frontend/services/admin.ts
+- frontend/app/admin/layout.tsx
+- frontend/app/admin/page.tsx
+
+Verificari batch S:
+- .venv/bin/alembic -c backend/alembic.ini upgrade head: OK
+- .venv/bin/python -m compileall backend: OK
+- npm run lint: OK
+- npm run build: OK, ramane doar warning-ul existent Next `--localstorage-file` fara path valid.
+- ./start.sh: OK
+- curl http://127.0.0.1:8000/health: OK
+- curl -I http://127.0.0.1:3000/admin: 200 OK
+
+Batch T - Global Admin sidebar redesign operational batch 29 mai 2026
+Implementat:
+- sidebar-ul /admin a fost schimbat structural, nu doar stilizat: icon rail separat + panou operational.
+- icon rail rapid pentru Command Center, Identity, Project Registry, Support Desk, AI Usage si System Health.
+- panoul lateral afiseaza status Operational si modul AI curent: configurat sau fallback.
+- panoul lateral incarca metrici live din /admin/overview: users, projects, open tickets, errors last 24h.
+- zona Work areas are descrieri clare si indicator vizual activ pentru hash-ul curent.
+- zona Quick Export ofera exporturi directe CSV pentru projects, users si AI usage.
+- daca exista erori HTTP in ultimele 24h, sidebar-ul afiseaza un callout vizibil.
+- user profile si Back to workspace au ramas jos, iar Sign Out a fost mutat in rail ca actiune globala.
+- background-ul /admin a fost intunecat si uniformizat cu noua suprafata operationala.
+
+Fisiere batch T:
+- frontend/app/admin/layout.tsx
+
+Verificari batch T:
+- .venv/bin/python -m compileall backend: OK
+- npm run lint: OK
+- npm run build: OK, ramane doar warning-ul existent Next `--localstorage-file` fara path valid.
+- ./start.sh: OK
+- curl http://127.0.0.1:8000/health: OK
+- curl -I http://127.0.0.1:3000/admin: 200 OK
+
+Batch U - Admin sidebar fix, support delete si proiect arhivat read-only batch 29 mai 2026
+Implementat:
+- /admin sidebar nu mai dubleaza navigatia: a ramas o singura zona Work areas, cu icon + text.
+- starea activa din sidebar se actualizeaza si la click pe hash-uri, nu doar la hashchange.
+- link-ul activ are culoare evidenta: fundal albastru si icon alb.
+- suport backend: DELETE /admin/tickets/{ticket_id} pentru stergere tichet; utilizatorul poate sterge doar tichetele proprii, Global Admin poate sterge orice tichet.
+- suport backend: DELETE /admin/tickets/{ticket_id}/comments/{comment_id}; utilizatorul poate sterge doar comentariile proprii, Global Admin poate sterge orice comentariu.
+- /dashboard/support: utilizatorul poate sterge tichetul propriu si comentariile proprii.
+- /dashboard/support: conversatia afiseaza toate comentariile intr-o zona scrollabila, nu se mai opreste la 2-3 comentarii.
+- /admin Support Desk: Global Admin vede toate comentariile unui tichet intr-o zona scrollabila, poate sterge comentarii si tichete.
+- proiectele arhivate raman accesibile in /projects/mine.
+- /dashboard/layout afiseaza banner persistent cand proiectul curent este arhivat.
+- continutul dashboard-ului pentru proiect arhivat este read-only vizual si functional prin dezactivarea interactiunilor din main content.
+- realtime project.changed pentru arhivare trimite acum proiectul actualizat, inclusiv is_archived, ca bannerul/read-only sa se sincronizeze fara refresh.
+
+Fisiere batch U:
+- backend/routers/admin.py
+- backend/routers/projects.py
+- frontend/app/admin/layout.tsx
+- frontend/app/admin/page.tsx
+- frontend/app/dashboard/layout.tsx
+- frontend/app/dashboard/support/page.tsx
+- frontend/components/realtime/realtime-bridge.tsx
+- frontend/services/admin.ts
+- frontend/services/project.ts
+
+Verificari batch U:
+- .venv/bin/python -m compileall backend: OK
+- npm run lint: OK
+- npm run build: OK, ramane doar warning-ul existent Next `--localstorage-file` fara path valid.
+- ./start.sh: OK
+- curl http://127.0.0.1:8000/health: OK
+- curl -I http://127.0.0.1:3000/admin: 200 OK
+- curl -I http://127.0.0.1:3000/dashboard/support: 200 OK
+
+Batch V - Fix follow-up sidebar si arhivare support-only batch 29 mai 2026
+Implementat:
+- /admin sidebar nu mai marcheaza nicio sectiune ca activa; toate linkurile au acelasi stil neutru si doar hover state.
+- "Back to workspace" din /admin este acum buton explicit cu router.push("/dashboard"), nu link care putea fi afectat de starea hash-ului.
+- /dashboard/layout permite interactiuni pe /dashboard/support chiar daca proiectul curent este arhivat.
+- pentru proiect arhivat, restul paginilor din dashboard raman read-only/dezactivate: board, backlog, team, settings etc.
+- dashboard layout sincronizeaza snapshot-ul proiectului din /projects/mine chiar daca exista deja currentProject in store, ca is_archived sa nu ramana stale.
+- _serialize_project include is_archived, deci getProject/detail, dashboard summaries si realtime payload-urile au starea corecta.
+
+Fisiere batch V:
+- backend/routers/projects.py
+- frontend/app/admin/layout.tsx
+- frontend/app/dashboard/layout.tsx
+
+Verificari batch V:
+- .venv/bin/python -m compileall backend: OK
+- npm run lint: OK
+- npm run build: OK, ramane doar warning-ul existent Next `--localstorage-file` fara path valid.
+- ./start.sh: OK
+- curl http://127.0.0.1:8000/health: OK
+- curl -I http://127.0.0.1:3000/admin: 200 OK
+- curl -I http://127.0.0.1:3000/dashboard/support: 200 OK
+
+Batch W - Admin sidebar accesibil si permissions polish Kanban batch 29 mai 2026
+Implementat:
+- /admin sidebar a fost compactat ca sa incapa in viewport: Quick Export a fost scos din lateral, iar metricile si nav-ul au spacing redus.
+- "Back to workspace" este acum sus in sidebar, imediat sub brand, ca actiune primara mereu vizibila.
+- footer-ul din sidebar ramane doar pentru profil si Sign Out, deci nu mai impinge actiunile importante sub ecran.
+- backend-ul normalizeaza permisiunile de sprint pentru proiectele KANBAN: SPRINT_CREATE, SPRINT_START si SPRINT_CLOSE sunt fortate false.
+- normalizarea se aplica la my-permissions, lista de roluri, create role, update role si endpoint-ul dedicat de update permissions.
+- serialize_member intoarce rolurile normalizate in functie de metodologia proiectului.
+- UI-ul continua sa marcheze permisiunile Sprint ca "Disabled by Kanban", dar acum backend-ul impune aceeasi regula.
+
+Fisiere batch W:
+- frontend/app/admin/layout.tsx
+- backend/routers/projects.py
+
+Verificari batch W:
+- .venv/bin/python -m compileall backend: OK
+- npm run lint: OK
+- npm run build: OK, ramane doar warning-ul existent Next `--localstorage-file` fara path valid.
+- ./start.sh: OK
+- curl http://127.0.0.1:8000/health: OK
+- curl -I http://127.0.0.1:3000/admin: 200 OK
+- curl -I http://127.0.0.1:3000/dashboard: 200 OK
+- curl -I http://127.0.0.1:3000/dashboard/support: 200 OK
+
+Batch X - AI Usage filters pentru Global Admin batch 29 mai 2026
+Implementat:
+- endpoint-ul GET /admin/ai-usage accepta filtre optionale: feature, status, project_id, days si limit.
+- filtrarea backend limiteaza corect rezultatele dupa feature, status SUCCESS/ERROR, proiect si perioada.
+- frontend/services/admin.ts are tip AdminAiUsageFilters si trimite query params catre endpoint.
+- sectiunea AI Usage din /admin are filtre vizibile pentru Feature, Status, Project si Period.
+- AI Usage poate fi filtrat si combinat cu search-ul global existent.
+- Reset curata rapid toate filtrele AI Usage.
+
+Fisiere batch X:
+- backend/routers/admin.py
+- frontend/services/admin.ts
+- frontend/app/admin/page.tsx
+
+Verificari batch X:
+- .venv/bin/python -m compileall backend: OK
+- npm run lint: OK
+- npm run build: OK, ramane doar warning-ul existent Next `--localstorage-file` fara path valid.
+- ./start.sh: OK
+- curl http://127.0.0.1:8000/health: OK
+- curl -I http://127.0.0.1:3000/admin: 200 OK
+
+Batch Y - Plan unificat si Global Admin PDF report batch 29 mai 2026
+Implementat:
+- cele doua fisiere PLAN_CONTINUARE_LICENTA_SDLC_HUB*.txt au fost contopite intr-un singur document canonic: PLAN_CONTINUARE_LICENTA_SDLC_HUB.txt.
+- PLAN_CONTINUARE_LICENTA_SDLC_HUB_1.txt a fost eliminat ca duplicat.
+- planul de verificare finala ramane manual, direct in browser.
+- backend-ul are endpoint nou GET /admin/export/platform.pdf pentru raport Global Admin.
+- raportul PDF include snapshot platforma, proiecte, support/incidents, AI usage si error trail.
+- frontend/services/admin.ts are downloadAdminPlatformPdf.
+- /admin are buton PDF Report in header, langa search si Refresh.
+
+Fisiere batch Y:
+- PLAN_CONTINUARE_LICENTA_SDLC_HUB.txt
+- backend/routers/admin.py
+- frontend/services/admin.ts
+- frontend/app/admin/page.tsx
+
+Verificari batch Y:
+- .venv/bin/python -m compileall backend: OK
+- npm run lint: OK
+- npm run build: OK, ramane doar warning-ul existent Next `--localstorage-file` fara path valid.
+- ./start.sh: OK
+- curl http://127.0.0.1:8000/health: OK
+- curl -I http://127.0.0.1:3000/admin: 200 OK
+- curl cu token Global Admin la /admin/export/platform.pdf: 200 application/pdf.
+
+Batch Z - AI V2 polish: estimator fallback, subtasks SDLC si Release Notes pe sprint batch 29 mai 2026
+Implementat:
+- reparat fallback-ul local pentru Poker Estimator; anterior putea intoarce None cand Gemini nu era disponibil.
+- fallback-ul de subtasks genereaza acum checklist pe model SDLC: Planning, Analysis, Design, Implementation, Integration, Testing.
+- pagina TaskId salveaza imediat story points estimate in backend prin updateTask, cu audit/realtime, nu doar local.
+- Backlog/Sprint Planning are buton Release Notes pe fiecare sprint pentru userii cu AI_USE.
+- Release Notes se deschid intr-un modal modern cu summary, source si markdown scrollabil.
+
+Fisiere batch Z:
+- backend/services/ai_service.py
+- frontend/app/dashboard/backlog/page.tsx
+- frontend/app/dashboard/tasks/[taskId]/page.tsx
+
+Verificari batch Z:
+- .venv/bin/python -m compileall backend: OK
+- npm run lint: OK
+- npm run build: OK, ramane doar warning-ul existent Next `--localstorage-file` fara path valid.
+- ./start.sh: OK
+- curl http://127.0.0.1:8000/health: OK
+- curl -I http://127.0.0.1:3000/dashboard/backlog: 200 OK
+- curl -I http://127.0.0.1:3000/dashboard/tasks/1: 200 OK
+- POST /tasks/ai-estimate cu token Global Admin: OK, raspuns cu story_points/confidence/reasoning/risk_factors.
+
+Batch AA - AI V2 apply refined spec si fallback feedback batch 29 mai 2026
+Implementat:
+- TaskId foloseste acum "Refine & save"; spec-ul rafinat se salveaza imediat in backend prin updateTask.
+- salvarea spec-ului rafinat intra in audit/realtime, la fel ca modificarile normale de descriere.
+- TaskId afiseaza un mesaj vizibil dupa refine: succes Gemini sau fallback local, cu source badge.
+- subtasks sugerate pastreaza sursa ultimei rafinari AI/fallback.
+- Create Issue afiseaza explicit daca spec-ul a fost generat cu Gemini sau cu fallback local.
+- feedback-ul de fallback explica faptul ca Gemini a fost indisponibil sau raspunsul a fost invalid.
+
+Fisiere batch AA:
+- frontend/app/dashboard/tasks/[taskId]/page.tsx
+- frontend/components/dashboard/create-task-dialog.tsx
+
+Verificari batch AA:
+- .venv/bin/python -m compileall backend: OK
+- npm run lint: OK
+- npm run build: OK, ramane doar warning-ul existent Next `--localstorage-file` fara path valid.
+- ./start.sh: OK
+- curl http://127.0.0.1:8000/health: OK
+- curl -I http://127.0.0.1:3000/dashboard/tasks/1: 200 OK
+- curl -I http://127.0.0.1:3000/dashboard/backlog: 200 OK
+
+Batch AB - Project-owned AI key criptat batch 29 mai 2026
+Implementat:
+- proiectele au acum setari AI per proiect: ai_provider_mode, ai_provider si ai_api_key_encrypted.
+- migrare Alembic noua: a3b4c5d6e7f8_add_project_ai_settings.py.
+- cheia custom Gemini a proiectului este criptata in DB cu Fernet, cheia de criptare fiind derivata din SECRET_KEY.
+- cheia nu este trimisa niciodata inapoi in frontend; UI primeste doar has_project_key/platform_configured.
+- owner-ul proiectului poate alege intre Platform AI key si Project-owned key din Project Settings.
+- owner-ul poate salva cheia, testa providerul si sterge cheia proiectului.
+- endpoint-uri noi: GET/PUT/POST test pe /projects/{project_id}/ai-settings.
+- task AI endpoints si sprint Release Notes folosesc cheia proiectului cand proiectul este setat pe PROJECT.
+- daca cheia proiectului nu poate fi decriptata, backend-ul nu cade silentios pe cheia platformei pentru acel proiect.
+
+Fisiere batch AB:
+- backend/models/project.py
+- backend/alembic/versions/a3b4c5d6e7f8_add_project_ai_settings.py
+- backend/utils/secret_crypto.py
+- backend/services/ai_service.py
+- backend/routers/projects.py
+- backend/routers/tasks.py
+- backend/routers/sprints.py
+- frontend/services/project.ts
+- frontend/app/dashboard/settings/page.tsx
+
+Verificari batch AB:
+- .venv/bin/python -m compileall backend: OK
+- .venv/bin/alembic -c backend/alembic.ini upgrade head: OK
+- npm run lint: OK
+- npm run build: OK, ramane doar warning-ul existent Next `--localstorage-file` fara path valid.
+- ./start.sh: OK
+- curl http://127.0.0.1:8000/health: OK
+- curl -I http://127.0.0.1:3000/dashboard/settings: 200 OK
+- GET /projects/1/ai-settings cu token Global Admin/owner: OK.
+- PUT /projects/1/ai-settings mode PLATFORM: OK.
+
+Batch AC - Project-owned AI provider generic si Release Notes handoff batch 29 mai 2026
+Implementat:
+- Project-owned AI nu mai este limitat la Gemini.
+- owner-ul poate denumi providerul AI din Project Settings.
+- proiectul retine provider type: GEMINI sau OPENAI_COMPATIBLE.
+- pentru provider custom/OpenAI-compatible se pot seta base_url si model.
+- cheia ramane criptata in DB; frontend-ul primeste doar has_project_key si metadate non-secrete.
+- backend/services/ai_service.py are adaptor pentru Gemini si adaptor HTTP pentru OpenAI-compatible chat completions.
+- task AI endpoints si sprint Release Notes folosesc providerul proiectului cand proiectul este setat pe PROJECT.
+- adaugata migrare Alembic: b4c5d6e7f8a9_add_generic_project_ai_provider.py.
+- Release Notes din Backlog/Sprint Planning au actiuni: Copy markdown, Export .md, Publish to docs.
+- Release Notes din Reports au aceleasi actiuni: Copy markdown, Export .md, Publish to docs.
+- Publish to docs creeaza pagina in Documentation/Wiki cu markdown-ul generat.
+
+Fisiere batch AC:
+- backend/models/project.py
+- backend/alembic/versions/b4c5d6e7f8a9_add_generic_project_ai_provider.py
+- backend/services/ai_service.py
+- backend/routers/projects.py
+- backend/routers/tasks.py
+- backend/routers/sprints.py
+- frontend/services/project.ts
+- frontend/app/dashboard/settings/page.tsx
+- frontend/app/dashboard/backlog/page.tsx
+- frontend/app/dashboard/reports/page.tsx
+
+Verificari batch AC:
+- .venv/bin/python -m compileall backend: OK
+- .venv/bin/alembic -c backend/alembic.ini upgrade head: OK
+- npm run lint: OK
+- npm run build: OK, ramane doar warning-ul existent Next `--localstorage-file` fara path valid.
+- ./start.sh: OK
+- curl http://127.0.0.1:8000/health: OK
+- curl -I http://127.0.0.1:3000/dashboard/settings: 200 OK
+- curl -I http://127.0.0.1:3000/dashboard/backlog: 200 OK
+- curl -I http://127.0.0.1:3000/dashboard/reports: 200 OK
+- GET /projects/1/ai-settings cu token owner: OK.
+- PUT /projects/1/ai-settings cu provider OPENAI_COMPATIBLE, provider_name, base_url, model si api_key: OK, cheia nu este returnata.
+- proiectul demo a fost readus pe PLATFORM/GEMINI dupa smoke.
+
+Batch AD - AI Usage ERROR polish si provider labels batch 30 mai 2026
+Context:
+- raspunsul primit din ChatGPT web a confirmat ca aplicatia este aproape feature complete si ca urmatoarea directie buna este polish/stabilizare, nu module mari noi.
+
+Implementat:
+- cand AI-ul raspunde invalid, providerul custom e configurat gresit sau apare timeout/error, fallback-ul ramane disponibil pentru user.
+- acele cazuri sunt inregistrate in AI Usage cu status ERROR si detaliu de eroare, nu ca SUCCESS simplu.
+- adaugat helper frontend formatAiSource/isAiFallback pentru etichete prietenoase.
+- UI-ul nu mai afiseaza surse brute precum project_openai_compatible:Demo, ci etichete precum Demo (Openai Compatible), Gemini sau Fallback after provider error.
+- aplicat provider labels in Create Issue, TaskId, Backlog Release Notes si Reports Release Notes.
+- fallback text din AI service nu mai mentioneaza doar GEMINI_API_KEY, ci platform/project AI provider.
+
+Fisiere batch AD:
+- backend/services/ai_service.py
+- backend/routers/tasks.py
+- backend/routers/sprints.py
+- frontend/lib/ai-source.ts
+- frontend/components/dashboard/create-task-dialog.tsx
+- frontend/app/dashboard/tasks/[taskId]/page.tsx
+- frontend/app/dashboard/backlog/page.tsx
+- frontend/app/dashboard/reports/page.tsx
+- PLAN_CONTINUARE_LICENTA_SDLC_HUB.txt
+
+Verificari batch AD:
+- .venv/bin/python -m compileall backend: OK
+- npm run lint: OK
+- npm run build: OK, ramane doar warning-ul existent Next `--localstorage-file` fara path valid.
+- ./start.sh: OK
+- curl http://127.0.0.1:8000/health: OK
+- curl -I http://127.0.0.1:3000/dashboard/settings: 200 OK
+- curl -I http://127.0.0.1:3000/dashboard/backlog: 200 OK
+- curl -I http://127.0.0.1:3000/dashboard/reports: 200 OK
+
+Batch AE - AI Risk Radar profund si Workload explanations batch 30 mai 2026
+Implementat:
+- Dashboard AI Risk Radar nu mai afiseaza doar carduri generice.
+- Backend-ul calculeaza semnale concrete din:
+  - comentarii recente cu termeni de blocaj/risc: blocked, stuck, dependency, blocaj, blocat, nu merge, eroare etc.
+  - task-uri overdue, cu severitate in functie de prioritate.
+  - task-uri vechi in Review sau In Progress, pe baza ultimului audit log de status.
+  - task-uri critice neasignate.
+  - lipsa sprintului activ pentru SCRUM/SCRUMBAN.
+- Risk cards pot include acum task_id/task_key/status/priority/assignee/category/age_days si sunt clickabile catre TaskId.
+- Team health score tine cont si de overdue, blocker comments si stale flow, nu doar unassigned/critical/review.
+- Workload Balancer include semnale contextuale pe fiecare membru:
+  - overdue tasks, critical items, stale review, long-running tasks, due this week, active story points.
+- Workload summary are metrica noua Stale flow.
+- Sugestiile de workload explica de ce se propune mutarea/asignarea, folosind semnalele de capacitate, nu doar scorul brut.
+
+Fisiere batch AE:
+- backend/routers/projects.py
+- frontend/services/project.ts
+- frontend/app/dashboard/page.tsx
+- frontend/app/dashboard/workload/page.tsx
+- PLAN_CONTINUARE_LICENTA_SDLC_HUB.txt
+
+Verificari batch AE:
+- .venv/bin/python -m compileall backend: OK
+- npm run lint: OK
+- npm run build: OK, ramane doar warning-ul existent Next `--localstorage-file` fara path valid.
+- ./start.sh: OK
+- curl http://127.0.0.1:8000/health: OK
+- curl -I http://127.0.0.1:3000/dashboard: 200 OK
+- curl -I http://127.0.0.1:3000/dashboard/workload: 200 OK
+
+Batch AF - Calendar V2 reminder flow polish batch 30 mai 2026
+Implementat:
+- endpoint-ul /notifications/generate-reminders genereaza acum intr-un singur sweep:
+  - remindere pentru task-uri due soon / overdue ale utilizatorului curent.
+  - remindere pentru calendar events ale utilizatorului curent care incep in urmatoarele 60 de minute.
+- raspunsul endpoint-ului este defalcat:
+  - created total.
+  - due_task_created.
+  - calendar_created.
+  - calendar_lookahead_minutes.
+- generate_calendar_event_reminders suporta acum filtrare dupa project_id si user_id, util pentru flow manual din Calendar.
+- butonul din Calendar a fost redenumit Smart reminders.
+- dupa rulare, Calendar afiseaza un panou clar "Reminder sweep completed" cu total/tasks/events.
+- flow-ul existent de Daily Standup recurring ramane functional:
+  - presetul seteaza DAILY, 09:15-09:30, weekdays, 14 zile si toti membrii ca attendees.
+  - backend-ul creeaza seria recurenta cu recurrence_series_id si limita de 60 occurrence-uri.
+
+Fisiere batch AF:
+- backend/utils/notifications.py
+- backend/routers/notifications.py
+- frontend/services/notification.ts
+- frontend/app/dashboard/calendar/page.tsx
+- PLAN_CONTINUARE_LICENTA_SDLC_HUB.txt
+
+Verificari batch AF:
+- .venv/bin/python -m compileall backend: OK
+- npm run lint: OK
+- npm run build: OK, ramane doar warning-ul existent Next `--localstorage-file` fara path valid.
+- ./start.sh: OK
+- curl http://127.0.0.1:8000/health: OK
+- curl -I http://127.0.0.1:3000/dashboard/calendar: 200 OK
+
+Batch AG - Work Engine List View batch 30 mai 2026
+Implementat:
+- pagina noua /dashboard/tasks pentru List View tabelar.
+- link nou "Tasks" in sidebar, langa Board.
+- List View incarca toate task-urile proiectului si functioneaza pentru SCRUM/KANBAN/SCRUMBAN.
+- filtre:
+  - search dupa key/title/assignee/team.
+  - status.
+  - priority.
+  - assignee, inclusiv Unassigned.
+  - sprint/planning, inclusiv Backlog only.
+- metrici rapide: Active, Done, Overdue, Unassigned.
+- tabel profesional cu key, titlu, story points, status, priority, assignee, sprint/backlog, due date si link catre TaskId.
+- utilizatorii cu permisiuni pot schimba statusul si assignee direct din tabel.
+- create issue este disponibil din List View pentru rolurile cu TASK_CREATE.
+- tipul frontend Task.assignee_id accepta acum null pentru unassign corect prin API.
+
+Fisiere batch AG:
+- frontend/app/dashboard/tasks/page.tsx
+- frontend/components/dashboard/app-sidebar.tsx
+- frontend/services/task.ts
+- PLAN_CONTINUARE_LICENTA_SDLC_HUB.txt
+
+Verificari batch AG:
+- npm run lint: OK
+- npm run build: OK, ramane doar warning-ul existent Next `--localstorage-file` fara path valid.
+- ./start.sh: OK
+- curl http://127.0.0.1:8000/health: OK
+- curl -I http://127.0.0.1:3000/dashboard/tasks: 200 OK
+
+Batch AH - Tasks List View overdue filter si Create Issue fix batch 30 mai 2026
+Implementat:
+- in /dashboard/tasks exista acum filtru dedicat pentru due date:
+  - All due dates.
+  - Overdue.
+  - Due in 7 days.
+  - No date.
+- adaugat buton rapid Overdue in header-ul tabelului, cu badge numeric si stare activa.
+- filtrul Overdue foloseste aceeasi regula ca metrica: task-ul are due_date in trecut si nu este DONE.
+- Create Issue din /dashboard/tasks foloseste acum permisiunile proiectului curent, nu hook-ul fara projectId.
+- cand API-ul refuza crearea task-ului, dialogul afiseaza mesajul real din backend prin getApiErrorMessage.
+
+Fisiere batch AH:
+- frontend/app/dashboard/tasks/page.tsx
+- frontend/components/dashboard/create-task-dialog.tsx
+- PLAN_CONTINUARE_LICENTA_SDLC_HUB.txt
+
+Verificari batch AH:
+- npm run lint: OK
+- npm run build: OK, ramane doar warning-ul existent Next `--localstorage-file` fara path valid.
+- ./start.sh: OK
+- curl http://127.0.0.1:8000/health: OK
+- curl -I http://127.0.0.1:3000/dashboard/tasks: 200 OK
+
+Batch AI - TaskId design polish si SDLC checklist batch 30 mai 2026
+Implementat:
+- reparat layout-ul din pagina TaskId:
+  - butoanele Save changes si Refine & save sunt grupate si responsive in header.
+  - continutul principal foloseste minmax(0, 1fr), ca textele lungi sa nu impinga panoul lateral.
+  - comentariile lungi au break-words si nu mai rup cardurile.
+  - panoul Properties ramane sticky fara scrollbar intern pe tot aside-ul.
+- adaugat checklist SDLC predefinit in Create Issue:
+  - Planificare.
+  - Analiza.
+  - Design.
+  - Implementare.
+  - Integrare.
+  - Testare.
+- utilizatorul poate pregati checklist-ul SDLC inainte de creare, iar task-ul se creeaza direct cu subtasks.
+- adaugat buton SDLC checklist in pagina TaskId, cu deduplicare fata de subtasks deja existente.
+
+Fisiere batch AI:
+- frontend/app/dashboard/tasks/[taskId]/page.tsx
+- frontend/components/dashboard/create-task-dialog.tsx
+- PLAN_CONTINUARE_LICENTA_SDLC_HUB.txt
+
+Verificari batch AI:
+- npm run lint: OK
+- npm run build: OK, ramane doar warning-ul existent Next `--localstorage-file` fara path valid.
+- ./start.sh: OK
+- curl http://127.0.0.1:8000/health: OK
+- curl -I http://127.0.0.1:3000/dashboard/tasks: 200 OK
+- curl -I http://127.0.0.1:3000/dashboard/tasks/44: 200 OK
+
+Batch AJ - Tasks List View design repair batch 30 mai 2026
+Context:
+- utilizatorul a clarificat ca problema de design era in pagina /dashboard/tasks, nu in pagina TaskId.
+
+Implementat:
+- refacut header-ul de filtre din /dashboard/tasks ca sa nu mai fie inghesuit.
+- filtrele sunt acum intr-un rand dedicat, responsive:
+  - search pe latime mai mare.
+  - status.
+  - priority.
+  - assignee.
+  - planning/sprint.
+  - due date.
+- toate select-urile au latime completa in celula lor, astfel incat layout-ul ramane stabil pe desktop si pe viewport-uri mai mici.
+- metrica Overdue este acum actionabila:
+  - click pe card activeaza/dezactiveaza filtrul Overdue.
+  - cardul primeste stare vizuala activa cand filtrul este aplicat.
+- adaugat Clear filters:
+  - dezactivat cand nu exista filtre active.
+  - afiseaza numarul de filtre aplicate.
+- pastrat butonul rapid Overdue in header, cu badge numeric si stare activa.
+
+Fisiere batch AJ:
+- frontend/app/dashboard/tasks/page.tsx
+- PLAN_CONTINUARE_LICENTA_SDLC_HUB.txt
+
+Verificari batch AJ:
+- npm run lint: OK
+- npm run build: OK, ramane doar warning-ul existent Next `--localstorage-file` fara path valid.
+- ./start.sh: OK
+- curl http://127.0.0.1:8000/health: OK
+- curl -I http://127.0.0.1:3000/dashboard/tasks: 200 OK
+
+Batch AK - Task Detail layout repair batch 30 mai 2026
+Context:
+- utilizatorul a semnalat problema vizuala pe /dashboard/tasks/63: cardul sticky Properties se suprapunea peste Audit Log la scroll.
+
+Implementat:
+- pagina TaskId foloseste acum container mai lat, max-w-[1500px], pentru o compozitie mai aerisita.
+- grid-ul principal are coloana dreapta mai controlata:
+  - 340px pe xl.
+  - 380px pe 2xl.
+- Properties ramane sticky in dreapta, dar este singur in stack-ul sticky impreuna cu butonul "Open on board".
+- Audit Log a fost mutat din sidebar in coloana principala, sub Comments:
+  - nu se mai suprapune cu Properties.
+  - are spatiu real pentru text, avatar si valori vechi/noi.
+  - afiseaza stare goala clara cand nu exista evenimente.
+
+Fisiere batch AK:
+- frontend/app/dashboard/tasks/[taskId]/page.tsx
+- PLAN_CONTINUARE_LICENTA_SDLC_HUB.txt
+
+Verificari batch AK:
+- npm run lint: OK
+- npm run build: OK, ramane doar warning-ul existent Next `--localstorage-file` fara path valid.
+- curl http://127.0.0.1:8000/health: OK
+- curl -I http://127.0.0.1:3000/dashboard/tasks/63: 200 OK
+
+Batch AL - Project Audit Log UI batch 30 mai 2026
+Context:
+- dupa fix-ul de Task Detail, urmatoarea bucata utila din plan a fost facuta: audit-ul de proiect/metodologie exista in backend, dar nu era vizibil clar in UI.
+
+Implementat:
+- endpoint backend nou:
+  - GET /projects/{project_id}/audit-logs?limit=40.
+  - necesita membru in proiect si SETTINGS_MANAGE.
+  - returneaza actor, avatar, action, field, old_value, new_value, metadata si created_at.
+- update_project_settings scrie acum ProjectAuditLog pentru:
+  - schimbare nume proiect.
+  - schimbare descriere proiect.
+- Settings incarca auditLogs pentru proiectul curent.
+- Settings afiseaza card "Project audit trail":
+  - ultimele 8 evenimente.
+  - avatar actor.
+  - label human-readable pentru methodology/workflow/AI/settings.
+  - field si old/new values.
+  - stare goala cand nu exista evenimente.
+- dupa save project, save WIP limits si save/remove AI key, audit trail-ul se reincarca.
+
+Fisiere batch AL:
+- backend/routers/projects.py
+- frontend/services/project.ts
+- frontend/app/dashboard/settings/page.tsx
+- PLAN_CONTINUARE_LICENTA_SDLC_HUB.txt
+
+Verificari batch AL:
+- .venv/bin/python -m compileall backend: OK
+- npm run lint: OK
+- npm run build: OK, ramane doar warning-ul existent Next `--localstorage-file` fara path valid.
+- ./start.sh: OK
+- curl http://127.0.0.1:8000/health: OK
+- curl -I http://127.0.0.1:3000/dashboard/tasks/63: 200 OK
+- curl -I http://127.0.0.1:3000/dashboard/settings: 200 OK
+- curl -i http://127.0.0.1:8000/projects/1/audit-logs fara token: 401 OK, endpointul este protejat.
+
+Urmatoarea prioritate recomandata dupa batch AL:
+1. Verificare functionala manuala finala:
+   - login/register/verify, creare proiect, schimbare metodologie, create task, board drag/drop, calendar, admin console.
+2. Polish final pentru licenta:
+   - verificare texte/UI in romana/engleza unde apar inconsistente.
+   - mici ajustari de design pe paginile cele mai folosite daca apar probleme vizuale.
+
+
+7. OBSERVATII IMPORTANTE
+
+- Nu sterge fisierele .bak_batch si scripturile batch fara confirmare; au fost folosite ca backup/istoric.
+- Worktree-ul este murdar cu multe modificari si fisiere noi. Nu rula git reset/checkout.
+- Pentru modificari manuale foloseste apply_patch.
+- Dupa modificari backend cu modele/tabele, creeaza migrare Alembic si ruleaza upgrade head.
+- Dupa modificari frontend, ruleaza lint si build.
+- Daca schimbi comportamentul metodologiilor, verifica mereu toate cele trei moduri: SCRUM, KANBAN, SCRUMBAN.

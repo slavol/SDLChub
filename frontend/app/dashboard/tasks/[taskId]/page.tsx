@@ -50,6 +50,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { UserAvatar } from "@/components/user-avatar";
 import { useProjectPermissions } from "@/hooks/use-project-permissions";
 import { useRealtimeEvent } from "@/hooks/use-realtime-event";
+import { formatAiSource, isAiFallback } from "@/lib/ai-source";
 import { getApiErrorMessage } from "@/lib/api-error";
 import { cn } from "@/lib/utils";
 import {
@@ -67,6 +68,7 @@ import {
   getTaskDetail,
   estimateTaskStoryPoints,
   refineTaskSpec,
+  RefinedTaskSpec,
   TaskDetail,
   TaskPriority,
   TaskStatus,
@@ -79,6 +81,15 @@ import { useProjectStore } from "@/store/use-project-store";
 
 const priorityOptions = Object.values(TaskPriority);
 const statusOptions = Object.values(TaskStatus);
+
+const SDLC_CHECKLIST = [
+  "Planificare - clarificare scop si dependinte",
+  "Analiza - definire user story si criterii de acceptare",
+  "Design - propunere solutie tehnica si impact UI/API",
+  "Implementare - dezvoltare functionalitate",
+  "Integrare - conectare cu modulele existente",
+  "Testare - validare functionalitate si regresii",
+];
 
 const statusLabels: Record<TaskStatus, string> = {
   [TaskStatus.TODO]: "To Do",
@@ -159,6 +170,13 @@ export default function TaskDetailPage() {
   const [deletingComment, setDeletingComment] = useState(false);
   const [aiWorking, setAiWorking] = useState(false);
   const [aiSuggestedSubtasks, setAiSuggestedSubtasks] = useState<string[]>([]);
+  const [lastRefinedSpec, setLastRefinedSpec] = useState<RefinedTaskSpec | null>(null);
+  const [aiStatusMessage, setAiStatusMessage] = useState<{
+    tone: "success" | "fallback";
+    title: string;
+    detail: string;
+    source?: string;
+  } | null>(null);
 
   const supportsStoryPoints = project?.methodology !== "KANBAN";
   const { can } = useProjectPermissions(task?.project_id || project?.id || currentProject?.id);
@@ -273,9 +291,29 @@ export default function TaskDetailPage() {
         task.project_id
       );
 
-      patchLocalTask({ description: refined.markdown });
+      const updated = await updateTask(task.id, {
+        description: refined.markdown,
+      });
+
+      patchLocalTask(updated);
+      setLastRefinedSpec(refined);
       setAiSuggestedSubtasks(refined.suggested_subtasks || []);
-      toast.success("AI refined the issue definition.");
+      setAiStatusMessage({
+        tone: isAiFallback(refined.source) ? "fallback" : "success",
+        title: isAiFallback(refined.source)
+          ? "Spec saved with local fallback"
+          : "Spec refined and saved",
+        detail: isAiFallback(refined.source)
+          ? "Gemini was unavailable or returned an invalid response, so SDLC Hub used a structured local template."
+          : "The issue description was updated in the audit trail and synced to the team.",
+        source: refined.source,
+      });
+      await loadTask(false);
+      toast.success(
+        isAiFallback(refined.source)
+          ? "Spec saved with local fallback."
+          : "AI refined and saved the issue definition."
+      );
     } catch (error: unknown) {
       toast.error(getApiErrorMessage(error, "Could not refine this task."));
     } finally {
@@ -295,7 +333,11 @@ export default function TaskDetailPage() {
         task.project_id
       );
 
-      patchLocalTask({ story_points: estimate.story_points });
+      const updated = await updateTask(task.id, {
+        story_points: estimate.story_points,
+      });
+      patchLocalTask(updated);
+      await loadTask(false);
       toast.success(`AI estimate: ${estimate.story_points} story points`);
     } catch (error: unknown) {
       toast.error(getApiErrorMessage(error, "Could not estimate story points."));
@@ -329,6 +371,33 @@ export default function TaskDetailPage() {
       toast.success(`${nextSubtasks.length} AI subtasks added`);
     } catch (error: unknown) {
       toast.error(getApiErrorMessage(error, "Could not add AI subtasks."));
+    } finally {
+      setAiWorking(false);
+    }
+  };
+
+  const handleApplySdlcChecklist = async () => {
+    if (!task || !canUpdateTask) return;
+
+    setAiWorking(true);
+    try {
+      const existingTitles = new Set(
+        task.subtasks.map((subtask) => subtask.title.trim().toLowerCase())
+      );
+      const nextSubtasks = SDLC_CHECKLIST.filter(
+        (subtask) => !existingTitles.has(subtask.toLowerCase())
+      );
+
+      if (nextSubtasks.length === 0) {
+        toast.info("SDLC checklist already exists on this task.");
+        return;
+      }
+
+      await Promise.all(nextSubtasks.map((subtask) => createSubtask(task.id, subtask)));
+      await loadTask(false);
+      toast.success(`${nextSubtasks.length} SDLC subtasks added`);
+    } catch (error: unknown) {
+      toast.error(getApiErrorMessage(error, "Could not add SDLC subtasks."));
     } finally {
       setAiWorking(false);
     }
@@ -458,7 +527,7 @@ export default function TaskDetailPage() {
   }
 
   return (
-    <div className="mx-auto max-w-7xl space-y-7 p-6 text-slate-50 md:p-8">
+    <div className="mx-auto max-w-[1500px] space-y-7 p-5 text-slate-50 md:p-7 xl:p-8">
       <section className="overflow-hidden rounded-3xl border border-slate-800 bg-slate-900/80 shadow-2xl shadow-slate-950/30">
         <div className="border-b border-slate-800 bg-slate-950/45 px-6 py-5">
           <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
@@ -510,33 +579,35 @@ export default function TaskDetailPage() {
               </p>
             </div>
 
-            <Button
-              onClick={handleSave}
-              disabled={saving || !canSaveTask}
-              className="bg-blue-600 hover:bg-blue-700"
-            >
-              {saving ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              ) : (
-                <Save className="mr-2 h-4 w-4" />
-              )}
-              Save changes
-            </Button>
-            {canUseAi && canUpdateTask && (
+            <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row lg:shrink-0">
               <Button
-                variant="outline"
-                onClick={handleRefineWithAi}
-                disabled={aiWorking}
-                className="border-slate-700 bg-slate-950/70 text-slate-200 hover:bg-slate-900"
+                onClick={handleSave}
+                disabled={saving || !canSaveTask}
+                className="h-11 bg-blue-600 hover:bg-blue-700"
               >
-                {aiWorking ? (
+                {saving ? (
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 ) : (
-                  <Sparkles className="mr-2 h-4 w-4" />
+                  <Save className="mr-2 h-4 w-4" />
                 )}
-                AI refine
+                Save changes
               </Button>
-            )}
+              {canUseAi && canUpdateTask && (
+                <Button
+                  variant="outline"
+                  onClick={handleRefineWithAi}
+                  disabled={aiWorking}
+                  className="h-11 border-slate-700 bg-slate-950/70 text-slate-200 hover:bg-slate-900"
+                >
+                  {aiWorking ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <Sparkles className="mr-2 h-4 w-4" />
+                  )}
+                  Refine & save
+                </Button>
+              )}
+            </div>
           </div>
         </div>
 
@@ -591,8 +662,8 @@ export default function TaskDetailPage() {
         </div>
       </section>
 
-      <div className="grid gap-6 xl:grid-cols-[1fr_390px]">
-        <main className="space-y-6">
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_340px] 2xl:grid-cols-[minmax(0,1fr)_380px]">
+        <main className="min-w-0 space-y-6">
           <Card className="border-slate-800 bg-slate-900/75 text-slate-50 shadow-xl shadow-slate-950/20">
             <CardHeader className="border-b border-slate-800/80">
               <CardTitle className="flex items-center gap-2">
@@ -626,7 +697,7 @@ export default function TaskDetailPage() {
                       ) : (
                         <Sparkles className="mr-1 h-3 w-3" />
                       )}
-                      Refine spec
+                      Refine & save
                     </button>
                   )}
                 </div>
@@ -639,6 +710,34 @@ export default function TaskDetailPage() {
                   className="min-h-[260px] resize-y border-slate-700 bg-slate-950 leading-6 text-slate-100"
                   placeholder="User story, acceptance criteria, technical notes..."
                 />
+                {aiStatusMessage && (
+                  <div
+                    className={cn(
+                      "rounded-2xl border p-4 text-sm",
+                      aiStatusMessage.tone === "fallback"
+                        ? "border-amber-500/25 bg-amber-500/10 text-amber-50"
+                        : "border-emerald-500/20 bg-emerald-500/10 text-emerald-50"
+                    )}
+                  >
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                      <p className="font-semibold">{aiStatusMessage.title}</p>
+                      {aiStatusMessage.source && (
+                        <Badge
+                          variant="outline"
+                          className={cn(
+                            "w-fit border text-xs",
+                            aiStatusMessage.tone === "fallback"
+                              ? "border-amber-400/30 bg-amber-500/10 text-amber-100"
+                              : "border-emerald-400/30 bg-emerald-500/10 text-emerald-100"
+                          )}
+                        >
+                          {formatAiSource(aiStatusMessage.source)}
+                        </Badge>
+                      )}
+                    </div>
+                    <p className="mt-2 leading-6 opacity-80">{aiStatusMessage.detail}</p>
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -654,9 +753,26 @@ export default function TaskDetailPage() {
                   Checklist progress for this issue.
                 </p>
               </div>
-              <Badge className="bg-slate-800 text-slate-300">
-                {completedSubtasks}/{task.subtasks.length} done
-              </Badge>
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge className="bg-slate-800 text-slate-300">
+                  {completedSubtasks}/{task.subtasks.length} done
+                </Badge>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={handleApplySdlcChecklist}
+                  disabled={!canUpdateTask || aiWorking}
+                  className="border-slate-700 bg-slate-950/70 text-slate-200 hover:bg-slate-900"
+                >
+                  {aiWorking ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <CheckCircle2 className="mr-2 h-4 w-4" />
+                  )}
+                  SDLC checklist
+                </Button>
+              </div>
             </CardHeader>
             <CardContent className="space-y-5 p-5">
               {aiSuggestedSubtasks.length > 0 && (
@@ -668,6 +784,7 @@ export default function TaskDetailPage() {
                       </p>
                       <p className="mt-1 text-xs text-emerald-100/70">
                         Apply these as real checklist items.
+                        {lastRefinedSpec?.source ? ` Source: ${formatAiSource(lastRefinedSpec.source)}.` : ""}
                       </p>
                     </div>
                     <Button
@@ -872,7 +989,7 @@ export default function TaskDetailPage() {
                         </div>
                       </div>
                     ) : (
-                      <p className="whitespace-pre-wrap text-sm leading-6 text-slate-300">
+                      <p className="whitespace-pre-wrap break-words text-sm leading-6 text-slate-300">
                         {comment.body}
                       </p>
                     )}
@@ -909,35 +1026,101 @@ export default function TaskDetailPage() {
               </div>
             </CardContent>
           </Card>
-        </main>
 
-        <aside className="space-y-6 xl:sticky xl:top-6 xl:max-h-[calc(100vh-3rem)] xl:self-start xl:overflow-y-auto xl:pr-1">
           <Card className="border-slate-800 bg-slate-900/75 text-slate-50 shadow-xl shadow-slate-950/20">
             <CardHeader className="border-b border-slate-800/80">
-              <CardTitle className="text-base">Properties</CardTitle>
+              <CardTitle className="flex items-center gap-2">
+                <History className="h-5 w-5 text-violet-300" />
+                Audit Log
+              </CardTitle>
+              <p className="text-sm text-slate-500">
+                Immutable activity trail for this issue.
+              </p>
             </CardHeader>
-            <CardContent className="space-y-4 p-5">
-              <div className="space-y-2">
-                <Label>Status</Label>
-                <Select
-                  value={task.status}
-                  onValueChange={(value) =>
-                    patchLocalTask({ status: value as TaskStatus })
-                  }
-                  disabled={!canMoveTask}
+            <CardContent className="space-y-3 p-5">
+              {[...task.audit_logs].reverse().map((log) => (
+                <div
+                  key={log.id}
+                  className="rounded-2xl border border-slate-800 bg-slate-950/75 p-4"
                 >
-                  <SelectTrigger className="h-11 border-slate-700 bg-slate-950">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent className="border-slate-800 bg-slate-950 text-slate-200">
-                    {statusOptions.map((status) => (
-                      <SelectItem key={status} value={status}>
-                        {statusLabels[status]}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+                  <div className="flex items-start gap-3">
+                    <UserAvatar
+                      name={log.actor_name || "System"}
+                      src={log.actor_avatar_url}
+                      className="h-9 w-9"
+                      fallbackClassName="bg-violet-500/10 text-[10px] text-violet-200"
+                    />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                        <p className="font-medium text-slate-200">
+                          {actionLabel(log.action)}
+                        </p>
+                        <p className="text-xs text-slate-600">
+                          {formatDate(log.created_at)}
+                        </p>
+                      </div>
+                      <p className="text-xs text-slate-500">
+                        by {log.actor_name || "System"}
+                      </p>
+                      {log.field && (
+                        <p className="mt-3 break-words rounded-xl bg-slate-900 px-3 py-2 text-xs text-slate-400">
+                          {log.field}:{" "}
+                          <span className="text-rose-300">
+                            {log.old_value || "-"}
+                          </span>
+                          {" -> "}
+                          <span className="text-emerald-300">
+                            {log.new_value || "-"}
+                          </span>
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))}
+
+              {task.audit_logs.length === 0 && (
+                <div className="rounded-2xl border border-dashed border-slate-800 bg-slate-950/60 p-8 text-center">
+                  <p className="text-sm font-medium text-slate-400">
+                    No audit events yet
+                  </p>
+                  <p className="mt-1 text-xs text-slate-600">
+                    Changes will appear here as the issue evolves.
+                  </p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </main>
+
+        <aside className="xl:self-start">
+          <div className="space-y-4 xl:sticky xl:top-6">
+            <Card className="border-slate-800 bg-slate-900/75 text-slate-50 shadow-xl shadow-slate-950/20">
+              <CardHeader className="border-b border-slate-800/80">
+                <CardTitle className="text-base">Properties</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4 p-5">
+                <div className="space-y-2">
+                  <Label>Status</Label>
+                  <Select
+                    value={task.status}
+                    onValueChange={(value) =>
+                      patchLocalTask({ status: value as TaskStatus })
+                    }
+                    disabled={!canMoveTask}
+                  >
+                    <SelectTrigger className="h-11 border-slate-700 bg-slate-950">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent className="border-slate-800 bg-slate-950 text-slate-200">
+                      {statusOptions.map((status) => (
+                        <SelectItem key={status} value={status}>
+                          {statusLabels[status]}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
 
               <div className="space-y-2">
                 <Label>Priority</Label>
@@ -1081,56 +1264,6 @@ export default function TaskDetailPage() {
             </CardContent>
           </Card>
 
-          <Card className="border-slate-800 bg-slate-900/75 text-slate-50 shadow-xl shadow-slate-950/20">
-            <CardHeader className="border-b border-slate-800/80">
-              <CardTitle className="flex items-center gap-2 text-base">
-                <History className="h-5 w-5 text-violet-300" />
-                Audit Log
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3 p-5">
-              {[...task.audit_logs].reverse().map((log) => (
-                <div
-                  key={log.id}
-                  className="rounded-2xl border border-slate-800 bg-slate-950/75 p-4"
-                >
-                  <div className="flex items-start gap-3">
-                    <UserAvatar
-                      name={log.actor_name || "System"}
-                      src={log.actor_avatar_url}
-                      className="h-8 w-8"
-                      fallbackClassName="bg-violet-500/10 text-[10px] text-violet-200"
-                    />
-                    <div className="min-w-0 flex-1">
-                      <p className="font-medium text-slate-200">
-                        {actionLabel(log.action)}
-                      </p>
-                      <p className="text-xs text-slate-500">
-                        by {log.actor_name || "System"} · {formatDate(log.created_at)}
-                      </p>
-                      {log.field && (
-                        <p className="mt-3 break-words rounded-xl bg-slate-900 px-3 py-2 text-xs text-slate-400">
-                          {log.field}:{" "}
-                          <span className="text-rose-300">
-                            {log.old_value || "-"}
-                          </span>
-                          {" -> "}
-                          <span className="text-emerald-300">
-                            {log.new_value || "-"}
-                          </span>
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              ))}
-
-              {task.audit_logs.length === 0 && (
-                <p className="text-sm text-slate-500">No audit events yet.</p>
-              )}
-            </CardContent>
-          </Card>
-
           <Button
             variant="outline"
             className="w-full border-slate-700 bg-slate-950/60 text-slate-200 hover:bg-slate-900"
@@ -1141,6 +1274,7 @@ export default function TaskDetailPage() {
               <ArrowRight className="ml-2 h-4 w-4" />
             </Link>
           </Button>
+          </div>
         </aside>
       </div>
 

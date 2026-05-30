@@ -24,7 +24,7 @@ export interface Task {
     priority: TaskPriority;
     story_points?: number | null;
     due_date?: string | null;
-    assignee_id?: number;
+    assignee_id?: number | null;
     assignee_name?: string | null;
     assignee_avatar_url?: string | null;
     team_id?: number | null;

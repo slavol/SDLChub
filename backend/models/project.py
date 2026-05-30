@@ -17,6 +17,12 @@ class Project(Base):
     methodology = Column(String, default="SCRUM")
     workflow_config = Column(Text, nullable=True)
     is_archived = Column(Boolean, default=False, nullable=False)
+    ai_provider_mode = Column(String, default="PLATFORM", nullable=False)
+    ai_provider = Column(String, default="GEMINI", nullable=False)
+    ai_provider_name = Column(String, nullable=True)
+    ai_base_url = Column(String, nullable=True)
+    ai_model = Column(String, nullable=True)
+    ai_api_key_encrypted = Column(Text, nullable=True)
     owner_id = Column(Integer, ForeignKey("users.id")) # <--- Asta exista deja
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 

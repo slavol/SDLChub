@@ -251,6 +251,25 @@ function MemberWorkloadCard({
           </div>
         </div>
 
+        {member.risk_factors && member.risk_factors.length > 0 && (
+          <div className="mt-4 rounded-2xl border border-slate-800 bg-slate-950/70 p-3">
+            <p className="mb-2 text-xs font-medium uppercase tracking-[0.18em] text-slate-500">
+              Capacity signals
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {member.risk_factors.map((factor) => (
+                <Badge
+                  key={`${member.user_id}-${factor}`}
+                  variant="outline"
+                  className="border-slate-700 bg-slate-900/70 text-slate-300"
+                >
+                  {factor}
+                </Badge>
+              ))}
+            </div>
+          </div>
+        )}
+
         <div className="mt-5 space-y-3">
           {member.tasks.slice(0, 4).map((task) => (
             <TaskMiniCard
@@ -463,6 +482,12 @@ export default function WorkloadPage() {
       icon: Users,
       danger: workload.summary.overloaded_members > 0,
     },
+    {
+      label: "Stale flow",
+      value: workload.summary.stale_flow_tasks || 0,
+      icon: CalendarClock,
+      danger: (workload.summary.stale_flow_tasks || 0) > 0,
+    },
   ];
 
   return (
@@ -507,7 +532,7 @@ export default function WorkloadPage() {
         </div>
       </div>
 
-      <div className="mb-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <div className="mb-6 grid gap-4 md:grid-cols-2 xl:grid-cols-5">
         {summaryCards.map((item) => {
           const Icon = item.icon;
 

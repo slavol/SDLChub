@@ -4,7 +4,8 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { getMyProjects } from "@/services/project";
 import { getProjectTasks, updateTask, Task } from "@/services/task";
-import { getProjectSprints, createSprint, startSprint, Sprint } from "@/services/sprint";
+import { getProjectSprints, createSprint, startSprint, generateSprintReleaseNotes, Sprint, SprintReleaseNotes } from "@/services/sprint";
+import { createDocumentationPage } from "@/services/documentation";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
@@ -14,6 +15,7 @@ import { CreateTaskDialog } from "@/components/dashboard/create-task-dialog";
 import { UserAvatar } from "@/components/user-avatar";
 import { useProjectPermissions } from "@/hooks/use-project-permissions";
 import { useRealtimeEvent } from "@/hooks/use-realtime-event";
+import { formatAiSource } from "@/lib/ai-source";
 import {
     Loader2,
     ChevronRight,
@@ -25,6 +27,11 @@ import {
     Flag,
     KanbanSquare,
     PlayCircle,
+    Sparkles,
+    FileText,
+    Copy,
+    Download,
+    BookOpen,
     UserRound
 } from "lucide-react";
 import {
@@ -200,11 +207,17 @@ export default function BacklogPage() {
     const [newSprintStartDate, setNewSprintStartDate] = useState("");
     const [newSprintEndDate, setNewSprintEndDate] = useState("");
     const [isCreatingSprint, setIsCreatingSprint] = useState(false);
+    const [releaseNotes, setReleaseNotes] = useState<SprintReleaseNotes | null>(null);
+    const [releaseNotesSprintName, setReleaseNotesSprintName] = useState("");
+    const [releaseNotesOpen, setReleaseNotesOpen] = useState(false);
+    const [releaseNotesSprintId, setReleaseNotesSprintId] = useState<number | null>(null);
+    const [publishingReleaseNotes, setPublishingReleaseNotes] = useState(false);
     const { can } = useProjectPermissions(projectId);
     const canCreateTask = can("TASK_CREATE");
     const canCreateSprint = can("SPRINT_CREATE");
     const canStartSprint = can("SPRINT_START");
     const canPlanTasks = can("TASK_UPDATE");
+    const canUseAi = can("AI_USE");
 
     const loadBacklog = useCallback(
         async (showLoader = true) => {
@@ -297,6 +310,69 @@ export default function BacklogPage() {
             setSprints(sprints.map(s => s.id === sprintId ? { ...s, is_active: true } : s));
         } catch (error: unknown) {
             toast.error(getApiErrorMessage(error, "Failed to start sprint"));
+        }
+    };
+
+    const handleGenerateReleaseNotes = async (sprint: Sprint) => {
+        if (!canUseAi) return;
+
+        setReleaseNotesSprintId(sprint.id);
+        setReleaseNotesSprintName(sprint.name);
+        setReleaseNotesOpen(true);
+        setReleaseNotes(null);
+
+        try {
+            const notes = await generateSprintReleaseNotes(sprint.id);
+            setReleaseNotes(notes);
+            toast.success("Release notes generated.");
+        } catch (error: unknown) {
+            toast.error(getApiErrorMessage(error, "Could not generate release notes."));
+            setReleaseNotesOpen(false);
+        } finally {
+            setReleaseNotesSprintId(null);
+        }
+    };
+
+    const releaseNotesFileName = `${releaseNotesSprintName || "sprint"}-release-notes`
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/(^-|-$)/g, "");
+
+    const handleCopyReleaseNotes = async () => {
+        if (!releaseNotes?.markdown) return;
+
+        await navigator.clipboard.writeText(releaseNotes.markdown);
+        toast.success("Release notes copied.");
+    };
+
+    const handleDownloadReleaseNotes = () => {
+        if (!releaseNotes?.markdown) return;
+
+        const blob = new Blob([releaseNotes.markdown], { type: "text/markdown;charset=utf-8" });
+        const url = window.URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = `${releaseNotesFileName || "release-notes"}.md`;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        window.URL.revokeObjectURL(url);
+    };
+
+    const handlePublishReleaseNotes = async () => {
+        if (!projectId || !releaseNotes?.markdown) return;
+
+        setPublishingReleaseNotes(true);
+        try {
+            await createDocumentationPage(projectId, {
+                title: `Release Notes - ${releaseNotesSprintName || "Sprint"}`,
+                content: releaseNotes.markdown,
+            });
+            toast.success("Release notes published to Documentation.");
+        } catch (error: unknown) {
+            toast.error(getApiErrorMessage(error, "Could not publish release notes."));
+        } finally {
+            setPublishingReleaseNotes(false);
         }
     };
 
@@ -495,6 +571,22 @@ export default function BacklogPage() {
                                 </div>
                             </div>
                             <div className="flex gap-2">
+                                {canUseAi && (
+                                    <Button
+                                        size="sm"
+                                        variant="outline"
+                                        className="border-violet-500/25 bg-violet-500/10 text-violet-100 hover:bg-violet-500/15"
+                                        onClick={() => handleGenerateReleaseNotes(sprint)}
+                                        disabled={releaseNotesSprintId === sprint.id}
+                                    >
+                                        {releaseNotesSprintId === sprint.id ? (
+                                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                        ) : (
+                                            <Sparkles className="mr-2 h-4 w-4" />
+                                        )}
+                                        Release Notes
+                                    </Button>
+                                )}
                                 {!sprint.is_active && canStartSprint && (
                                     <Button
                                         size="sm"
@@ -552,6 +644,77 @@ export default function BacklogPage() {
                     )}
                 </div>
             </section>
+
+            <Dialog open={releaseNotesOpen} onOpenChange={setReleaseNotesOpen}>
+                <DialogContent className="max-w-3xl border-slate-800 bg-slate-950 text-white">
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2">
+                            <FileText className="h-5 w-5 text-violet-300" />
+                            Release Notes · {releaseNotesSprintName || "Sprint"}
+                        </DialogTitle>
+                    </DialogHeader>
+
+                    {!releaseNotes ? (
+                        <div className="flex min-h-56 items-center justify-center rounded-2xl border border-slate-800 bg-slate-900/60">
+                            <div className="text-center">
+                                <Loader2 className="mx-auto mb-3 h-8 w-8 animate-spin text-violet-300" />
+                                <p className="text-sm text-slate-400">Generating sprint summary...</p>
+                            </div>
+                        </div>
+                    ) : (
+                        <div className="space-y-4">
+                            <div className="rounded-2xl border border-violet-500/20 bg-violet-500/10 p-4">
+                                <div className="mb-2 flex items-center justify-between gap-3">
+                                    <p className="text-sm font-semibold text-white">Executive summary</p>
+                                    <Badge className="border-violet-500/25 bg-violet-500/10 text-violet-200">
+                                        {formatAiSource(releaseNotes.source)}
+                                    </Badge>
+                                </div>
+                                <p className="text-sm leading-6 text-violet-50/80">{releaseNotes.summary}</p>
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                                <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={handleCopyReleaseNotes}
+                                    className="border-slate-700 bg-slate-950 text-slate-200 hover:bg-slate-800"
+                                >
+                                    <Copy className="mr-2 h-4 w-4" />
+                                    Copy markdown
+                                </Button>
+                                <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={handleDownloadReleaseNotes}
+                                    className="border-slate-700 bg-slate-950 text-slate-200 hover:bg-slate-800"
+                                >
+                                    <Download className="mr-2 h-4 w-4" />
+                                    Export .md
+                                </Button>
+                                <Button
+                                    type="button"
+                                    size="sm"
+                                    onClick={handlePublishReleaseNotes}
+                                    disabled={publishingReleaseNotes}
+                                    className="bg-violet-600 text-white hover:bg-violet-500"
+                                >
+                                    {publishingReleaseNotes ? (
+                                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                    ) : (
+                                        <BookOpen className="mr-2 h-4 w-4" />
+                                    )}
+                                    Publish to docs
+                                </Button>
+                            </div>
+                            <pre className="max-h-[440px] overflow-auto whitespace-pre-wrap rounded-2xl border border-slate-800 bg-slate-900/80 p-4 text-sm leading-6 text-slate-200">
+                                {releaseNotes.markdown}
+                            </pre>
+                        </div>
+                    )}
+                </DialogContent>
+            </Dialog>
         </div>
     );
 }

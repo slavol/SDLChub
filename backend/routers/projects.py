@@ -3,7 +3,7 @@ import secrets
 from datetime import datetime, timedelta
 from typing import List
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -24,9 +24,12 @@ from backend.schemas.project import (
     ProjectOut,
 )
 from backend.services.ai_advisor import get_methodology_recommendation, get_role_suggestions
+from backend.services.ai_service import test_ai_provider
+from backend.config import get_settings
 from backend.utils.email import send_project_invitation_email
 from backend.utils.permissions import check_project_permission, parse_role_permissions, require_project_permission
 from backend.utils.ai_usage import record_ai_usage
+from backend.utils.secret_crypto import decrypt_secret, encrypt_secret
 
 
 router = APIRouter(prefix="/projects", tags=["Projects"])
@@ -473,6 +476,16 @@ class WorkflowConfigUpdateRequest(BaseModel):
     wip_limits: dict[str, int | None] | None = None
 
 
+class ProjectAiSettingsUpdateRequest(BaseModel):
+    mode: str
+    provider: str = "GEMINI"
+    provider_name: str | None = None
+    base_url: str | None = None
+    model: str | None = None
+    api_key: str | None = None
+    clear_api_key: bool = False
+
+
 def _parse_permissions(raw_permissions: str | None) -> dict:
     if not raw_permissions:
         return {}
@@ -549,8 +562,40 @@ def _serialize_project(project: Project) -> dict:
         "methodology": project.methodology,
         "workflow_config": _parse_workflow_config(project.workflow_config),
         "is_archived": project.is_archived,
+        "ai_config": {
+            "mode": project.ai_provider_mode or "PLATFORM",
+            "provider": project.ai_provider or "GEMINI",
+            "provider_name": project.ai_provider_name or project.ai_provider or "Gemini",
+            "base_url": project.ai_base_url,
+            "model": project.ai_model,
+            "has_project_key": bool(project.ai_api_key_encrypted),
+            "platform_configured": bool(get_settings().gemini_api_key),
+        },
         "owner_id": project.owner_id,
         "created_at": project.created_at,
+    }
+
+
+def _serialize_project_audit_log(log: ProjectAuditLog) -> dict:
+    metadata = None
+    if log.metadata_json:
+        try:
+            metadata = json.loads(log.metadata_json)
+        except Exception:
+            metadata = None
+
+    return {
+        "id": log.id,
+        "project_id": log.project_id,
+        "actor_id": log.actor_id,
+        "actor_name": log.actor.full_name if log.actor else None,
+        "actor_avatar_url": log.actor.avatar_url if log.actor else None,
+        "action": log.action,
+        "field": log.field,
+        "old_value": log.old_value,
+        "new_value": log.new_value,
+        "metadata": metadata,
+        "created_at": log.created_at,
     }
 
 
@@ -811,6 +856,27 @@ def apply_methodology_transition(
         "transition": _build_methodology_transition_preview(db, project, target_methodology),
         "message": f"Methodology changed from {old_methodology} to {target_methodology}.",
     }
+
+
+@router.get("/{project_id}/audit-logs")
+def get_project_audit_logs(
+    project_id: int,
+    limit: int = Query(default=40, ge=1, le=100),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    ensure_project_member(project_id, current_user.id, db)
+    require_project_permission(db, current_user.id, project_id, "SETTINGS_MANAGE")
+
+    logs = (
+        db.query(ProjectAuditLog)
+        .filter(ProjectAuditLog.project_id == project_id)
+        .order_by(ProjectAuditLog.created_at.desc(), ProjectAuditLog.id.desc())
+        .limit(limit)
+        .all()
+    )
+
+    return [_serialize_project_audit_log(log) for log in logs]
 
 
 def _pdf_safe(value) -> str:
@@ -1123,12 +1189,37 @@ def update_project_settings(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found.")
 
     update_data = data.model_dump(exclude_unset=True)
+    audit_entries = []
 
     if "name" in update_data and update_data["name"] is not None:
-        project.name = update_data["name"].strip()
+        next_name = update_data["name"].strip()
+        if next_name != project.name:
+            audit_entries.append(
+                ProjectAuditLog(
+                    project_id=project.id,
+                    actor_id=current_user.id,
+                    action="PROJECT_SETTINGS_UPDATED",
+                    field="name",
+                    old_value=project.name,
+                    new_value=next_name,
+                )
+            )
+            project.name = next_name
 
     if "description" in update_data:
-        project.description = update_data["description"]
+        next_description = update_data["description"]
+        if (next_description or "") != (project.description or ""):
+            audit_entries.append(
+                ProjectAuditLog(
+                    project_id=project.id,
+                    actor_id=current_user.id,
+                    action="PROJECT_SETTINGS_UPDATED",
+                    field="description",
+                    old_value=project.description,
+                    new_value=next_description,
+                )
+            )
+            project.description = next_description
 
     if "methodology" in update_data and update_data["methodology"] is not None:
         methodology = _normalize_methodology(update_data["methodology"])
@@ -1137,6 +1228,9 @@ def update_project_settings(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Use the methodology transition endpoint to change workflow mode.",
             )
+
+    if audit_entries:
+        db.add_all(audit_entries)
 
     db.commit()
     db.refresh(project)
@@ -1148,6 +1242,170 @@ def update_project_settings(
     )
 
     return serialized_project
+
+
+def _require_project_owner(project: Project, current_user: User) -> None:
+    if project.owner_id == current_user.id or current_user.is_global_admin:
+        return
+
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="Only the project owner can manage project AI credentials.",
+    )
+
+
+def _serialize_project_ai_settings(project: Project) -> dict:
+    return {
+        "mode": project.ai_provider_mode or "PLATFORM",
+        "provider": project.ai_provider or "GEMINI",
+        "provider_name": project.ai_provider_name or project.ai_provider or "Gemini",
+        "base_url": project.ai_base_url,
+        "model": project.ai_model,
+        "has_project_key": bool(project.ai_api_key_encrypted),
+        "platform_configured": bool(get_settings().gemini_api_key),
+    }
+
+
+@router.get("/{project_id}/ai-settings")
+def get_project_ai_settings(
+    project_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    ensure_project_member(project_id, current_user.id, db)
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found.")
+
+    _require_project_owner(project, current_user)
+    return _serialize_project_ai_settings(project)
+
+
+@router.put("/{project_id}/ai-settings")
+def update_project_ai_settings(
+    project_id: int,
+    data: ProjectAiSettingsUpdateRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    ensure_project_member(project_id, current_user.id, db)
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found.")
+
+    _require_project_owner(project, current_user)
+
+    mode = data.mode.upper()
+    provider = data.provider.upper()
+    if mode not in {"PLATFORM", "PROJECT"}:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid AI mode.")
+    if provider not in {"GEMINI", "OPENAI_COMPATIBLE"}:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid AI provider type.")
+
+    provider_name = (data.provider_name or provider.replace("_", " ").title()).strip()
+    if len(provider_name) > 80:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Provider name is too long.")
+
+    base_url = data.base_url.strip() if data.base_url else None
+    model = data.model.strip() if data.model else None
+
+    if mode == "PROJECT" and provider == "OPENAI_COMPATIBLE":
+        if not base_url:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="OpenAI-compatible providers require a base URL.",
+            )
+        if not model:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="OpenAI-compatible providers require a model name.",
+            )
+
+    if data.clear_api_key:
+        project.ai_api_key_encrypted = None
+
+    if data.api_key and data.api_key.strip():
+        project.ai_api_key_encrypted = encrypt_secret(data.api_key.strip())
+
+    if mode == "PROJECT" and not project.ai_api_key_encrypted:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Add a project API key before switching to project-owned AI.",
+        )
+
+    project.ai_provider_mode = mode
+    project.ai_provider = provider
+    project.ai_provider_name = provider_name
+    project.ai_base_url = base_url if provider == "OPENAI_COMPATIBLE" else None
+    project.ai_model = model
+
+    db.add(
+        ProjectAuditLog(
+            project_id=project.id,
+            actor_id=current_user.id,
+            action="AI_SETTINGS_UPDATED",
+            field="ai_provider_mode",
+            old_value=None,
+            new_value=f"{mode}:{provider}:{provider_name}",
+        )
+    )
+    db.commit()
+    db.refresh(project)
+
+    serialized_project = _serialize_project(project)
+    broadcast_project_event(
+        project.id,
+        "project.changed",
+        {"action": "ai_settings_updated", "project": serialized_project},
+    )
+
+    return _serialize_project_ai_settings(project)
+
+
+@router.post("/{project_id}/ai-settings/test")
+def test_project_ai_settings(
+    project_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    ensure_project_member(project_id, current_user.id, db)
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found.")
+
+    _require_project_owner(project, current_user)
+
+    if (project.ai_provider_mode or "PLATFORM") == "PLATFORM":
+        configured = bool(get_settings().gemini_api_key)
+        return {
+            "ok": configured,
+            "message": "Platform AI key is configured." if configured else "Platform AI key is not configured.",
+        }
+
+    api_key = decrypt_secret(project.ai_api_key_encrypted)
+    if not api_key:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Project AI key is missing or cannot be decrypted.",
+        )
+
+    try:
+        ok = test_ai_provider(
+            provider=project.ai_provider or "GEMINI",
+            api_key=api_key,
+            base_url=project.ai_base_url,
+            model=project.ai_model,
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"AI provider test failed: {exc}",
+        ) from exc
+
+    return {
+        "ok": ok,
+        "message": "Project AI provider is valid." if ok else "Project AI provider did not return the expected response.",
+    }
 
 
 @router.put("/{project_id}/workflow")
@@ -1885,6 +2143,244 @@ def _task_summary(task: Task) -> dict:
     }
 
 
+RISK_COMMENT_KEYWORDS = (
+    "blocked",
+    "blocker",
+    "blocking",
+    "stuck",
+    "cannot",
+    "can't",
+    "issue",
+    "problem",
+    "fails",
+    "failing",
+    "broken",
+    "urgent",
+    "dependency",
+    "waiting",
+    "blocaj",
+    "blocat",
+    "blocata",
+    "nu merge",
+    "eroare",
+    "urgent",
+    "astept",
+)
+
+
+def _dashboard_plain_datetime(value):
+    if not value:
+        return None
+    return value.replace(tzinfo=None) if getattr(value, "tzinfo", None) else value
+
+
+def _dashboard_age_days(start, end) -> int:
+    start_value = _dashboard_plain_datetime(start)
+    end_value = _dashboard_plain_datetime(end)
+    if not start_value or not end_value:
+        return 0
+    return max(0, int((end_value - start_value).total_seconds() // 86400))
+
+
+def _dashboard_task_label(task: Task) -> str:
+    return f"{task.key or f'TASK-{task.id}'}"
+
+
+def _dashboard_risk_card(
+    *,
+    title: str,
+    value: str,
+    severity: str,
+    detail: str,
+    category: str,
+    task: Task | None = None,
+    age_days: int | None = None,
+) -> dict:
+    payload = {
+        "title": title,
+        "value": value,
+        "severity": severity,
+        "detail": detail,
+        "category": category,
+    }
+    if task:
+        payload.update(
+            {
+                "task_id": task.id,
+                "task_key": task.key,
+                "task_title": task.title,
+                "status": _enum_value(task.status),
+                "priority": _enum_value(task.priority),
+                "assignee_name": task.assignee_name,
+            }
+        )
+    if age_days is not None:
+        payload["age_days"] = age_days
+    return payload
+
+
+def _build_dashboard_risk_cards(
+    *,
+    project: Project,
+    tasks: list[Task],
+    active_sprint: Sprint | None,
+    now: datetime,
+    status_changed_at_by_task: dict[int, datetime],
+    latest_comments_by_task: dict[int, TaskComment],
+    overdue_tasks: int,
+    unassigned_tasks: int,
+    critical_open: int,
+    review_tasks: int,
+) -> list[dict]:
+    cards: list[dict] = []
+    active_items = [task for task in tasks if _enum_value(task.status) != "DONE"]
+
+    if project.methodology in {"SCRUM", "SCRUMBAN"} and not active_sprint:
+        cards.append(
+            _dashboard_risk_card(
+                title="No active sprint",
+                value="Planning",
+                severity="medium",
+                category="methodology",
+                detail="Scrum/Scrumban flow has no active sprint, so planning and sprint reporting are incomplete.",
+            )
+        )
+
+    overdue_items = sorted(
+        [
+            task for task in active_items
+            if _dashboard_plain_datetime(task.due_date)
+            and _dashboard_plain_datetime(task.due_date) < now
+        ],
+        key=lambda task: (
+            _enum_value(task.priority) != "CRITICAL",
+            _dashboard_plain_datetime(task.due_date) or datetime.max,
+        ),
+    )
+    for task in overdue_items[:3]:
+        late_days = max(1, _dashboard_age_days(task.due_date, now))
+        cards.append(
+            _dashboard_risk_card(
+                title=f"Overdue: {_dashboard_task_label(task)}",
+                value=f"{late_days}d late",
+                severity="high" if _enum_value(task.priority) in {"HIGH", "CRITICAL"} else "medium",
+                category="deadline",
+                task=task,
+                age_days=late_days,
+                detail=(
+                    f"{task.title} is past its due date"
+                    f"{f' and assigned to {task.assignee_name}' if task.assignee_name else ' without a clear owner'}."
+                ),
+            )
+        )
+
+    comment_signals = []
+    for task in active_items:
+        comment = latest_comments_by_task.get(task.id)
+        if not comment:
+            continue
+        body = (comment.body or "").lower()
+        if any(keyword in body for keyword in RISK_COMMENT_KEYWORDS):
+            comment_signals.append((task, comment))
+
+    comment_signals.sort(
+        key=lambda item: (
+            _enum_value(item[0].priority) != "CRITICAL",
+            _dashboard_plain_datetime(item[1].created_at) or datetime.min,
+        ),
+        reverse=True,
+    )
+    for task, comment in comment_signals[:3]:
+        excerpt = " ".join((comment.body or "").split())[:120]
+        cards.append(
+            _dashboard_risk_card(
+                title=f"Blocked signal: {_dashboard_task_label(task)}",
+                value="Comment",
+                severity="high" if _enum_value(task.priority) in {"HIGH", "CRITICAL"} else "medium",
+                category="comment",
+                task=task,
+                detail=f"{comment.author_name or 'A team member'} flagged possible friction: {excerpt}",
+            )
+        )
+
+    stale_review_items = []
+    stale_progress_items = []
+    for task in active_items:
+        status_value = _enum_value(task.status)
+        status_started_at = status_changed_at_by_task.get(task.id) or task.updated_at or task.created_at
+        age_days = _dashboard_age_days(status_started_at, now)
+        if status_value == "REVIEW" and age_days >= 2:
+            stale_review_items.append((task, age_days))
+        if status_value == "IN_PROGRESS" and age_days >= 4:
+            stale_progress_items.append((task, age_days))
+
+    for task, age_days in sorted(stale_review_items, key=lambda item: item[1], reverse=True)[:2]:
+        cards.append(
+            _dashboard_risk_card(
+                title=f"Review aging: {_dashboard_task_label(task)}",
+                value=f"{age_days}d",
+                severity="medium" if age_days < 4 else "high",
+                category="flow",
+                task=task,
+                age_days=age_days,
+                detail=f"{task.title} has been waiting in review long enough to threaten flow.",
+            )
+        )
+
+    for task, age_days in sorted(stale_progress_items, key=lambda item: item[1], reverse=True)[:2]:
+        cards.append(
+            _dashboard_risk_card(
+                title=f"Stale progress: {_dashboard_task_label(task)}",
+                value=f"{age_days}d",
+                severity="medium",
+                category="flow",
+                task=task,
+                age_days=age_days,
+                detail=f"{task.title} has stayed in progress for several days. Check blockers or scope drift.",
+            )
+        )
+
+    critical_unassigned = [
+        task for task in active_items
+        if _enum_value(task.priority) == "CRITICAL" and task.assignee_id is None
+    ]
+    for task in critical_unassigned[:2]:
+        cards.append(
+            _dashboard_risk_card(
+                title=f"Critical unowned: {_dashboard_task_label(task)}",
+                value="No owner",
+                severity="high",
+                category="ownership",
+                task=task,
+                detail=f"{task.title} is critical but has no assignee.",
+            )
+        )
+
+    if len(overdue_items) > 3:
+        cards.append(
+            _dashboard_risk_card(
+                title="Overdue queue",
+                value=f"+{len(overdue_items) - 3}",
+                severity="high",
+                category="deadline",
+                detail="More overdue tasks exist beyond the top signals shown here.",
+            )
+        )
+
+    if not cards:
+        cards.append(
+            _dashboard_risk_card(
+                title="No obvious risks",
+                value="Healthy",
+                severity="low",
+                category="health",
+                detail="No overdue work, stale status, blocker comments or critical ownership gaps detected.",
+            )
+        )
+
+    return cards[:8]
+
+
 @router.get("/{project_id}/dashboard")
 def get_project_dashboard(
     project_id: int,
@@ -1991,6 +2487,9 @@ def get_project_dashboard(
     task_lookup = {task.id: task for task in tasks}
 
     recent_activity = []
+    status_changed_at_by_task: dict[int, datetime] = {}
+    latest_comments_by_task: dict[int, TaskComment] = {}
+
     if task_ids:
         logs = (
             db.query(TaskAuditLog)
@@ -2015,6 +2514,30 @@ def get_project_dashboard(
                 "created_at": log.created_at,
             })
 
+        status_logs = (
+            db.query(TaskAuditLog)
+            .filter(
+                TaskAuditLog.task_id.in_(task_ids),
+                TaskAuditLog.action == "TASK_UPDATED",
+                TaskAuditLog.field == "status",
+            )
+            .order_by(TaskAuditLog.created_at.desc())
+            .all()
+        )
+        for log in status_logs:
+            if log.task_id not in status_changed_at_by_task:
+                status_changed_at_by_task[log.task_id] = log.created_at
+
+        comments = (
+            db.query(TaskComment)
+            .filter(TaskComment.task_id.in_(task_ids))
+            .order_by(TaskComment.created_at.desc())
+            .all()
+        )
+        for comment in comments:
+            if comment.task_id not in latest_comments_by_task:
+                latest_comments_by_task[comment.task_id] = comment
+
     critical_open = len([
         task for task in tasks
         if _enum_value(task.priority) == "CRITICAL" and _enum_value(task.status) != "DONE"
@@ -2025,52 +2548,29 @@ def get_project_dashboard(
         if _enum_value(task.status) == "REVIEW"
     ])
 
-    risk_cards = []
-
-    if project.methodology in {"SCRUM", "SCRUMBAN"} and not active_sprint:
-        risk_cards.append({
-            "title": "No active sprint",
-            "value": "Planning needed",
-            "severity": "medium",
-            "detail": "Scrum/Scrumban projects should usually have one active sprint.",
-        })
-
-    if critical_open > 0:
-        risk_cards.append({
-            "title": "Critical work open",
-            "value": str(critical_open),
-            "severity": "high",
-            "detail": "Critical tasks are still unresolved.",
-        })
-
-    if review_tasks > 0:
-        risk_cards.append({
-            "title": "Review load",
-            "value": str(review_tasks),
-            "severity": "medium",
-            "detail": "Tasks are waiting in review.",
-        })
-
-    if unassigned_tasks > 0:
-        risk_cards.append({
-            "title": "Unassigned work",
-            "value": str(unassigned_tasks),
-            "severity": "low",
-            "detail": "Some active tasks do not have an assignee.",
-        })
-
-    if not risk_cards:
-        risk_cards.append({
-            "title": "No obvious risks",
-            "value": "Healthy",
-            "severity": "low",
-            "detail": "No major delivery risks detected from current task data.",
-        })
+    risk_cards = _build_dashboard_risk_cards(
+        project=project,
+        tasks=tasks,
+        active_sprint=active_sprint,
+        now=now,
+        status_changed_at_by_task=status_changed_at_by_task,
+        latest_comments_by_task=latest_comments_by_task,
+        overdue_tasks=overdue_tasks,
+        unassigned_tasks=unassigned_tasks,
+        critical_open=critical_open,
+        review_tasks=review_tasks,
+    )
 
     unassigned_penalty = min(35, round((unassigned_tasks / active_tasks) * 35)) if active_tasks else 0
     critical_penalty = min(25, critical_open * 5)
     review_penalty = min(20, review_tasks * 3)
-    team_health_score = max(0, 100 - unassigned_penalty - critical_penalty - review_penalty)
+    overdue_penalty = min(25, overdue_tasks * 6)
+    blocker_penalty = min(20, len([card for card in risk_cards if card.get("category") == "comment"]) * 8)
+    stale_penalty = min(20, len([card for card in risk_cards if card.get("category") == "flow"]) * 5)
+    team_health_score = max(
+        0,
+        100 - unassigned_penalty - critical_penalty - review_penalty - overdue_penalty - blocker_penalty - stale_penalty,
+    )
 
     total_story_points = sum(task.story_points or 0 for task in tasks)
     completed_story_points = sum(
@@ -2567,6 +3067,20 @@ def _build_project_workload(db: Session, project_id: int) -> dict:
             task for task in member_tasks
             if _workload_status(task.priority) == "CRITICAL"
         ])
+        stale_review_tasks = len([
+            task for task in member_tasks
+            if _workload_status(task.status) == "REVIEW"
+            and _dashboard_age_days(task.updated_at or task.created_at, now) >= 2
+        ])
+        stale_progress_tasks = len([
+            task for task in member_tasks
+            if _workload_status(task.status) == "IN_PROGRESS"
+            and _dashboard_age_days(task.updated_at or task.created_at, now) >= 4
+        ])
+        due_soon_tasks = len([
+            task for task in member_tasks
+            if _workload_due_date(task) and now <= _workload_due_date(task) <= now + timedelta(days=7)
+        ])
 
         risk_score = min(
             100,
@@ -2574,7 +3088,9 @@ def _build_project_workload(db: Session, project_id: int) -> dict:
             + story_points * 3
             + overdue_tasks * 20
             + review_tasks * 8
-            + critical_tasks * 12,
+            + critical_tasks * 12
+            + stale_review_tasks * 8
+            + stale_progress_tasks * 6
         )
 
         if risk_score >= 70:
@@ -2585,6 +3101,22 @@ def _build_project_workload(db: Session, project_id: int) -> dict:
             load_label = "Available"
         else:
             load_label = "Balanced"
+
+        risk_factors = []
+        if overdue_tasks:
+            risk_factors.append(f"{overdue_tasks} overdue task{'s' if overdue_tasks != 1 else ''}")
+        if critical_tasks:
+            risk_factors.append(f"{critical_tasks} critical item{'s' if critical_tasks != 1 else ''}")
+        if stale_review_tasks:
+            risk_factors.append(f"{stale_review_tasks} stale review item{'s' if stale_review_tasks != 1 else ''}")
+        if stale_progress_tasks:
+            risk_factors.append(f"{stale_progress_tasks} long-running task{'s' if stale_progress_tasks != 1 else ''}")
+        if due_soon_tasks:
+            risk_factors.append(f"{due_soon_tasks} due this week")
+        if story_points >= 13:
+            risk_factors.append(f"{story_points} active story points")
+        if not risk_factors:
+            risk_factors.append("capacity looks normal")
 
         member_payloads.append(
             {
@@ -2599,8 +3131,12 @@ def _build_project_workload(db: Session, project_id: int) -> dict:
                 "overdue_tasks": overdue_tasks,
                 "review_tasks": review_tasks,
                 "critical_tasks": critical_tasks,
+                "stale_review_tasks": stale_review_tasks,
+                "stale_progress_tasks": stale_progress_tasks,
+                "due_soon_tasks": due_soon_tasks,
                 "risk_score": risk_score,
                 "load_label": load_label,
+                "risk_factors": risk_factors[:5],
                 "tasks": [_workload_task_payload(task) for task in member_tasks],
             }
         )
@@ -2632,6 +3168,10 @@ def _build_project_workload(db: Session, project_id: int) -> dict:
             "overdue_tasks": sum(member["overdue_tasks"] for member in member_payloads),
             "review_tasks": sum(member["review_tasks"] for member in member_payloads),
             "overloaded_members": overloaded_members,
+            "stale_flow_tasks": sum(
+                member["stale_review_tasks"] + member["stale_progress_tasks"]
+                for member in member_payloads
+            ),
         },
         "members": member_payloads,
         "unassigned_tasks": [_workload_task_payload(task) for task in unassigned_tasks],
@@ -2712,8 +3252,9 @@ def get_project_workload_suggestions(
                 "to_name": target["full_name"] or target["email"] or "Available member",
                 "reason": (
                     f"{source['full_name'] or source['email']} has a high workload score "
-                    f"({source['risk_score']}/100), while {target['full_name'] or target['email']} "
-                    f"has more available capacity."
+                    f"({source['risk_score']}/100) driven by {', '.join(source.get('risk_factors', [])[:3])}. "
+                    f"{target['full_name'] or target['email']} has more available capacity "
+                    f"({target['risk_score']}/100, {', '.join(target.get('risk_factors', [])[:2])})."
                 ),
             }
         )
@@ -2741,8 +3282,8 @@ def get_project_workload_suggestions(
                     "to_user_id": target["user_id"],
                     "to_name": target["full_name"] or target["email"] or "Available member",
                     "reason": (
-                        "This task is currently unassigned. Assigning it improves ownership "
-                        "and reduces delivery uncertainty."
+                        f"This task is currently unassigned. {target['full_name'] or target['email']} "
+                        f"has the clearest capacity signal: {', '.join(target.get('risk_factors', [])[:2])}."
                     ),
                 }
             )
@@ -2773,8 +3314,8 @@ def get_project_workload_suggestions(
 
     return {
         "summary": (
-            "Workload suggestions are generated from active tasks, story points, overdue items, "
-            "review queues and critical priority tasks."
+            "Workload suggestions combine active tasks, story points, overdue work, stale flow, "
+            "review queues, critical priority and near-term deadlines."
         ),
         "suggestions": suggestions,
     }

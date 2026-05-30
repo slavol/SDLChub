@@ -5,9 +5,11 @@ import { useRouter } from "next/navigation";
 import {
   AlertTriangle,
   ArrowRight,
+  Bot,
   CheckCircle2,
   Crown,
   GitBranch,
+  History,
   KeyRound,
   Loader2,
   Lock,
@@ -42,11 +44,13 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { UserAvatar } from "@/components/user-avatar";
 import { getApiErrorMessage } from "@/lib/api-error";
 import { hasProjectPermission } from "@/lib/project-permissions";
 import {
   applyMethodologyTransition,
   deleteProject,
+  getProjectAuditLogs,
   getMethodologyTransitionPreview,
   getMyProjects,
   getProjectDetail,
@@ -54,8 +58,13 @@ import {
   getProjectRoles,
   MethodologyTransitionPreview,
   Project,
+  ProjectAuditLog,
   ProjectMember,
   ProjectRoleWithPermissions,
+  ProjectAiConfig,
+  getProjectAiSettings,
+  testProjectAiSettings,
+  updateProjectAiSettings,
   updateProjectWorkflow,
   updateProjectSettings,
   updateRolePermissions,
@@ -145,6 +154,29 @@ function roleTone(roleName: string) {
   return "border-slate-700 bg-slate-800 text-slate-300";
 }
 
+function formatAuditDate(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "-";
+
+  return date.toLocaleString([], {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function projectAuditLabel(action: string) {
+  return (
+    {
+      PROJECT_METHODOLOGY_CHANGED: "Methodology changed",
+      PROJECT_SETTINGS_UPDATED: "Settings updated",
+      PROJECT_WORKFLOW_UPDATED: "Workflow updated",
+      AI_SETTINGS_UPDATED: "AI settings updated",
+    }[action] || action.replaceAll("_", " ").toLowerCase()
+  );
+}
+
 export default function SettingsPage() {
   const router = useRouter();
   const currentUser = useAuthStore((state) => state.user);
@@ -155,6 +187,7 @@ export default function SettingsPage() {
   const [memberCount, setMemberCount] = useState(0);
   const [myRoleName, setMyRoleName] = useState("Member");
   const [myMembership, setMyMembership] = useState<ProjectMember | null>(null);
+  const [auditLogs, setAuditLogs] = useState<ProjectAuditLog[]>([]);
 
   const [projectName, setProjectName] = useState("");
   const [description, setDescription] = useState("");
@@ -173,6 +206,15 @@ export default function SettingsPage() {
   const [loadingTransition, setLoadingTransition] = useState(false);
   const [applyingTransition, setApplyingTransition] = useState(false);
   const [savingWorkflow, setSavingWorkflow] = useState(false);
+  const [aiConfig, setAiConfig] = useState<ProjectAiConfig | null>(null);
+  const [aiMode, setAiMode] = useState<"PLATFORM" | "PROJECT">("PLATFORM");
+  const [aiProvider, setAiProvider] = useState("GEMINI");
+  const [aiProviderName, setAiProviderName] = useState("Gemini");
+  const [aiBaseUrl, setAiBaseUrl] = useState("");
+  const [aiModel, setAiModel] = useState("");
+  const [aiApiKey, setAiApiKey] = useState("");
+  const [savingAiSettings, setSavingAiSettings] = useState(false);
+  const [testingAiSettings, setTestingAiSettings] = useState(false);
 
   const isProjectOwner = project?.owner_id === currentUser?.id;
   const canManageSettings = hasProjectPermission(
@@ -220,6 +262,13 @@ export default function SettingsPage() {
       ]);
 
       const membership = members.find((member) => member.user.id === currentUser?.id);
+      const canLoadAudit =
+        freshProject.owner_id === currentUser?.id ||
+        currentUser?.is_global_admin ||
+        hasProjectPermission(freshProject, currentUser, membership || null, "SETTINGS_MANAGE");
+      const remoteAuditLogs = canLoadAudit
+        ? await getProjectAuditLogs(freshProject.id).catch(() => [])
+        : [];
 
       setProject(freshProject);
       setCurrentProject(freshProject);
@@ -227,6 +276,7 @@ export default function SettingsPage() {
       setMemberCount(members.length);
       setMyRoleName(membership?.role?.name || "Member");
       setMyMembership(membership || null);
+      setAuditLogs(remoteAuditLogs);
 
       setProjectName(freshProject.name);
       setDescription(freshProject.description || "");
@@ -235,6 +285,23 @@ export default function SettingsPage() {
         ...DEFAULT_WIP_LIMITS,
         ...(freshProject.workflow_config?.wip_limits || {}),
       });
+      setAiConfig(freshProject.ai_config || null);
+      setAiMode((freshProject.ai_config?.mode as "PLATFORM" | "PROJECT") || "PLATFORM");
+      setAiProvider(freshProject.ai_config?.provider || "GEMINI");
+      setAiProviderName(freshProject.ai_config?.provider_name || "Gemini");
+      setAiBaseUrl(freshProject.ai_config?.base_url || "");
+      setAiModel(freshProject.ai_config?.model || "");
+      setAiApiKey("");
+
+      if (freshProject.owner_id === currentUser?.id || currentUser?.is_global_admin) {
+        const remoteAiSettings = await getProjectAiSettings(freshProject.id);
+        setAiConfig(remoteAiSettings);
+        setAiMode(remoteAiSettings.mode);
+        setAiProvider(remoteAiSettings.provider || "GEMINI");
+        setAiProviderName(remoteAiSettings.provider_name || "Gemini");
+        setAiBaseUrl(remoteAiSettings.base_url || "");
+        setAiModel(remoteAiSettings.model || "");
+      }
 
       if (!selectedRoleId && remoteRoles.length > 0) {
         setSelectedRoleId(String(remoteRoles[0].id));
@@ -264,6 +331,7 @@ export default function SettingsPage() {
 
       setProject(updated);
       setCurrentProject(updated);
+      setAuditLogs(await getProjectAuditLogs(updated.id).catch(() => auditLogs));
 
       if (methodology !== updated.methodology) {
         setLoadingTransition(true);
@@ -339,11 +407,96 @@ export default function SettingsPage() {
         ...DEFAULT_WIP_LIMITS,
         ...(updated.workflow_config?.wip_limits || {}),
       });
+      setAuditLogs(await getProjectAuditLogs(updated.id).catch(() => auditLogs));
       toast.success("Workflow limits saved");
     } catch (error: unknown) {
       toast.error(getApiErrorMessage(error, "Could not save workflow limits."));
     } finally {
       setSavingWorkflow(false);
+    }
+  };
+
+  const handleSaveAiSettings = async () => {
+    if (!project || !isProjectOwner) return;
+
+    setSavingAiSettings(true);
+    try {
+      const updated = await updateProjectAiSettings(project.id, {
+        mode: aiMode,
+        provider: aiProvider,
+        provider_name: aiProviderName.trim() || aiProvider,
+        base_url: aiProvider === "OPENAI_COMPATIBLE" ? aiBaseUrl.trim() : undefined,
+        model: aiModel.trim() || undefined,
+        api_key: aiApiKey.trim() || undefined,
+      });
+
+      setAiConfig(updated);
+      setAiProvider(updated.provider || "GEMINI");
+      setAiProviderName(updated.provider_name || "Gemini");
+      setAiBaseUrl(updated.base_url || "");
+      setAiModel(updated.model || "");
+      setProject((current) =>
+        current ? { ...current, ai_config: updated } : current
+      );
+      setCurrentProject({ ...project, ai_config: updated });
+      setAuditLogs(await getProjectAuditLogs(project.id).catch(() => auditLogs));
+      setAiApiKey("");
+      toast.success("AI settings saved securely.");
+    } catch (error: unknown) {
+      toast.error(getApiErrorMessage(error, "Could not save AI settings."));
+    } finally {
+      setSavingAiSettings(false);
+    }
+  };
+
+  const handleClearProjectAiKey = async () => {
+    if (!project || !isProjectOwner) return;
+
+    setSavingAiSettings(true);
+    try {
+      const updated = await updateProjectAiSettings(project.id, {
+        mode: "PLATFORM",
+        provider: aiProvider,
+        provider_name: aiProviderName.trim() || aiProvider,
+        base_url: aiProvider === "OPENAI_COMPATIBLE" ? aiBaseUrl.trim() : undefined,
+        model: aiModel.trim() || undefined,
+        clear_api_key: true,
+      });
+      setAiMode(updated.mode);
+      setAiConfig(updated);
+      setAiProvider(updated.provider || "GEMINI");
+      setAiProviderName(updated.provider_name || "Gemini");
+      setAiBaseUrl(updated.base_url || "");
+      setAiModel(updated.model || "");
+      setAiApiKey("");
+      setProject((current) =>
+        current ? { ...current, ai_config: updated } : current
+      );
+      setCurrentProject({ ...project, ai_config: updated });
+      setAuditLogs(await getProjectAuditLogs(project.id).catch(() => auditLogs));
+      toast.success("Project AI key removed.");
+    } catch (error: unknown) {
+      toast.error(getApiErrorMessage(error, "Could not remove project AI key."));
+    } finally {
+      setSavingAiSettings(false);
+    }
+  };
+
+  const handleTestAiSettings = async () => {
+    if (!project || !isProjectOwner) return;
+
+    setTestingAiSettings(true);
+    try {
+      const result = await testProjectAiSettings(project.id);
+      if (result.ok) {
+        toast.success(result.message);
+      } else {
+        toast.warning(result.message);
+      }
+    } catch (error: unknown) {
+      toast.error(getApiErrorMessage(error, "Could not test AI settings."));
+    } finally {
+      setTestingAiSettings(false);
     }
   };
 
@@ -589,6 +742,230 @@ export default function SettingsPage() {
               </CardContent>
             </Card>
 
+            <Card className="border-slate-800 bg-slate-900 text-slate-50">
+              <CardHeader className="border-b border-slate-800">
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <Bot className="h-5 w-5 text-violet-300" />
+                  Project AI provider
+                </CardTitle>
+              </CardHeader>
+
+              <CardContent className="space-y-5 p-5">
+                <div className="rounded-2xl border border-violet-500/20 bg-violet-500/10 p-4">
+                  <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                    <div>
+                      <p className="font-semibold text-violet-100">
+                        Choose how this project uses AI
+                      </p>
+                      <p className="mt-2 text-sm leading-6 text-violet-100/75">
+                        Use the platform AI key or provide a project-owned provider.
+                        Custom keys are encrypted server-side and are never sent back to the browser.
+                      </p>
+                    </div>
+                    <Badge
+                      variant="outline"
+                      className="w-fit border-violet-400/30 bg-violet-500/10 text-violet-100"
+                    >
+                      {aiConfig?.mode || "PLATFORM"} · {aiConfig?.provider_name || aiConfig?.provider || "Gemini"}
+                    </Badge>
+                  </div>
+                </div>
+
+                {!isProjectOwner ? (
+                  <div className="rounded-2xl border border-slate-800 bg-slate-950 p-4">
+                    <p className="text-sm font-semibold text-slate-200">
+                      Owner-only setting
+                    </p>
+                    <p className="mt-2 text-sm leading-6 text-slate-500">
+                      Only the project owner can add or rotate AI credentials.
+                    </p>
+                  </div>
+                ) : (
+                  <>
+                    <div className="grid gap-4 lg:grid-cols-[260px_1fr]">
+                      <div className="space-y-2">
+                        <Label>AI mode</Label>
+                        <Select
+                          value={aiMode}
+                          onValueChange={(value) =>
+                            setAiMode(value as "PLATFORM" | "PROJECT")
+                          }
+                        >
+                          <SelectTrigger className="h-11 border-slate-700 bg-slate-950">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent className="border-slate-800 bg-slate-900 text-slate-200">
+                            <SelectItem value="PLATFORM">Platform AI key</SelectItem>
+                            <SelectItem value="PROJECT">Project-owned key</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <div className="rounded-2xl border border-slate-800 bg-slate-950 p-4">
+                          <p className="text-xs uppercase tracking-[0.16em] text-slate-600">
+                            Platform key
+                          </p>
+                          <p className="mt-2 text-sm font-semibold text-white">
+                            {aiConfig?.platform_configured ? "Configured" : "Not configured"}
+                          </p>
+                        </div>
+                        <div className="rounded-2xl border border-slate-800 bg-slate-950 p-4">
+                          <p className="text-xs uppercase tracking-[0.16em] text-slate-600">
+                            Project key
+                          </p>
+                          <p className="mt-2 text-sm font-semibold text-white">
+                            {aiConfig?.has_project_key ? "Stored encrypted" : "Not added"}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {aiMode === "PROJECT" && (
+                      <div className="space-y-4">
+                        <div className="grid gap-4 lg:grid-cols-[240px_1fr]">
+                          <div className="space-y-2">
+                            <Label>Provider type</Label>
+                            <Select
+                              value={aiProvider}
+                              onValueChange={(value) => {
+                                setAiProvider(value);
+                                if (value === "GEMINI") {
+                                  setAiProviderName("Gemini");
+                                  setAiBaseUrl("");
+                                  setAiModel((current) => current || "gemini-2.5-flash");
+                                } else {
+                                  setAiProviderName("Custom AI");
+                                  setAiModel((current) => current || "gpt-4o-mini");
+                                }
+                              }}
+                            >
+                              <SelectTrigger className="h-11 border-slate-700 bg-slate-950">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent className="border-slate-800 bg-slate-900 text-slate-200">
+                                <SelectItem value="GEMINI">Gemini API</SelectItem>
+                                <SelectItem value="OPENAI_COMPATIBLE">
+                                  OpenAI-compatible / custom
+                                </SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+
+                          <div className="space-y-2">
+                            <Label>Provider display name</Label>
+                            <Input
+                              value={aiProviderName}
+                              onChange={(event) => setAiProviderName(event.target.value)}
+                              placeholder="e.g. OpenRouter Production, Groq, Company AI"
+                              className="h-11 border-slate-700 bg-slate-950"
+                            />
+                          </div>
+                        </div>
+
+                        {aiProvider === "OPENAI_COMPATIBLE" && (
+                          <div className="grid gap-4 lg:grid-cols-[1fr_260px]">
+                            <div className="space-y-2">
+                              <Label>Base URL</Label>
+                              <Input
+                                value={aiBaseUrl}
+                                onChange={(event) => setAiBaseUrl(event.target.value)}
+                                placeholder="https://api.openai.com/v1 or https://openrouter.ai/api/v1"
+                                className="h-11 border-slate-700 bg-slate-950 font-mono text-sm"
+                              />
+                            </div>
+                            <div className="space-y-2">
+                              <Label>Model</Label>
+                              <Input
+                                value={aiModel}
+                                onChange={(event) => setAiModel(event.target.value)}
+                                placeholder="gpt-4o-mini"
+                                className="h-11 border-slate-700 bg-slate-950 font-mono text-sm"
+                              />
+                            </div>
+                          </div>
+                        )}
+
+                        {aiProvider === "GEMINI" && (
+                          <div className="space-y-2">
+                            <Label>Model</Label>
+                            <Input
+                              value={aiModel}
+                              onChange={(event) => setAiModel(event.target.value)}
+                              placeholder="gemini-2.5-flash"
+                              className="h-11 border-slate-700 bg-slate-950 font-mono text-sm"
+                            />
+                          </div>
+                        )}
+
+                        <div className="space-y-2">
+                          <Label>API key</Label>
+                          <Input
+                            type="password"
+                            value={aiApiKey}
+                            onChange={(event) => setAiApiKey(event.target.value)}
+                            placeholder={
+                              aiConfig?.has_project_key
+                                ? "Leave empty to keep existing encrypted key"
+                                : "Paste provider API key"
+                            }
+                            className="h-11 border-slate-700 bg-slate-950 font-mono"
+                          />
+                          <p className="text-xs leading-5 text-slate-500">
+                            The key is encrypted before storage. For custom providers, use an OpenAI-compatible chat completions endpoint.
+                          </p>
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="flex flex-wrap gap-3">
+                      <Button
+                        type="button"
+                        onClick={handleSaveAiSettings}
+                        disabled={savingAiSettings}
+                        className="h-11 bg-violet-600 text-white hover:bg-violet-500"
+                      >
+                        {savingAiSettings ? (
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        ) : (
+                          <Save className="mr-2 h-4 w-4" />
+                        )}
+                        Save AI settings
+                      </Button>
+
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={handleTestAiSettings}
+                        disabled={testingAiSettings}
+                        className="h-11 border-slate-700 bg-slate-950 text-slate-200 hover:bg-slate-800"
+                      >
+                        {testingAiSettings ? (
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        ) : (
+                          <CheckCircle2 className="mr-2 h-4 w-4" />
+                        )}
+                        Test provider
+                      </Button>
+
+                      {aiConfig?.has_project_key && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={handleClearProjectAiKey}
+                          disabled={savingAiSettings}
+                          className="h-11 border-red-500/30 bg-red-500/10 text-red-100 hover:bg-red-500/15"
+                        >
+                          <Trash2 className="mr-2 h-4 w-4" />
+                          Remove project key
+                        </Button>
+                      )}
+                    </div>
+                  </>
+                )}
+              </CardContent>
+            </Card>
+
             {(methodology === "KANBAN" || methodology === "SCRUMBAN") && (
               <Card className="border-slate-800 bg-slate-900 text-slate-50">
                 <CardHeader className="border-b border-slate-800">
@@ -790,6 +1167,73 @@ export default function SettingsPage() {
                     Keep Project Admin limited. Use custom roles for developers, QA, product and observers.
                   </p>
                 </div>
+              </CardContent>
+            </Card>
+
+            <Card className="border-slate-800 bg-slate-900 text-slate-50">
+              <CardHeader className="border-b border-slate-800">
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <History className="h-5 w-5 text-violet-300" />
+                  Project audit trail
+                </CardTitle>
+              </CardHeader>
+
+              <CardContent className="space-y-3 p-5">
+                {auditLogs.slice(0, 8).map((log) => (
+                  <div
+                    key={log.id}
+                    className="rounded-2xl border border-slate-800 bg-slate-950 p-4"
+                  >
+                    <div className="flex items-start gap-3">
+                      <UserAvatar
+                        name={log.actor_name || "System"}
+                        src={log.actor_avatar_url}
+                        className="h-8 w-8"
+                        fallbackClassName="bg-violet-500/10 text-[10px] text-violet-200"
+                      />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="font-semibold text-slate-100">
+                            {projectAuditLabel(log.action)}
+                          </p>
+                          {log.field && (
+                            <Badge
+                              variant="outline"
+                              className="border-slate-700 bg-slate-900 text-[10px] text-slate-400"
+                            >
+                              {log.field}
+                            </Badge>
+                          )}
+                        </div>
+                        <p className="mt-1 text-xs text-slate-500">
+                          {log.actor_name || "System"} · {formatAuditDate(log.created_at)}
+                        </p>
+                        {log.field && (
+                          <div className="mt-3 rounded-xl bg-slate-900 px-3 py-2 text-xs leading-5 text-slate-400">
+                            <span className="break-words text-rose-300">
+                              {log.old_value || "-"}
+                            </span>
+                            <span className="px-2 text-slate-600">-&gt;</span>
+                            <span className="break-words text-emerald-300">
+                              {log.new_value || "-"}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+
+                {auditLogs.length === 0 && (
+                  <div className="rounded-2xl border border-dashed border-slate-800 bg-slate-950 p-6 text-center">
+                    <p className="text-sm font-semibold text-slate-300">
+                      No project audit events yet
+                    </p>
+                    <p className="mt-2 text-xs leading-5 text-slate-500">
+                      Methodology, workflow, AI and project-setting changes will appear here.
+                    </p>
+                  </div>
+                )}
               </CardContent>
             </Card>
 
