@@ -824,6 +824,29 @@ export interface ReportSprintBurndownPoint {
   ideal_remaining: number;
 }
 
+export interface ReportSprintBurnupPoint {
+  date: string;
+  done_points: number;
+  scope_points: number;
+  ideal_done: number;
+}
+
+export interface ReportWipLimitPoint {
+  status: string;
+  label: string;
+  current: number;
+  limit?: number | null;
+  remaining?: number | null;
+  exceeded: boolean;
+}
+
+export interface ReportWipHistoryPoint {
+  date: string;
+  wip: number;
+  limit?: number | null;
+  exceeded: boolean;
+}
+
 export interface ProjectReportsOverview {
   project: Project;
   summary: {
@@ -837,6 +860,9 @@ export interface ProjectReportsOverview {
     overdue_tasks: number;
     due_soon_tasks: number;
     average_cycle_time_days: number;
+    average_flow_lead_time_days: number;
+    flow_completed_tasks: number;
+    wip_limit_violations: number;
     closed_sprints: number;
   };
   velocity: ReportVelocityPoint[];
@@ -847,7 +873,10 @@ export interface ProjectReportsOverview {
   status_change_counts: ReportDistributionPoint[];
   lead_time_distribution: ReportLeadTimePoint[];
   cumulative_flow: ReportCumulativeFlowPoint[];
+  wip_limits: ReportWipLimitPoint[];
+  wip_history: ReportWipHistoryPoint[];
   sprint_burndown: ReportSprintBurndownPoint[];
+  sprint_burnup: ReportSprintBurnupPoint[];
   bottleneck?: ReportStatusAgePoint | null;
 }
 

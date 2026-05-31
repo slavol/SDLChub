@@ -988,6 +988,7 @@ def export_project_status_pdf(
     status_distribution = report.get("status_distribution") or []
     priority_distribution = report.get("priority_distribution") or []
     status_age = report.get("status_age") or []
+    wip_limits = report.get("wip_limits") or []
     bottleneck = report.get("bottleneck")
 
     pdf = FPDF()
@@ -1044,6 +1045,8 @@ def export_project_status_pdf(
     )
     metric_row("Story point completion", f"{summary.get('story_point_completion_rate', 0)}%")
     metric_row("Average cycle time", f"{summary.get('average_cycle_time_days', 0)} days")
+    metric_row("Flow/Kanban lead time", f"{summary.get('average_flow_lead_time_days', 0)} days")
+    metric_row("WIP limit violations", summary.get("wip_limit_violations", 0))
     metric_row("Overdue tasks", summary.get("overdue_tasks", 0))
     metric_row("Due soon tasks", summary.get("due_soon_tasks", 0))
     metric_row("Closed sprints", summary.get("closed_sprints", 0))
@@ -1171,6 +1174,32 @@ def export_project_status_pdf(
         pdf.cell(35, 7, _pdf_safe(item.get("tasks", 0)), border=1)
         pdf.cell(50, 7, _pdf_safe(item.get("average_age_days", 0)), border=1)
         pdf.cell(50, 7, _pdf_safe(item.get("max_age_days", 0)), border=1, ln=True)
+
+    # WIP limits
+    pdf.ln(7)
+    pdf.set_font("Helvetica", "B", 14)
+    pdf.set_text_color(15, 23, 42)
+    pdf.cell(0, 8, _pdf_safe("6. WIP limits"), ln=True)
+
+    pdf.set_font("Helvetica", "B", 9)
+    pdf.set_fill_color(226, 232, 240)
+    pdf.set_text_color(15, 23, 42)
+    pdf.cell(55, 7, _pdf_safe("Status"), border=1, fill=True)
+    pdf.cell(35, 7, _pdf_safe("Current"), border=1, fill=True)
+    pdf.cell(35, 7, _pdf_safe("Limit"), border=1, fill=True)
+    pdf.cell(65, 7, _pdf_safe("Health"), border=1, ln=True, fill=True)
+
+    pdf.set_font("Helvetica", "", 9)
+    pdf.set_text_color(51, 65, 85)
+    for item in wip_limits:
+        limit = item.get("limit")
+        health = "Over limit" if item.get("exceeded") else "OK"
+        if limit is None:
+            health = "No limit configured"
+        pdf.cell(55, 7, _pdf_safe(item.get("label") or item.get("status", "-"))[:30], border=1)
+        pdf.cell(35, 7, _pdf_safe(item.get("current", 0)), border=1)
+        pdf.cell(35, 7, _pdf_safe(limit if limit is not None else "-"), border=1)
+        pdf.cell(65, 7, _pdf_safe(health), border=1, ln=True)
 
     # Footer
     pdf.ln(8)
@@ -2739,6 +2768,14 @@ def _build_reports_overview(db: Session, project_id: int) -> dict:
     status_order = ["TODO", "IN_PROGRESS", "REVIEW", "DONE"]
     priority_order = ["LOW", "MEDIUM", "HIGH", "CRITICAL"]
 
+    workflow_config = _parse_workflow_config(project.workflow_config if project else None)
+    workflow_columns = {
+        str(column.get("key", "")).upper(): column
+        for column in workflow_config.get("columns", [])
+        if isinstance(column, dict)
+    }
+    wip_limits_config = workflow_config.get("wip_limits", {}) or {}
+
     status_distribution = {
         status: 0 for status in status_order
     }
@@ -2864,7 +2901,10 @@ def _build_reports_overview(db: Session, project_id: int) -> dict:
         status_logs_by_task.setdefault(log.task_id, []).append(log)
 
     done_cycle_times = []
+    flow_lead_times = []
     lead_times_by_priority: dict[str, list[float]] = {priority: [] for priority in priority_order}
+    project_methodology = str(project.methodology if project else "").upper()
+
     for task in tasks:
         if _report_enum_value(task.status) != "DONE":
             continue
@@ -2874,11 +2914,17 @@ def _build_reports_overview(db: Session, project_id: int) -> dict:
         done_cycle_times.append(lead_time)
         lead_times_by_priority.setdefault(_report_enum_value(task.priority), []).append(lead_time)
 
+        # Kanban/flow lead time: in a Kanban project all completed tasks count;
+        # in Scrum/Scrumban, unplanned/non-sprint completed tasks show continuous-flow behavior.
+        if project_methodology == "KANBAN" or task.sprint_id is None:
+            flow_lead_times.append(lead_time)
+
     average_cycle_time_days = (
         round(sum(done_cycle_times) / len(done_cycle_times), 2)
         if done_cycle_times
         else 0
     )
+    average_flow_lead_time_days = _report_average(flow_lead_times)
 
     status_age = []
     for status in status_order:
@@ -2968,7 +3014,47 @@ def _build_reports_overview(db: Session, project_id: int) -> dict:
 
             cumulative_flow.append({"date": current_day.isoformat(), **counts})
 
+    wip_limits_report = []
+    for status_key in status_order:
+        column = workflow_columns.get(status_key, {})
+        current_count = status_distribution.get(status_key, 0)
+        raw_limit = wip_limits_config.get(status_key)
+        limit = raw_limit if isinstance(raw_limit, int) else None
+        exceeded = limit is not None and current_count > limit
+
+        wip_limits_report.append(
+            {
+                "status": status_key,
+                "label": str(column.get("label") or status_key.replace("_", " ").title()),
+                "current": current_count,
+                "limit": limit,
+                "remaining": max(0, limit - current_count) if limit is not None else None,
+                "exceeded": exceeded,
+            }
+        )
+
+    wip_limit_violations = sum(1 for item in wip_limits_report if item["exceeded"])
+    combined_wip_limit = sum(
+        item["limit"]
+        for item in wip_limits_report
+        if item["status"] in {"IN_PROGRESS", "REVIEW"} and item["limit"] is not None
+    )
+    combined_wip_limit = combined_wip_limit or None
+    wip_history = [
+        {
+            "date": point["date"],
+            "wip": int(point.get("IN_PROGRESS", 0) or 0) + int(point.get("REVIEW", 0) or 0),
+            "limit": combined_wip_limit,
+            "exceeded": (
+                combined_wip_limit is not None
+                and int(point.get("IN_PROGRESS", 0) or 0) + int(point.get("REVIEW", 0) or 0) > combined_wip_limit
+            ),
+        }
+        for point in cumulative_flow
+    ]
+
     sprint_burndown = []
+    sprint_burnup = []
     if active_sprint and active_sprint.start_date and active_sprint.end_date:
         sprint_tasks = [task for task in tasks if task.sprint_id == active_sprint.id]
         sprint_total_points = sum(task.story_points or 0 for task in sprint_tasks)
@@ -3006,12 +3092,23 @@ def _build_reports_overview(db: Session, project_id: int) -> dict:
             else:
                 ideal_remaining = 0
 
+            remaining_points = max(0, sprint_total_points - done_points_at_day)
+            ideal_done = max(0, round(sprint_total_points - ideal_remaining, 2))
+
             sprint_burndown.append(
                 {
                     "date": current_day.isoformat(),
-                    "remaining_points": max(0, sprint_total_points - done_points_at_day),
+                    "remaining_points": remaining_points,
                     "done_points": done_points_at_day,
                     "ideal_remaining": ideal_remaining,
+                }
+            )
+            sprint_burnup.append(
+                {
+                    "date": current_day.isoformat(),
+                    "done_points": done_points_at_day,
+                    "scope_points": sprint_total_points,
+                    "ideal_done": ideal_done,
                 }
             )
 
@@ -3028,6 +3125,9 @@ def _build_reports_overview(db: Session, project_id: int) -> dict:
             "overdue_tasks": overdue_tasks,
             "due_soon_tasks": due_soon_tasks,
             "average_cycle_time_days": average_cycle_time_days,
+            "average_flow_lead_time_days": average_flow_lead_time_days,
+            "flow_completed_tasks": len(flow_lead_times),
+            "wip_limit_violations": wip_limit_violations,
             "closed_sprints": len(closed_sprints),
         },
         "velocity": velocity,
@@ -3047,7 +3147,10 @@ def _build_reports_overview(db: Session, project_id: int) -> dict:
         ],
         "lead_time_distribution": lead_time_distribution,
         "cumulative_flow": cumulative_flow,
+        "wip_limits": wip_limits_report,
+        "wip_history": wip_history,
         "sprint_burndown": sprint_burndown,
+        "sprint_burnup": sprint_burnup,
         "bottleneck": bottleneck_status,
     }
 

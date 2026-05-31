@@ -205,13 +205,13 @@ export function AppSidebar({ methodology, role, projectName }: SidebarProps) {
   const avatarUrl = resolveMediaUrl(user?.avatar_url);
 
   return (
-    <aside className="flex h-screen w-[272px] shrink-0 flex-col border-r border-slate-800 bg-slate-950 text-slate-200">
-      <div className="border-b border-slate-800 px-4 py-4">
+    <aside className="flex h-dvh w-[258px] shrink-0 flex-col border-r border-slate-800 bg-slate-950 text-slate-200">
+      <div className="shrink-0 border-b border-slate-800 px-3.5 py-3">
         <div className="flex items-center justify-between gap-3">
           <div className="flex min-w-0 items-center gap-3">
-            <BrandMark className="h-10 w-10 shrink-0 rounded-2xl" />
+            <BrandMark className="h-9 w-9 shrink-0 rounded-xl" />
             <div className="min-w-0">
-              <h2 className="truncate text-xl font-semibold leading-tight text-white">
+              <h2 className="truncate text-lg font-semibold leading-tight text-white">
                 SDLC Hub
               </h2>
               <p className="truncate text-xs text-slate-500">
@@ -228,7 +228,7 @@ export function AppSidebar({ methodology, role, projectName }: SidebarProps) {
                 : "Notifications"
             }
             className={cn(
-              "relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border transition focus:outline-none focus:ring-2 focus:ring-blue-500/40",
+              "relative flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border transition focus:outline-none focus:ring-2 focus:ring-blue-500/40",
               pathname.startsWith("/dashboard/notifications")
                 ? "border-blue-500/40 bg-blue-600 text-white shadow-lg shadow-blue-950/25"
                 : "border-slate-800 bg-slate-900/70 text-slate-400 hover:border-blue-500/35 hover:bg-slate-900 hover:text-white"
@@ -248,10 +248,10 @@ export function AppSidebar({ methodology, role, projectName }: SidebarProps) {
           <DropdownMenuTrigger asChild>
             <button
               type="button"
-              className="mt-4 w-full rounded-2xl border border-slate-800 bg-slate-900/70 p-3 text-left transition hover:border-blue-500/35 hover:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+              className="mt-3 w-full rounded-2xl border border-slate-800 bg-slate-900/70 p-2.5 text-left transition hover:border-blue-500/35 hover:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
             >
               <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-blue-500/25 bg-blue-500/10 text-xs font-bold text-blue-200">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-blue-500/25 bg-blue-500/10 text-[11px] font-bold text-blue-200">
                   {projectInitials}
                 </div>
 
@@ -328,12 +328,12 @@ export function AppSidebar({ methodology, role, projectName }: SidebarProps) {
         </DropdownMenu>
       </div>
 
-      <nav className="flex-1 overflow-y-auto px-3 py-4">
-        <div className="mb-3 px-3 text-[11px] font-medium uppercase tracking-[0.18em] text-slate-600">
+      <nav className="sdlc-hide-scrollbar min-h-0 flex-1 overflow-y-auto px-2.5 py-3">
+        <div className="mb-2 px-2.5 text-[10px] font-medium uppercase tracking-[0.18em] text-slate-600">
           Navigation
         </div>
 
-        <div className="space-y-1">
+        <div className="space-y-0.5">
           {links.map((link) => {
             const Icon = link.icon;
             const isActive =
@@ -345,7 +345,7 @@ export function AppSidebar({ methodology, role, projectName }: SidebarProps) {
               <Link key={link.href} href={link.href}>
                 <div
                   className={cn(
-                    "group flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition",
+                    "group flex items-center gap-2.5 rounded-xl px-2.5 py-2 text-[13px] transition",
                     isActive
                       ? "bg-blue-600 text-white shadow-lg shadow-blue-950/25"
                       : "text-slate-400 hover:bg-slate-900 hover:text-white"
@@ -367,16 +367,16 @@ export function AppSidebar({ methodology, role, projectName }: SidebarProps) {
         </div>
       </nav>
 
-      <div className="border-t border-slate-800 p-4">
+      <div className="shrink-0 border-t border-slate-800 p-3">
         <Link
           href="/dashboard/account"
-          className="mb-3 flex items-center gap-3 rounded-2xl border border-slate-800 bg-slate-900/60 p-3 transition hover:border-blue-500/35 hover:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+          className="mb-2.5 flex items-center gap-2.5 rounded-2xl border border-slate-800 bg-slate-900/60 p-2.5 transition hover:border-blue-500/35 hover:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
         >
           <UserAvatar
             name={displayName}
             email={user?.email}
             src={avatarUrl}
-            className="h-11 w-11 shrink-0"
+            className="h-9 w-9 shrink-0"
           />
 
           <div className="min-w-0">
@@ -390,7 +390,7 @@ export function AppSidebar({ methodology, role, projectName }: SidebarProps) {
         {user?.is_global_admin && (
           <Link
             href="/admin"
-            className="mb-3 flex items-center gap-3 rounded-xl border border-blue-500/25 bg-blue-500/10 px-3 py-2.5 text-sm font-semibold text-blue-200 transition hover:border-blue-400/40 hover:bg-blue-500/15"
+            className="mb-2.5 flex items-center gap-2.5 rounded-xl border border-blue-500/25 bg-blue-500/10 px-2.5 py-2 text-[13px] font-semibold text-blue-200 transition hover:border-blue-400/40 hover:bg-blue-500/15"
           >
             <ShieldCheck className="h-4 w-4" />
             Global Admin Console
@@ -399,7 +399,7 @@ export function AppSidebar({ methodology, role, projectName }: SidebarProps) {
 
         <Button
           variant="ghost"
-          className="h-10 w-full justify-start rounded-xl text-slate-400 hover:bg-red-950/20 hover:text-red-400"
+          className="h-9 w-full justify-start rounded-xl text-[13px] text-slate-400 hover:bg-red-950/20 hover:text-red-400"
           onClick={handleSignOut}
         >
           <LogOut className="mr-2 h-4 w-4" />

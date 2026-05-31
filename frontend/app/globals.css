@@ -123,3 +123,53 @@
     @apply bg-background text-foreground;
   }
 }
+
+
+@layer utilities {
+  .sdlc-hide-scrollbar {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+
+  .sdlc-hide-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+
+  .sdlc-thin-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: rgb(51 65 85 / 0.9) transparent;
+  }
+
+  .sdlc-thin-scrollbar::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  .sdlc-thin-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .sdlc-thin-scrollbar::-webkit-scrollbar-thumb {
+    background: rgb(51 65 85 / 0.85);
+    border-radius: 999px;
+  }
+
+  .sdlc-page {
+    width: 100%;
+    max-width: 90rem;
+    margin-inline: auto;
+    padding: 1.25rem;
+  }
+
+  @media (min-width: 768px) {
+    .sdlc-page {
+      padding: 1.5rem;
+    }
+  }
+
+  @media (min-width: 1280px) {
+    .sdlc-page {
+      padding: 1.75rem;
+    }
+  }
+}

@@ -7,13 +7,30 @@ export interface RealtimeMessage {
   payload?: Record<string, unknown>;
 }
 
+export interface OutgoingRealtimeMessage {
+  type: string;
+  project_id?: number | null;
+  payload?: Record<string, unknown>;
+}
+
 export const REALTIME_EVENT_NAME = "sdlc:realtime";
+export const REALTIME_OUTGOING_EVENT_NAME = "sdlc:realtime:send";
 
 export function dispatchRealtimeMessage(message: RealtimeMessage) {
   if (typeof window === "undefined") return;
 
   window.dispatchEvent(
     new CustomEvent<RealtimeMessage>(REALTIME_EVENT_NAME, {
+      detail: message,
+    })
+  );
+}
+
+export function sendRealtimeMessage(message: OutgoingRealtimeMessage) {
+  if (typeof window === "undefined") return;
+
+  window.dispatchEvent(
+    new CustomEvent<OutgoingRealtimeMessage>(REALTIME_OUTGOING_EVENT_NAME, {
       detail: message,
     })
   );

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
   ArrowRight,
@@ -58,7 +58,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { UserAvatar } from "@/components/user-avatar";
 import { useProjectPermissions } from "@/hooks/use-project-permissions";
-import { useRealtimeEvent } from "@/hooks/use-realtime-event";
+import { sendRealtimeMessage, useRealtimeEvent } from "@/hooks/use-realtime-event";
 import { formatAiSource, isAiFallback } from "@/lib/ai-source";
 import { getApiErrorMessage } from "@/lib/api-error";
 import { cn } from "@/lib/utils";
@@ -81,6 +81,7 @@ import {
   invalidateTaskEstimate,
   refineTaskSpec,
   RefinedTaskSpec,
+  TaskComment,
   TaskDetail,
   TaskPriority,
   TaskStatus,
@@ -93,6 +94,17 @@ import { useProjectStore } from "@/store/use-project-store";
 
 const priorityOptions = Object.values(TaskPriority);
 const statusOptions = Object.values(TaskStatus);
+
+type TypingUser = {
+  user_id: number;
+  full_name?: string | null;
+  avatar_url?: string | null;
+  last_seen: number;
+};
+
+const COMMENT_TYPING_TTL_MS = 4500;
+const COMMENT_TYPING_THROTTLE_MS = 1200;
+const COMMENT_TYPING_STOP_DELAY_MS = 1800;
 
 const SDLC_CHECKLIST = [
   "Planificare - clarificare scop si dependinte",
@@ -187,6 +199,9 @@ export default function TaskDetailPage() {
   const [editingCommentBody, setEditingCommentBody] = useState("");
   const [commentToDelete, setCommentToDelete] = useState<number | null>(null);
   const [deletingComment, setDeletingComment] = useState(false);
+  const [typingUsers, setTypingUsers] = useState<TypingUser[]>([]);
+  const typingStopTimerRef = useRef<number | null>(null);
+  const lastTypingSentAtRef = useRef(0);
   const [deleteTaskOpen, setDeleteTaskOpen] = useState(false);
   const [deleteTaskReason, setDeleteTaskReason] = useState("");
   const [deleteTaskConfirmKey, setDeleteTaskConfirmKey] = useState("");
@@ -265,17 +280,186 @@ export default function TaskDetailPage() {
   useRealtimeEvent((message) => {
     const changedTaskId = Number(message.payload?.task_id || 0);
 
+    if (message.project_id && task?.project_id && message.project_id !== task.project_id) {
+      return;
+    }
+
+    if (message.type === "comment.created" && changedTaskId === taskId) {
+      const incomingComment = message.payload?.comment as TaskComment | undefined;
+      if (!incomingComment?.id) return;
+
+      setTask((current) => {
+        if (!current) return current;
+
+        const exists = current.comments.some((comment) => comment.id === incomingComment.id);
+        return {
+          ...current,
+          comments: exists
+            ? current.comments.map((comment) =>
+                comment.id === incomingComment.id ? incomingComment : comment
+              )
+            : [...current.comments, incomingComment],
+        };
+      });
+      return;
+    }
+
+    if (message.type === "comment.updated" && changedTaskId === taskId) {
+      const incomingComment = message.payload?.comment as TaskComment | undefined;
+      if (!incomingComment?.id) return;
+
+      setTask((current) =>
+        current
+          ? {
+              ...current,
+              comments: current.comments.map((comment) =>
+                comment.id === incomingComment.id ? incomingComment : comment
+              ),
+            }
+          : current
+      );
+      return;
+    }
+
+    if (message.type === "comment.deleted" && changedTaskId === taskId) {
+      const deletedCommentId = Number(message.payload?.comment_id || 0);
+      if (!deletedCommentId) return;
+
+      setTask((current) =>
+        current
+          ? {
+              ...current,
+              comments: current.comments.filter((comment) => comment.id !== deletedCommentId),
+            }
+          : current
+      );
+
+      if (editingCommentId === deletedCommentId) {
+        setEditingCommentId(null);
+        setEditingCommentBody("");
+      }
+      if (commentToDelete === deletedCommentId) {
+        setCommentToDelete(null);
+      }
+      return;
+    }
+
+    if (message.type === "comment.typing" && changedTaskId === taskId) {
+      const typingUserId = Number(message.payload?.user_id || 0);
+      if (!typingUserId || typingUserId === currentUser?.id) return;
+
+      const isTyping = Boolean(message.payload?.is_typing);
+      setTypingUsers((current) => {
+        const remaining = current.filter((user) => user.user_id !== typingUserId);
+        if (!isTyping) return remaining;
+
+        return [
+          ...remaining,
+          {
+            user_id: typingUserId,
+            full_name:
+              typeof message.payload?.full_name === "string"
+                ? message.payload.full_name
+                : "A teammate",
+            avatar_url:
+              typeof message.payload?.avatar_url === "string"
+                ? message.payload.avatar_url
+                : null,
+            last_seen: Date.now(),
+          },
+        ];
+      });
+      return;
+    }
+
     if (message.type === "task.changed" && changedTaskId === taskId) {
+      const action = String(message.payload?.action || "");
+      if (action.startsWith("comment_")) return;
       loadTask(false);
     }
 
     if (message.type === "user.updated" && task?.project_id && message.project_id === task.project_id) {
       loadTask(false);
     }
-  }, [loadTask, task?.project_id, taskId]);
+  }, [commentToDelete, currentUser?.id, editingCommentId, loadTask, task?.project_id, taskId]);
+
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      const cutoff = Date.now() - COMMENT_TYPING_TTL_MS;
+      setTypingUsers((current) => current.filter((user) => user.last_seen >= cutoff));
+    }, 1200);
+
+    return () => window.clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (typingStopTimerRef.current) {
+        window.clearTimeout(typingStopTimerRef.current);
+      }
+    };
+  }, []);
 
   const patchLocalTask = (updates: Partial<TaskDetail>) => {
     setTask((current) => (current ? { ...current, ...updates } : current));
+  };
+
+  const patchLocalComment = (comment: TaskComment) => {
+    setTask((current) => {
+      if (!current) return current;
+
+      const exists = current.comments.some((item) => item.id === comment.id);
+      return {
+        ...current,
+        comments: exists
+          ? current.comments.map((item) => (item.id === comment.id ? comment : item))
+          : [...current.comments, comment],
+      };
+    });
+  };
+
+  const removeLocalComment = (commentId: number) => {
+    setTask((current) =>
+      current
+        ? {
+            ...current,
+            comments: current.comments.filter((comment) => comment.id !== commentId),
+          }
+        : current
+    );
+  };
+
+  const sendCommentTyping = (isTyping: boolean) => {
+    if (!task || !canComment) return;
+
+    sendRealtimeMessage({
+      type: "comment.typing",
+      project_id: task.project_id,
+      payload: {
+        task_id: task.id,
+        is_typing: isTyping,
+      },
+    });
+  };
+
+  const handleCommentDraftChange = (value: string) => {
+    setNewComment(value);
+
+    if (!task || !canComment) return;
+
+    const now = Date.now();
+    if (now - lastTypingSentAtRef.current > COMMENT_TYPING_THROTTLE_MS) {
+      lastTypingSentAtRef.current = now;
+      sendCommentTyping(value.trim().length > 0);
+    }
+
+    if (typingStopTimerRef.current) {
+      window.clearTimeout(typingStopTimerRef.current);
+    }
+
+    typingStopTimerRef.current = window.setTimeout(() => {
+      sendCommentTyping(false);
+    }, COMMENT_TYPING_STOP_DELAY_MS);
   };
 
   const handleSave = async () => {
@@ -567,9 +751,10 @@ export default function TaskDetailPage() {
     if (!task || !newComment.trim()) return;
 
     try {
-      await createTaskComment(task.id, newComment.trim());
+      const createdComment = await createTaskComment(task.id, newComment.trim());
+      patchLocalComment(createdComment);
       setNewComment("");
-      await loadTask(false);
+      sendCommentTyping(false);
       toast.success("Comment added");
     } catch (error: unknown) {
       toast.error(getApiErrorMessage(error, "Could not add comment."));
@@ -588,10 +773,10 @@ export default function TaskDetailPage() {
     if (!task || !editingCommentId || !editingCommentBody.trim()) return;
 
     try {
-      await updateTaskComment(task.id, editingCommentId, editingCommentBody.trim());
+      const updatedComment = await updateTaskComment(task.id, editingCommentId, editingCommentBody.trim());
+      patchLocalComment(updatedComment);
       setEditingCommentId(null);
       setEditingCommentBody("");
-      await loadTask(false);
       toast.success("Comment updated");
     } catch (error: unknown) {
       toast.error(getApiErrorMessage(error, "Could not update comment."));
@@ -605,9 +790,10 @@ export default function TaskDetailPage() {
 
     setDeletingComment(true);
     try {
-      await deleteTaskComment(task.id, commentToDelete);
+      const deletedCommentId = commentToDelete;
+      await deleteTaskComment(task.id, deletedCommentId);
+      removeLocalComment(deletedCommentId);
       setCommentToDelete(null);
-      await loadTask(false);
       toast.success("Comment deleted");
     } catch (error: unknown) {
       toast.error(getApiErrorMessage(error, "Could not delete comment."));
@@ -1193,6 +1379,27 @@ export default function TaskDetailPage() {
                   </div>
                 ))}
 
+                {typingUsers.length > 0 && (
+                  <div className="flex items-center gap-3 rounded-2xl border border-cyan-500/20 bg-cyan-500/10 px-4 py-3 text-sm text-cyan-100">
+                    <div className="flex -space-x-2">
+                      {typingUsers.slice(0, 3).map((user) => (
+                        <UserAvatar
+                          key={user.user_id}
+                          name={user.full_name}
+                          src={user.avatar_url}
+                          className="h-7 w-7 border border-slate-950"
+                          fallbackClassName="bg-cyan-500/10 text-[10px] text-cyan-100"
+                        />
+                      ))}
+                    </div>
+                    <span>
+                      {typingUsers.length === 1
+                        ? `${typingUsers[0].full_name || "A teammate"} is typing...`
+                        : `${typingUsers.length} teammates are typing...`}
+                    </span>
+                  </div>
+                )}
+
                 {task.comments.length === 0 && (
                   <div className="rounded-2xl border border-dashed border-slate-800 bg-slate-950/60 p-8 text-center">
                     <p className="text-sm font-medium text-slate-400">
@@ -1208,7 +1415,8 @@ export default function TaskDetailPage() {
               <div className="space-y-3">
                 <Textarea
                   value={newComment}
-                  onChange={(event) => setNewComment(event.target.value)}
+                  onChange={(event) => handleCommentDraftChange(event.target.value)}
+                  onBlur={() => sendCommentTyping(false)}
                   placeholder="Add a comment..."
                   disabled={!canComment}
                   className="min-h-28 border-slate-700 bg-slate-950"

@@ -92,11 +92,11 @@ export default function DashboardLayout({
   }
 
   return (
-    <div className="flex h-screen bg-slate-950 overflow-hidden">
+    <div className="flex h-dvh min-h-0 overflow-hidden bg-slate-950">
       <RealtimeBridge />
       <AppSidebar methodology={methodology} role={role} projectName={projectName} />
 
-      <main className="flex-1 overflow-y-auto bg-slate-950">
+      <main className="sdlc-thin-scrollbar min-w-0 flex-1 overflow-y-auto overflow-x-hidden bg-slate-950">
         {isArchived && (
           <div className="sticky top-0 z-40 border-b border-amber-500/25 bg-amber-950/80 px-6 py-3 text-amber-50 shadow-xl shadow-slate-950/25 backdrop-blur">
             <div className="flex flex-wrap items-center gap-3">

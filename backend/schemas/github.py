@@ -1,7 +1,54 @@
 from datetime import datetime
 from typing import Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+
+
+
+
+
+class GitHubIntegrationUpsert(BaseModel):
+    repository_full_name: str = Field(min_length=3, max_length=240)
+    repository_url: Optional[str] = None
+    default_branch: Optional[str] = "main"
+    webhook_url: Optional[str] = None
+    auto_link_commits: bool = True
+    auto_transition_prs: bool = True
+
+
+class GitHubIntegrationOut(BaseModel):
+    id: Optional[int] = None
+    project_id: int
+    configured: bool = False
+    repository_full_name: Optional[str] = None
+    repository_url: Optional[str] = None
+    default_branch: Optional[str] = "main"
+    webhook_url: Optional[str] = None
+    webhook_endpoint_path: str = "/github/webhook"
+    setup_status: str = "NOT_CONFIGURED"
+    auto_link_commits: bool = True
+    auto_transition_prs: bool = True
+    secret_configured: bool = False
+    webhook_secret_hint: Optional[str] = None
+    last_ping_at: Optional[datetime] = None
+    last_delivery_at: Optional[datetime] = None
+    last_error: Optional[str] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class GitHubIntegrationTestOut(BaseModel):
+    configured: bool
+    secret_configured: bool
+    status: str
+    message: str
+    repository_full_name: Optional[str] = None
+    webhook_url: Optional[str] = None
+    last_ping_at: Optional[datetime] = None
+    last_delivery_at: Optional[datetime] = None
 
 
 class GitHubEventOut(BaseModel):

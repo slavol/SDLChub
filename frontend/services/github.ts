@@ -1,5 +1,54 @@
 import api from "@/lib/axios";
 
+export interface NgrokTunnelStatus {
+  running: boolean;
+  public_url?: string | null;
+  webhook_url?: string | null;
+  message: string;
+  tunnels?: unknown[];
+}
+
+export interface GitHubIntegration {
+  id?: number | null;
+  project_id: number;
+  configured: boolean;
+  repository_full_name?: string | null;
+  repository_url?: string | null;
+  default_branch?: string | null;
+  webhook_url?: string | null;
+  webhook_endpoint_path: string;
+  setup_status: "NOT_CONFIGURED" | "CONFIGURED" | "WAITING_FOR_PING" | "CONNECTED" | "ERROR" | string;
+  auto_link_commits: boolean;
+  auto_transition_prs: boolean;
+  secret_configured: boolean;
+  webhook_secret_hint?: string | null;
+  last_ping_at?: string | null;
+  last_delivery_at?: string | null;
+  last_error?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+}
+
+export interface GitHubIntegrationUpsert {
+  repository_full_name: string;
+  repository_url?: string | null;
+  default_branch?: string | null;
+  webhook_url?: string | null;
+  auto_link_commits: boolean;
+  auto_transition_prs: boolean;
+}
+
+export interface GitHubIntegrationTestResult {
+  configured: boolean;
+  secret_configured: boolean;
+  status: string;
+  message: string;
+  repository_full_name?: string | null;
+  webhook_url?: string | null;
+  last_ping_at?: string | null;
+  last_delivery_at?: string | null;
+}
+
 export interface GitHubEventItem {
   id: number;
   delivery_id?: string | null;
@@ -73,5 +122,60 @@ export const confirmPullRequestTransition = async (
     note,
   });
 
+  return response.data;
+};
+
+
+export const getProjectGitHubIntegration = async (
+  projectId: number
+): Promise<GitHubIntegration> => {
+  const response = await api.get(`/github/integration/project/${projectId}`);
+  return response.data;
+};
+
+export const upsertProjectGitHubIntegration = async (
+  projectId: number,
+  data: GitHubIntegrationUpsert
+): Promise<GitHubIntegration> => {
+  const response = await api.put(`/github/integration/project/${projectId}`, data);
+  return response.data;
+};
+
+export const testProjectGitHubIntegration = async (
+  projectId: number
+): Promise<GitHubIntegrationTestResult> => {
+  const response = await api.post(`/github/integration/project/${projectId}/test`);
+  return response.data;
+};
+
+export const deleteProjectGitHubIntegration = async (
+  projectId: number
+): Promise<{ message: string }> => {
+  const response = await api.delete(`/github/integration/project/${projectId}`);
+  return response.data;
+};
+
+
+export const getNgrokTunnelStatus = async (): Promise<NgrokTunnelStatus> => {
+  const response = await api.get("/github/ngrok/status");
+  return response.data;
+};
+
+export const startNgrokTunnel = async (
+  port = 8000,
+  projectId?: number
+): Promise<NgrokTunnelStatus> => {
+  const response = await api.post("/github/ngrok/start", null, {
+    params: { port, project_id: projectId },
+  });
+  return response.data;
+};
+
+export const stopNgrokTunnel = async (
+  projectId?: number
+): Promise<NgrokTunnelStatus> => {
+  const response = await api.post("/github/ngrok/stop", null, {
+    params: { project_id: projectId },
+  });
   return response.data;
 };

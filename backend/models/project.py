@@ -37,6 +37,7 @@ class Project(Base):
     tasks = relationship("Task", back_populates="project")
     sprints = relationship("Sprint", back_populates="project")
     calendar_events = relationship("CalendarEvent", back_populates="project", cascade="all, delete-orphan")
+    availability_blocks = relationship("CalendarAvailability", back_populates="project", cascade="all, delete-orphan")
     audit_logs = relationship("ProjectAuditLog", back_populates="project", cascade="all, delete-orphan", order_by="ProjectAuditLog.created_at")
 
 class ProjectMember(Base):
@@ -261,6 +262,44 @@ class CalendarEvent(Base):
 
     project = relationship("Project", back_populates="calendar_events")
     created_by = relationship("User", foreign_keys=[created_by_id])
+
+    @property
+    def created_by_name(self):
+        return self.created_by.full_name if self.created_by else None
+
+
+class CalendarAvailability(Base):
+    __tablename__ = "calendar_availability"
+    __table_args__ = {'extend_existing': True}
+
+    id = Column(Integer, primary_key=True, index=True)
+    project_id = Column(Integer, ForeignKey("projects.id"), nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    created_by_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    status = Column(String, default="VACATION", nullable=False)
+    title = Column(String, nullable=True)
+    starts_at = Column(DateTime, nullable=False)
+    ends_at = Column(DateTime, nullable=False)
+    all_day = Column(Boolean, default=True, nullable=False)
+    note = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    project = relationship("Project", back_populates="availability_blocks")
+    user = relationship("User", foreign_keys=[user_id])
+    created_by = relationship("User", foreign_keys=[created_by_id])
+
+    @property
+    def user_name(self):
+        return self.user.full_name if self.user else None
+
+    @property
+    def user_email(self):
+        return self.user.email if self.user else None
+
+    @property
+    def user_avatar_url(self):
+        return self.user.avatar_url if self.user else None
 
     @property
     def created_by_name(self):

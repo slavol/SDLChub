@@ -1,4 +1,4 @@
-from sqlalchemy import Column, DateTime, ForeignKey, Integer, String, Text, func
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, Text, func
 
 from backend.database.session import Base
 
@@ -26,3 +26,30 @@ class GitHubEvent(Base):
     payload_json = Column(Text, nullable=True)
 
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
+
+
+
+class GitHubProjectIntegration(Base):
+    __tablename__ = "github_project_integrations"
+
+    id = Column(Integer, primary_key=True, index=True)
+    project_id = Column(Integer, ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, unique=True, index=True)
+    created_by_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+
+    repository_full_name = Column(String, nullable=False, index=True)
+    repository_url = Column(String, nullable=True)
+    default_branch = Column(String, nullable=True, default="main")
+
+    webhook_url = Column(String, nullable=True)
+    webhook_secret_hint = Column(String, nullable=True)
+    setup_status = Column(String, nullable=False, default="CONFIGURED")
+
+    auto_link_commits = Column(Boolean, nullable=False, default=True)
+    auto_transition_prs = Column(Boolean, nullable=False, default=True)
+
+    last_ping_at = Column(DateTime(timezone=True), nullable=True)
+    last_delivery_at = Column(DateTime(timezone=True), nullable=True)
+    last_error = Column(Text, nullable=True)
+
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())

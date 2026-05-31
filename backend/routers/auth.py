@@ -1,15 +1,15 @@
 from pathlib import Path
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
-from datetime import timedelta
+from datetime import datetime, timedelta
 from jose import JWTError, jwt
 from pydantic import BaseModel, EmailStr # <--- Importuri necesare
 
 from backend.database.session import get_db
-from backend.models.user import User
+from backend.models.user import User, UserSecurityLog, UserSession
 from backend.models.project import Invitation, Project, ProjectMember
 from backend.realtime import broadcast_project_event, broadcast_user_event
 from backend.schemas.auth import (
@@ -22,6 +22,8 @@ from backend.schemas.auth import (
     ResendVerificationRequest,
     Token,
     TokenData,
+    UserSecurityLogOut,
+    UserSessionOut,
     UserLogin,
     UserRegister,
 )
@@ -44,6 +46,126 @@ from backend.utils.email import (
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/login")
+
+
+def _client_ip(request: Request | None) -> str | None:
+    if not request:
+        return None
+
+    forwarded_for = request.headers.get("x-forwarded-for")
+    if forwarded_for:
+        return forwarded_for.split(",")[0].strip()[:120]
+
+    if request.client:
+        return request.client.host[:120]
+
+    return None
+
+
+def _user_agent(request: Request | None) -> str | None:
+    if not request:
+        return None
+
+    value = request.headers.get("user-agent")
+    return value[:500] if value else None
+
+
+def _device_label(user_agent: str | None) -> str:
+    ua = (user_agent or "").lower()
+
+    if not ua:
+        return "Unknown device"
+
+    browser = "Browser"
+    if "edg/" in ua:
+        browser = "Microsoft Edge"
+    elif "chrome/" in ua and "chromium" not in ua:
+        browser = "Chrome"
+    elif "firefox/" in ua:
+        browser = "Firefox"
+    elif "safari/" in ua and "chrome/" not in ua:
+        browser = "Safari"
+
+    platform = "Unknown OS"
+    if "windows" in ua:
+        platform = "Windows"
+    elif "linux" in ua:
+        platform = "Linux"
+    elif "mac os" in ua or "macintosh" in ua:
+        platform = "macOS"
+    elif "android" in ua:
+        platform = "Android"
+    elif "iphone" in ua or "ipad" in ua:
+        platform = "iOS"
+
+    return f"{browser} on {platform}"
+
+
+def _create_user_session(db: Session, user: User, request: Request | None) -> UserSession:
+    user_agent = _user_agent(request)
+    session = UserSession(
+        user_id=user.id,
+        ip_address=_client_ip(request),
+        user_agent=user_agent,
+        device_label=_device_label(user_agent),
+        last_seen_at=datetime.utcnow(),
+    )
+    db.add(session)
+    db.flush()
+    return session
+
+
+def _create_security_log(
+    db: Session,
+    user: User,
+    *,
+    event_type: str,
+    title: str,
+    detail: str | None = None,
+    request: Request | None = None,
+    session_id: int | None = None,
+) -> UserSecurityLog:
+    log = UserSecurityLog(
+        user_id=user.id,
+        session_id=session_id,
+        event_type=event_type,
+        title=title,
+        detail=detail,
+        ip_address=_client_ip(request),
+        user_agent=_user_agent(request),
+    )
+    db.add(log)
+    return log
+
+
+def _session_to_out(session: UserSession, current_session_id: int | None = None) -> dict:
+    return {
+        "id": session.id,
+        "user_id": session.user_id,
+        "ip_address": session.ip_address,
+        "user_agent": session.user_agent,
+        "device_label": session.device_label or _device_label(session.user_agent),
+        "location_hint": session.location_hint,
+        "created_at": session.created_at,
+        "last_seen_at": session.last_seen_at,
+        "revoked_at": session.revoked_at,
+        "revoke_reason": session.revoke_reason,
+        "is_current": bool(current_session_id and session.id == current_session_id),
+    }
+
+
+def _security_log_to_out(log: UserSecurityLog) -> dict:
+    return {
+        "id": log.id,
+        "user_id": log.user_id,
+        "session_id": log.session_id,
+        "event_type": log.event_type,
+        "title": log.title,
+        "detail": log.detail,
+        "ip_address": log.ip_address,
+        "user_agent": log.user_agent,
+        "created_at": log.created_at,
+    }
 
 
 def broadcast_user_profile_changed(db: Session, user: User) -> None:
@@ -181,7 +303,7 @@ def verify_email(token: str, db: Session = Depends(get_db)):
     return {"message": "Account successfully activated!"}
 
 @router.post("/login", response_model=Token)
-def login(user_credentials: UserLogin, db: Session = Depends(get_db)):
+def login(user_credentials: UserLogin, request: Request, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.email == user_credentials.email).first()
 
     if not user or not verify_password(user_credentials.password, user.hashed_password):
@@ -204,15 +326,30 @@ def login(user_credentials: UserLogin, db: Session = Depends(get_db)):
 
     has_invites = pending_invite is not None
 
+    session = _create_user_session(db, user, request)
+    _create_security_log(
+        db,
+        user,
+        event_type="LOGIN_SUCCESS",
+        title="New login",
+        detail="A new authenticated session was created.",
+        request=request,
+        session_id=session.id,
+    )
+
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
         data={
             "sub": user.email,
             "id": user.id,
             "full_name": user.full_name,
+            "session_id": session.id,
         },
         expires_delta=access_token_expires,
     )
+
+    db.commit()
+    db.refresh(session)
 
     return {
         "access_token": access_token,
@@ -288,19 +425,28 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
         headers={"WWW-Authenticate": "Bearer"},
     )
 
+    session_id = None
+
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        email: str = payload.get("sub")
+        email: str | None = payload.get("sub")
+        user_id = payload.get("id")
+        raw_session_id = payload.get("session_id")
 
-        if email is None:
+        if email is None or user_id is None:
             raise credentials_exception
 
-        token_data = TokenData(email=email)
+        token_data = TokenData(email=email, id=user_id)
 
+        if raw_session_id is not None:
+            try:
+                session_id = int(raw_session_id)
+            except (TypeError, ValueError):
+                raise credentials_exception
     except JWTError:
         raise credentials_exception
 
-    user = db.query(User).filter(User.email == token_data.email).first()
+    user = db.query(User).filter(User.id == token_data.id).first()
 
     if user is None:
         raise credentials_exception
@@ -311,7 +457,28 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
             detail="Inactive account",
         )
 
+    # Backwards compatibility:
+    # tokens generated before the sessions feature do not contain session_id.
+    # They remain valid until the user logs in again and receives a session-aware JWT.
+    if session_id is not None:
+        session = (
+            db.query(UserSession)
+            .filter(UserSession.id == session_id, UserSession.user_id == user.id)
+            .first()
+        )
+
+        if not session or session.revoked_at is not None:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Session has expired or was revoked.",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+
+        session.last_seen_at = datetime.utcnow()
+        db.commit()
+
     return user
+
 
 @router.get("/me", response_model=AuthUser)
 def read_current_user(current_user: User = Depends(get_current_user)):
@@ -375,6 +542,15 @@ def update_current_user(
     if "full_name" in update_data:
         current_user.full_name = update_data["full_name"].strip() if update_data["full_name"] else None
 
+    _create_security_log(
+        db,
+        current_user,
+        event_type="PROFILE_UPDATED",
+        title="Profile updated",
+        detail="Account profile details were changed.",
+        request=None,
+    )
+
     db.commit()
     db.refresh(current_user)
     broadcast_user_profile_changed(db, current_user)
@@ -417,6 +593,14 @@ async def upload_current_user_avatar(
     destination.write_bytes(content)
 
     current_user.avatar_url = f"/uploads/avatars/{filename}"
+    _create_security_log(
+        db,
+        current_user,
+        event_type="AVATAR_UPDATED",
+        title="Avatar updated",
+        detail="Account avatar was changed.",
+        request=None,
+    )
     db.commit()
     db.refresh(current_user)
     broadcast_user_profile_changed(db, current_user)
@@ -437,9 +621,109 @@ def update_current_user_password(
         )
 
     current_user.hashed_password = get_password_hash(data.new_password)
+    _create_security_log(
+        db,
+        current_user,
+        event_type="PASSWORD_CHANGED",
+        title="Password changed",
+        detail="Account password was changed from Account Settings.",
+        request=None,
+    )
     db.commit()
     return {"message": "Password updated successfully."}
 
+
+
+
+def _current_session_id_from_request_token(token: str | None) -> int | None:
+    if not token:
+        return None
+
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        session_id = payload.get("session_id")
+        return int(session_id) if session_id is not None else None
+    except Exception:
+        return None
+
+
+@router.get("/me/sessions", response_model=list[UserSessionOut])
+def list_current_user_sessions(
+    token: str = Depends(oauth2_scheme),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    current_session_id = _current_session_id_from_request_token(token)
+
+    sessions = (
+        db.query(UserSession)
+        .filter(UserSession.user_id == current_user.id)
+        .order_by(UserSession.created_at.desc())
+        .limit(25)
+        .all()
+    )
+
+    return [_session_to_out(session, current_session_id) for session in sessions]
+
+
+@router.delete("/me/sessions/{session_id}")
+def revoke_current_user_session(
+    session_id: int,
+    token: str = Depends(oauth2_scheme),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    current_session_id = _current_session_id_from_request_token(token)
+
+    session = (
+        db.query(UserSession)
+        .filter(UserSession.id == session_id, UserSession.user_id == current_user.id)
+        .first()
+    )
+
+    if not session:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found.")
+
+    if session.revoked_at is None:
+        session.revoked_at = datetime.utcnow()
+        session.revoke_reason = "Revoked by user"
+
+        _create_security_log(
+            db,
+            current_user,
+            event_type="SESSION_REVOKED",
+            title="Session revoked",
+            detail=(
+                "The current session was revoked."
+                if current_session_id == session.id
+                else f"Session #{session.id} was revoked from Account Settings."
+            ),
+            request=None,
+            session_id=current_session_id,
+        )
+
+        db.commit()
+
+    return {"message": "Session revoked successfully."}
+
+
+@router.get("/me/security-log", response_model=list[UserSecurityLogOut])
+def list_current_user_security_log(
+    limit: int = 50,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    safe_limit = max(1, min(limit, 100))
+
+    logs = (
+        db.query(UserSecurityLog)
+        .filter(UserSecurityLog.user_id == current_user.id)
+        .order_by(UserSecurityLog.created_at.desc())
+        .limit(safe_limit)
+        .all()
+    )
+
+    return [_security_log_to_out(log) for log in logs]
 
 @router.put("/me/notification-preferences", response_model=AuthUser)
 def update_current_user_notification_preferences(

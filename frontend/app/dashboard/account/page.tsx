@@ -28,6 +28,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { AccountSecurityPanel } from "@/components/dashboard/account-security-panel";
 import { UserAvatar, resolveMediaUrl } from "@/components/user-avatar";
 import { getApiErrorMessage } from "@/lib/api-error";
 import {
@@ -575,6 +576,8 @@ export default function AccountPage() {
               </Button>
             </CardContent>
           </Card>
+
+          <AccountSecurityPanel />
 
           <Card className="border-slate-800 bg-slate-900/80 text-slate-50 shadow-xl shadow-slate-950/20">
             <CardHeader className="border-b border-slate-800/80">

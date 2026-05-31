@@ -3,23 +3,46 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  AlertTriangle,
+  CheckCircle2,
+  Copy,
   ExternalLink,
   GitBranch,
   Github,
   GitCommitHorizontal,
   GitPullRequest,
   Loader2,
+  PlugZap,
   RefreshCw,
+  Save,
+  Server,
+  ShieldCheck,
+  Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { getApiErrorMessage } from "@/lib/api-error";
 import { cn } from "@/lib/utils";
-import { getProjectGitHubEvents, GitHubEventItem } from "@/services/github";
+import {
+  deleteProjectGitHubIntegration,
+  getNgrokTunnelStatus,
+  getProjectGitHubEvents,
+  getProjectGitHubIntegration,
+  GitHubEventItem,
+  GitHubIntegration,
+  NgrokTunnelStatus,
+  startNgrokTunnel,
+  stopNgrokTunnel,
+  testProjectGitHubIntegration,
+  upsertProjectGitHubIntegration,
+} from "@/services/github";
 import { getMyProjects, Project } from "@/services/project";
+import { useAuthStore } from "@/store/use-auth-store";
 import { useProjectStore } from "@/store/use-project-store";
 
 type EventFilter = "all" | "push" | "pull_request";
@@ -51,249 +74,816 @@ function eventTone(event: GitHubEventItem) {
     return "border-blue-500/20 bg-blue-500/10 text-blue-200";
   }
 
-  return "border-slate-700 bg-slate-900 text-slate-300";
+  return "border-slate-700 bg-slate-800 text-slate-200";
+}
+
+function connectionTone(status?: string) {
+  if (status === "CONNECTED") return "border-emerald-500/30 bg-emerald-500/10 text-emerald-200";
+  if (status === "ERROR") return "border-red-500/30 bg-red-500/10 text-red-200";
+  if (status === "WAITING_FOR_PING") return "border-amber-500/30 bg-amber-500/10 text-amber-200";
+  return "border-slate-700 bg-slate-800 text-slate-300";
+}
+
+function normalizeNgrokUrl(value: string) {
+  const trimmed = value.trim().replace(/\/+$/, "");
+  if (!trimmed) return "";
+  if (trimmed.endsWith("/github/webhook")) return trimmed;
+  return `${trimmed}/github/webhook`;
+}
+
+function repoUrlFromFullName(value: string) {
+  const repo = value.trim().replace(/^https?:\/\/github\.com\//, "").replace(/\.git$/, "").replace(/^\/+|\/+$/g, "");
+  return repo.includes("/") ? `https://github.com/${repo}` : "";
 }
 
 export default function DevOpsPage() {
   const { currentProject, setCurrentProject } = useProjectStore();
+  const currentUser = useAuthStore((state) => state.user);
 
+  const [projects, setProjects] = useState<Project[]>([]);
   const [project, setProject] = useState<Project | null>(currentProject);
+  const [integration, setIntegration] = useState<GitHubIntegration | null>(null);
   const [events, setEvents] = useState<GitHubEventItem[]>([]);
-  const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<EventFilter>("all");
+  const [loading, setLoading] = useState(true);
+  const [savingIntegration, setSavingIntegration] = useState(false);
+  const [testingIntegration, setTestingIntegration] = useState(false);
+  const [disconnecting, setDisconnecting] = useState(false);
+  const [ngrokStatus, setNgrokStatus] = useState<NgrokTunnelStatus | null>(null);
+  const [startingNgrok, setStartingNgrok] = useState(false);
+  const [stoppingNgrok, setStoppingNgrok] = useState(false);
 
-  const loadEvents = useCallback(async () => {
-    setLoading(true);
+  const [repositoryFullName, setRepositoryFullName] = useState("");
+  const [repositoryUrl, setRepositoryUrl] = useState("");
+  const [defaultBranch, setDefaultBranch] = useState("main");
+  const [publicBaseUrl, setPublicBaseUrl] = useState("");
+  const [autoLinkCommits, setAutoLinkCommits] = useState(true);
+  const [autoTransitionPrs, setAutoTransitionPrs] = useState(true);
 
-    try {
-      let selectedProject = currentProject;
+  const selectedEventType = filter === "all" ? null : filter;
 
-      if (!selectedProject) {
-        const projects = await getMyProjects();
-        selectedProject = projects[0] ?? null;
+  const webhookUrl = useMemo(() => normalizeNgrokUrl(publicBaseUrl), [publicBaseUrl]);
+  const isConnected = integration?.setup_status === "CONNECTED";
+  const isConfigured = Boolean(integration?.configured);
+  const canManageIntegration = Boolean(
+    project &&
+      currentUser &&
+      (project.owner_id === currentUser.id || currentUser.is_global_admin)
+  );
 
-        if (selectedProject) {
-          setCurrentProject(selectedProject);
+  const loadDevOps = useCallback(
+    async (showLoader = true) => {
+      if (showLoader) setLoading(true);
+
+      try {
+        let selectedProject = currentProject;
+        const ownedProjects = await getMyProjects();
+        setProjects(ownedProjects);
+
+        if (!selectedProject) {
+          selectedProject = ownedProjects[0] ?? null;
+          if (selectedProject) setCurrentProject(selectedProject);
         }
+
+        setProject(selectedProject);
+
+        if (!selectedProject) {
+          setIntegration(null);
+          setEvents([]);
+          return;
+        }
+
+        const [nextIntegration, nextEvents, nextNgrokStatus] = await Promise.all([
+          getProjectGitHubIntegration(selectedProject.id),
+          getProjectGitHubEvents(selectedProject.id, selectedEventType),
+          getNgrokTunnelStatus(),
+        ]);
+
+        setIntegration(nextIntegration);
+        setEvents(nextEvents);
+        setNgrokStatus(nextNgrokStatus);
+
+        if (nextNgrokStatus.running && nextNgrokStatus.public_url && !nextIntegration.webhook_url) {
+          setPublicBaseUrl(nextNgrokStatus.public_url);
+        }
+
+        if (nextIntegration.configured) {
+          setRepositoryFullName(nextIntegration.repository_full_name || "");
+          setRepositoryUrl(nextIntegration.repository_url || "");
+          setDefaultBranch(nextIntegration.default_branch || "main");
+          setPublicBaseUrl(
+            nextIntegration.webhook_url
+              ? nextIntegration.webhook_url.replace(/\/github\/webhook$/, "")
+              : ""
+          );
+          setAutoLinkCommits(nextIntegration.auto_link_commits);
+          setAutoTransitionPrs(nextIntegration.auto_transition_prs);
+        }
+      } catch (error: unknown) {
+        toast.error(getApiErrorMessage(error, "Could not load DevOps integration."));
+      } finally {
+        if (showLoader) setLoading(false);
       }
-
-      if (!selectedProject) {
-        setProject(null);
-        setEvents([]);
-        return;
-      }
-
-      setProject(selectedProject);
-
-      const remoteEvents = await getProjectGitHubEvents(
-        selectedProject.id,
-        filter === "all" ? null : filter,
-        120
-      );
-
-      setEvents(remoteEvents);
-    } catch (error) {
-      toast.error(getApiErrorMessage(error, "Could not load GitHub events."));
-    } finally {
-      setLoading(false);
-    }
-  }, [currentProject, filter, setCurrentProject]);
+    },
+    [currentProject, selectedEventType, setCurrentProject]
+  );
 
   useEffect(() => {
-    loadEvents();
-  }, [loadEvents]);
+    loadDevOps();
+  }, [loadDevOps]);
+
+  const handleProjectChange = (projectId: number) => {
+    const selected = projects.find((item) => item.id === projectId) ?? null;
+    if (!selected) return;
+    setCurrentProject(selected);
+    setProject(selected);
+  };
+
+  const handleSaveIntegration = async () => {
+    if (!project) return;
+
+    if (!canManageIntegration) {
+      toast.error("Only the project owner can configure the GitHub repository integration.");
+      return;
+    }
+
+    if (!repositoryFullName.trim() || !repositoryFullName.includes("/")) {
+      toast.error("Repository must use owner/repository format.");
+      return;
+    }
+
+    if (
+      publicBaseUrl.includes("<ngrok-domain>") ||
+      publicBaseUrl.includes("abc123") ||
+      webhookUrl.includes("<ngrok-domain>") ||
+      webhookUrl.includes("abc123")
+    ) {
+      toast.error("Start ngrok and use the real public URL before saving the connection.");
+      return;
+    }
+
+    setSavingIntegration(true);
+
+    try {
+      const saved = await upsertProjectGitHubIntegration(project.id, {
+        repository_full_name: repositoryFullName.trim(),
+        repository_url: repositoryUrl.trim() || repoUrlFromFullName(repositoryFullName),
+        default_branch: defaultBranch.trim() || "main",
+        webhook_url: webhookUrl || null,
+        auto_link_commits: autoLinkCommits,
+        auto_transition_prs: autoTransitionPrs,
+      });
+
+      setIntegration(saved);
+      toast.success("GitHub repository configuration saved.");
+      await loadDevOps(false);
+    } catch (error: unknown) {
+      toast.error(getApiErrorMessage(error, "Could not save GitHub integration."));
+    } finally {
+      setSavingIntegration(false);
+    }
+  };
+
+  const handleTestIntegration = async () => {
+    if (!project) return;
+
+    setTestingIntegration(true);
+
+    try {
+      const result = await testProjectGitHubIntegration(project.id);
+      toast[result.status === "CONNECTED" ? "success" : result.status === "ERROR" ? "error" : "info"](
+        result.message
+      );
+      await loadDevOps(false);
+    } catch (error: unknown) {
+      toast.error(getApiErrorMessage(error, "Could not test GitHub integration."));
+    } finally {
+      setTestingIntegration(false);
+    }
+  };
+
+  const handleDisconnect = async () => {
+    if (!project) return;
+
+    if (!canManageIntegration) {
+      toast.error("Only the project owner can disconnect the GitHub repository integration.");
+      return;
+    }
+
+    setDisconnecting(true);
+
+    try {
+      await deleteProjectGitHubIntegration(project.id);
+      setIntegration(null);
+      setEvents([]);
+      setRepositoryFullName("");
+      setRepositoryUrl("");
+      setDefaultBranch("main");
+      setPublicBaseUrl("");
+      toast.success("GitHub integration disconnected.");
+      await loadDevOps(false);
+    } catch (error: unknown) {
+      toast.error(getApiErrorMessage(error, "Could not disconnect GitHub integration."));
+    } finally {
+      setDisconnecting(false);
+    }
+  };
+
+  const handleStartNgrok = async () => {
+    if (!project || !canManageIntegration) {
+      toast.error("Only the project owner can start the ngrok setup tunnel.");
+      return;
+    }
+
+    setStartingNgrok(true);
+
+    try {
+      const status = await startNgrokTunnel(8000, project.id);
+      setNgrokStatus(status);
+
+      if (status.running && status.public_url) {
+        setPublicBaseUrl(status.public_url);
+        toast.success("ngrok tunnel started and URL was applied.");
+      } else {
+        toast.error(status.message || "ngrok did not start.");
+      }
+    } catch (error: unknown) {
+      toast.error(getApiErrorMessage(error, "Could not start ngrok tunnel."));
+    } finally {
+      setStartingNgrok(false);
+    }
+  };
+
+  const handleStopNgrok = async () => {
+    if (!project || !canManageIntegration) {
+      toast.error("Only the project owner can stop the ngrok setup tunnel.");
+      return;
+    }
+
+    setStoppingNgrok(true);
+
+    try {
+      const status = await stopNgrokTunnel(project.id);
+      setNgrokStatus(status);
+      toast.info(status.message || "ngrok tunnel stopped.");
+    } catch (error: unknown) {
+      toast.error(getApiErrorMessage(error, "Could not stop ngrok tunnel."));
+    } finally {
+      setStoppingNgrok(false);
+    }
+  };
+
+  const copyToClipboard = async (value: string, label: string) => {
+    try {
+      await navigator.clipboard.writeText(value);
+      toast.success(`${label} copied`);
+    } catch {
+      toast.error("Could not copy to clipboard.");
+    }
+  };
 
   const stats = useMemo(() => {
-    return {
-      total: events.length,
-      commits: events.filter((event) => event.event_type === "push").length,
-      prs: events.filter((event) => event.event_type === "pull_request").length,
-    };
+    const push = events.filter((event) => event.event_type === "push").length;
+    const pullRequests = events.filter((event) => event.event_type === "pull_request").length;
+    const linked = events.filter((event) => event.task_key).length;
+
+    return { push, pullRequests, linked };
   }, [events]);
 
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-950 text-blue-400">
-        <Loader2 className="h-10 w-10 animate-spin" />
+      <div className="flex min-h-[60vh] items-center justify-center text-slate-400">
+        <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+        Loading DevOps workspace...
       </div>
     );
   }
 
   if (!project) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-950 px-6">
-        <Card className="max-w-lg border-slate-800 bg-slate-900/80">
-          <CardContent className="p-8 text-center">
-            <Github className="mx-auto mb-4 h-10 w-10 text-blue-300" />
-            <h1 className="text-xl font-semibold text-white">No project selected</h1>
-            <p className="mt-2 text-sm text-slate-400">
-              Create or join a project before reviewing DevOps events.
-            </p>
-          </CardContent>
-        </Card>
-      </div>
-    );
+    return <div className="p-8 text-slate-300">No project selected.</div>;
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 px-6 py-6 text-slate-100 lg:px-10">
-      <div className="mb-8 flex flex-col justify-between gap-5 lg:flex-row lg:items-center">
+    <div className="mx-auto max-w-7xl p-6">
+      <div className="mb-6 flex flex-col justify-between gap-4 lg:flex-row lg:items-center">
         <div>
-          <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-blue-500/20 bg-blue-500/10 px-3 py-1 text-xs font-medium text-blue-200">
-            <Github className="h-3.5 w-3.5" />
-            GitHub / DevOps
+          <div className="mb-3 flex flex-wrap items-center gap-2">
+            <Badge className="border-slate-700 bg-slate-900 text-slate-300">DevOps</Badge>
+            <Badge className={connectionTone(integration?.setup_status)}>
+              {integration?.setup_status?.replaceAll("_", " ") || "NOT CONFIGURED"}
+            </Badge>
           </div>
-          <h1 className="text-3xl font-bold tracking-tight text-white">
-            DevOps events for {project.name}
-          </h1>
-          <p className="mt-2 max-w-2xl text-sm text-slate-400">
-            Track commits and pull requests linked to SDLC Hub task keys.
+          <h1 className="text-3xl font-bold tracking-tight text-white">GitHub Repository Connection</h1>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-400">
+            Connect a GitHub repository to this SDLC Hub project, configure the webhook endpoint and then review commits,
+            pull requests and task automation events.
           </p>
         </div>
 
-        <div className="flex flex-wrap gap-3">
-          <Button
-            asChild
-            className="bg-purple-600 hover:bg-purple-700"
-          >
-            <Link href="/dashboard/devops/pull-requests">
-              <GitPullRequest className="mr-2 h-4 w-4" />
-              Pull requests
-            </Link>
-          </Button>
+        <div className="flex flex-wrap gap-2">
+          {projects.length > 1 && (
+            <select
+              value={project.id}
+              onChange={(event) => handleProjectChange(Number(event.target.value))}
+              className="h-10 rounded-xl border border-slate-700 bg-slate-950 px-3 text-sm text-slate-200"
+            >
+              {projects.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.name}
+                </option>
+              ))}
+            </select>
+          )}
+
           <Button
             variant="outline"
-            className="border-slate-700 bg-slate-900 text-slate-200 hover:bg-slate-800"
-            onClick={loadEvents}
+            className="border-slate-700 bg-slate-950 text-slate-200 hover:bg-slate-900"
+            onClick={() => loadDevOps(false)}
           >
             <RefreshCw className="mr-2 h-4 w-4" />
             Refresh
           </Button>
+
+          <Button asChild className="bg-slate-100 text-slate-950 hover:bg-white">
+            <Link href="/dashboard/devops/pull-requests">
+              <GitPullRequest className="mr-2 h-4 w-4" />
+              Pull Requests
+            </Link>
+          </Button>
         </div>
       </div>
 
-      <div className="mb-6 grid gap-4 md:grid-cols-3">
-        <Card className="border-slate-800 bg-slate-900/70">
+      {canManageIntegration ? (
+        <Card className="mb-6 border-slate-800 bg-slate-900/75">
           <CardContent className="p-5">
-            <p className="text-sm text-slate-500">Events</p>
-            <p className="mt-1 text-3xl font-bold text-white">{stats.total}</p>
-          </CardContent>
-        </Card>
-        <Card className="border-slate-800 bg-slate-900/70">
-          <CardContent className="p-5">
-            <p className="text-sm text-slate-500">Commits</p>
-            <p className="mt-1 text-3xl font-bold text-blue-300">{stats.commits}</p>
-          </CardContent>
-        </Card>
-        <Card className="border-slate-800 bg-slate-900/70">
-          <CardContent className="p-5">
-            <p className="text-sm text-slate-500">Pull requests</p>
-            <p className="mt-1 text-3xl font-bold text-purple-300">{stats.prs}</p>
-          </CardContent>
-        </Card>
-      </div>
+          <div className="mb-5 flex flex-col justify-between gap-4 xl:flex-row xl:items-start">
+            <div>
+              <div className="mb-2 flex items-center gap-2 text-lg font-semibold text-white">
+                <PlugZap className="h-5 w-5 text-blue-300" />
+                Repository setup
+              </div>
+              <p className="max-w-3xl text-sm leading-6 text-slate-400">
+                First connect the repository. Then create a GitHub webhook using the generated URL and the backend secret.
+                After GitHub sends a ping or delivery, the connection becomes active.
+              </p>
+              <div className={cn(
+                "mt-3 w-fit rounded-full border px-3 py-1 text-xs font-medium",
+                canManageIntegration
+                  ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-200"
+                  : "border-amber-500/25 bg-amber-500/10 text-amber-200"
+              )}>
+                {canManageIntegration
+                  ? "Owner setup mode: you can configure this integration."
+                  : "Read-only mode: only the project owner can edit this setup."}
+              </div>
+            </div>
 
-      <div className="mb-5 flex flex-wrap gap-2">
-        {[
-          ["all", "All"],
-          ["push", "Commits"],
-          ["pull_request", "Pull requests"],
-        ].map(([value, label]) => (
-          <Button
-            key={value}
-            variant="outline"
-            className={cn(
-              "border-slate-800",
-              filter === value
-                ? "bg-blue-600 text-white hover:bg-blue-700"
-                : "bg-slate-900 text-slate-300 hover:bg-slate-800"
+            {isConfigured && canManageIntegration && (
+              <Button
+                variant="outline"
+                className="border-red-500/30 bg-red-500/10 text-red-200 hover:bg-red-500/20"
+                disabled={disconnecting}
+                onClick={handleDisconnect}
+              >
+                {disconnecting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Trash2 className="mr-2 h-4 w-4" />}
+                Disconnect
+              </Button>
             )}
-            onClick={() => setFilter(value as EventFilter)}
-          >
-            {label}
-          </Button>
-        ))}
-      </div>
+          </div>
 
-      <div className="space-y-3">
-        {events.map((event) => {
-          const Icon = eventIcon(event);
+          <div className="grid gap-5 xl:grid-cols-[1.1fr_0.9fr]">
+            <div className="space-y-4 rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label>Repository</Label>
+                  <Input
+                    value={repositoryFullName}
+                    disabled={!canManageIntegration}
+                    onChange={(event) => {
+                      const value = event.target.value;
+                      setRepositoryFullName(value);
+                      if (!repositoryUrl) setRepositoryUrl(repoUrlFromFullName(value));
+                    }}
+                    placeholder="owner/repository"
+                    className="border-slate-700 bg-slate-900"
+                  />
+                  <p className="text-xs text-slate-500">Example: slavoliu/sdlc-hub-demo</p>
+                </div>
 
-          return (
-            <Card key={event.id} className="border-slate-800 bg-slate-900/70">
-              <CardContent className="flex flex-col gap-4 p-4 lg:flex-row lg:items-start lg:justify-between">
-                <div className="flex min-w-0 gap-4">
-                  <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border ${eventTone(event)}`}>
-                    <Icon className="h-5 w-5" />
+                <div className="space-y-2">
+                  <Label>Default branch</Label>
+                  <Input
+                    value={defaultBranch}
+                    onChange={(event) => setDefaultBranch(event.target.value)}
+                    placeholder="main"
+                    disabled={!canManageIntegration}
+                    className="border-slate-700 bg-slate-900"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Repository URL</Label>
+                <Input
+                  value={repositoryUrl}
+                  onChange={(event) => setRepositoryUrl(event.target.value)}
+                  placeholder="https://github.com/owner/repository"
+                  disabled={!canManageIntegration}
+                  className="border-slate-700 bg-slate-900"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label>Public backend URL / ngrok URL</Label>
+                <Input
+                  value={publicBaseUrl}
+                  onChange={(event) => setPublicBaseUrl(event.target.value)}
+                  placeholder="https://abc123.ngrok-free.app"
+                  disabled={!canManageIntegration}
+                  className="border-slate-700 bg-slate-900"
+                />
+                <p className="text-xs text-slate-500">
+                  The app will append <span className="font-mono text-slate-300">/github/webhook</span> automatically.
+                </p>
+              </div>
+
+              <div className="grid gap-3 md:grid-cols-2">
+                <button
+                  type="button"
+                  disabled={!canManageIntegration}
+                  onClick={() => canManageIntegration && setAutoLinkCommits((value) => !value)}
+                  className={cn(
+                    "rounded-2xl border p-4 text-left transition",
+                    autoLinkCommits
+                      ? "border-blue-500/30 bg-blue-500/10"
+                      : "border-slate-800 bg-slate-900"
+                  )}
+                >
+                  <p className="font-semibold text-white">Auto-link commits</p>
+                  <p className="mt-1 text-xs leading-5 text-slate-500">
+                    Commit messages containing {project.key}-123 are linked to matching tasks.
+                  </p>
+                </button>
+
+                <button
+                  type="button"
+                  disabled={!canManageIntegration}
+                  onClick={() => canManageIntegration && setAutoTransitionPrs((value) => !value)}
+                  className={cn(
+                    "rounded-2xl border p-4 text-left transition",
+                    autoTransitionPrs
+                      ? "border-purple-500/30 bg-purple-500/10"
+                      : "border-slate-800 bg-slate-900"
+                  )}
+                >
+                  <p className="font-semibold text-white">PR automation</p>
+                  <p className="mt-1 text-xs leading-5 text-slate-500">
+                    Pull requests can move tasks toward Review/Done with confirmation.
+                  </p>
+                </button>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                {canManageIntegration && (
+                  <Button className="bg-blue-600 hover:bg-blue-700" disabled={savingIntegration} onClick={handleSaveIntegration}>
+                  {savingIntegration ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+                    Save connection
+                  </Button>
+                )}
+
+                <Button
+                  variant="outline"
+                  className="border-slate-700 bg-slate-950 text-slate-200 hover:bg-slate-900"
+                  disabled={testingIntegration || !isConfigured}
+                  onClick={handleTestIntegration}
+                >
+                  {testingIntegration ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ShieldCheck className="mr-2 h-4 w-4" />}
+                  Check status
+                </Button>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
+                <div className="mb-3 flex items-center gap-2 font-semibold text-white">
+                  <Server className="h-4 w-4 text-emerald-300" />
+                  ngrok tunnel
+                </div>
+
+                <p className="text-sm leading-6 text-slate-400">
+                  Start a local ngrok tunnel from SDLC Hub. The generated public URL is applied automatically to the webhook form.
+                </p>
+
+                <div className={cn("mt-3 rounded-xl border p-3 text-sm", ngrokStatus?.running ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-200" : "border-slate-800 bg-slate-900 text-slate-400")}>
+                  {ngrokStatus?.running ? (
+                    <span>Running: <span className="font-mono">{ngrokStatus.public_url}</span></span>
+                  ) : (
+                    <span>{ngrokStatus?.message || "ngrok is not running."}</span>
+                  )}
+                </div>
+
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    className="bg-emerald-600 hover:bg-emerald-700"
+                    disabled={startingNgrok || !canManageIntegration}
+                    onClick={handleStartNgrok}
+                  >
+                    {startingNgrok ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Server className="mr-2 h-4 w-4" />}
+                    Start ngrok tunnel
+                  </Button>
+
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="border-slate-700 bg-slate-900 text-slate-200 hover:bg-slate-800"
+                    disabled={stoppingNgrok || !canManageIntegration}
+                    onClick={handleStopNgrok}
+                  >
+                    {stoppingNgrok ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
+                    Stop
+                  </Button>
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
+                <div className="mb-3 flex items-center gap-2 font-semibold text-white">
+                  <Server className="h-4 w-4 text-emerald-300" />
+                  GitHub webhook values
+                </div>
+
+                <div className="space-y-3">
+                  <div>
+                    <p className="mb-1 text-xs text-slate-500">Payload URL</p>
+                    <div className="flex gap-2">
+                      <code className="min-w-0 flex-1 truncate rounded-xl border border-slate-800 bg-black/40 px-3 py-2 text-xs text-slate-300">
+                        {webhookUrl || integration?.webhook_url || "https://<ngrok-domain>/github/webhook"}
+                      </code>
+                      <Button
+                        size="icon"
+                        variant="outline"
+                        className="border-slate-700 bg-slate-900"
+                        disabled={!webhookUrl && !integration?.webhook_url}
+                        onClick={() => copyToClipboard(webhookUrl || integration?.webhook_url || "", "Webhook URL")}
+                      >
+                        <Copy className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </div>
 
-                  <div className="min-w-0">
-                    <div className="mb-2 flex flex-wrap items-center gap-2">
-                      <Badge className="border-slate-700 bg-slate-950 text-slate-300">
-                        {event.event_type}
-                      </Badge>
-                      {event.action && (
-                        <Badge className="border-blue-500/20 bg-blue-500/10 text-blue-200">
-                          {event.action}
-                        </Badge>
-                      )}
-                      {event.task_key && (
-                        <Link href={event.task_id ? `/dashboard/tasks/${event.task_id}` : "#"}>
-                          <Badge className="border-emerald-500/20 bg-emerald-500/10 text-emerald-200 hover:bg-emerald-500/20">
-                            {event.task_key}
-                          </Badge>
-                        </Link>
-                      )}
-                    </div>
+                  <div>
+                    <p className="mb-1 text-xs text-slate-500">Content type</p>
+                    <code className="block rounded-xl border border-slate-800 bg-black/40 px-3 py-2 text-xs text-slate-300">
+                      application/json
+                    </code>
+                  </div>
 
-                    <h2 className="font-semibold text-white">
-                      {event.summary || "GitHub event"}
-                    </h2>
+                  <div>
+                    <p className="mb-1 text-xs text-slate-500">Secret</p>
+                    <code className="block rounded-xl border border-slate-800 bg-black/40 px-3 py-2 text-xs text-slate-300">
+                      {integration?.secret_configured ? `Configured (${integration.webhook_secret_hint || "hidden"})` : "Missing GITHUB_WEBHOOK_SECRET"}
+                    </code>
+                  </div>
 
-                    <p className="mt-2 text-sm text-slate-500">
-                      {event.repository || "Unknown repository"}
-                      {event.sender_login ? ` • ${event.sender_login}` : ""}
-                      {" • "}
-                      {formatDate(event.created_at)}
-                    </p>
-
-                    {event.commit_sha && (
-                      <p className="mt-1 font-mono text-xs text-slate-600">
-                        {event.commit_sha.slice(0, 12)}
-                      </p>
+                  <div className={cn("rounded-xl border p-3 text-sm", connectionTone(integration?.setup_status))}>
+                    {isConnected ? (
+                      <span className="flex items-center gap-2">
+                        <CheckCircle2 className="h-4 w-4" />
+                        Connected. Last delivery: {formatDate(integration?.last_delivery_at)}
+                      </span>
+                    ) : integration?.setup_status === "ERROR" ? (
+                      <span className="flex items-center gap-2">
+                        <AlertTriangle className="h-4 w-4" />
+                        {integration.last_error || "Connection error"}
+                      </span>
+                    ) : (
+                      <span className="flex items-center gap-2">
+                        <AlertTriangle className="h-4 w-4" />
+                        Waiting for GitHub ping/delivery.
+                      </span>
                     )}
                   </div>
                 </div>
+              </div>
 
-                {event.url && (
-                  <Button
-                    asChild
-                    variant="outline"
-                    className="border-slate-700 bg-slate-950 text-slate-300 hover:bg-slate-800"
+              <div className="rounded-2xl border border-blue-500/20 bg-blue-500/10 p-4 text-sm leading-6 text-blue-100">
+                <p className="font-semibold">GitHub setup steps</p>
+                <ol className="mt-2 list-decimal space-y-1 pl-5">
+                  <li>Open repository Settings → Webhooks → Add webhook.</li>
+                  <li>Paste the Payload URL generated above.</li>
+                  <li>Set Content type to application/json.</li>
+                  <li>Use the same secret as GITHUB_WEBHOOK_SECRET.</li>
+                  <li>Select Pushes and Pull requests.</li>
+                  <li>Save and send a Ping delivery.</li>
+                </ol>
+                <p className="mt-3 text-xs text-blue-100/80">
+                  Members can use the connected DevOps data after setup, but only the project owner can change or disconnect the repository.
+                </p>
+              </div>
+            </div>
+          </div>
+          </CardContent>
+        </Card>
+      ) : (
+        <Card className="mb-6 border-slate-800 bg-slate-900/75">
+          <CardContent className="p-5">
+            <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-start">
+              <div>
+                <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-blue-500/20 bg-blue-500/10 px-3 py-1 text-xs font-medium text-blue-200">
+                  <Github className="h-3.5 w-3.5" />
+                  Connected repository
+                </div>
+                <h2 className="text-xl font-semibold text-white">
+                  {integration?.repository_full_name || "GitHub repository"}
+                </h2>
+                <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-400">
+                  This project already has a GitHub repository integration managed by the project owner.
+                  Team members can review events and pull requests, but only the owner can change the connection.
+                </p>
+              </div>
+
+              <Badge className={connectionTone(integration?.setup_status)}>
+                {integration?.setup_status?.replaceAll("_", " ") || "NOT CONFIGURED"}
+              </Badge>
+            </div>
+
+            <div className="mt-5 grid gap-4 md:grid-cols-3">
+              <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
+                <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Repository</p>
+                <p className="mt-2 truncate font-semibold text-white">
+                  {integration?.repository_full_name || "Not configured"}
+                </p>
+                {integration?.repository_url && (
+                  <a
+                    href={integration.repository_url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="mt-2 inline-flex items-center text-xs text-blue-300 hover:text-blue-200"
                   >
-                    <a href={event.url} target="_blank" rel="noreferrer">
-                      <ExternalLink className="mr-2 h-4 w-4" />
-                      Open
-                    </a>
-                  </Button>
+                    Open repository
+                    <ExternalLink className="ml-1 h-3 w-3" />
+                  </a>
                 )}
-              </CardContent>
-            </Card>
-          );
-        })}
+              </div>
 
-        {events.length === 0 && (
-          <Card className="border-slate-800 bg-slate-900/70">
-            <CardContent className="p-10 text-center">
-              <Github className="mx-auto mb-4 h-10 w-10 text-slate-600" />
-              <h2 className="text-lg font-semibold text-white">No GitHub events yet</h2>
-              <p className="mt-2 text-sm text-slate-500">
-                Send a GitHub webhook containing a task key such as {project.key}-1.
+              <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
+                <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Default branch</p>
+                <p className="mt-2 font-semibold text-white">
+                  {integration?.default_branch || "main"}
+                </p>
+              </div>
+
+              <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
+                <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Last delivery</p>
+                <p className="mt-2 font-semibold text-white">
+                  {formatDate(integration?.last_delivery_at)}
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-5 rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
+              <p className="text-sm font-semibold text-white">How this works</p>
+              <p className="mt-2 text-sm leading-6 text-slate-400">
+                Commits and pull requests that contain a valid task key, such as{" "}
+                <span className="font-mono text-slate-200">{project.key}-123</span>, are linked automatically
+                to matching SDLC Hub tasks. Pull request transitions can then be reviewed from the Pull Requests page.
               </p>
-            </CardContent>
-          </Card>
-        )}
-      </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {!isConfigured ? (
+        <Card className="border-dashed border-slate-800 bg-slate-900/50">
+          <CardContent className="p-10 text-center">
+            <Github className="mx-auto mb-4 h-10 w-10 text-slate-600" />
+            <h2 className="text-lg font-semibold text-white">
+              {canManageIntegration ? "Connect a repository first" : "Repository not configured yet"}
+            </h2>
+            <p className="mx-auto mt-2 max-w-2xl text-sm leading-6 text-slate-500">
+              {canManageIntegration
+                ? "Once the repository is configured and GitHub sends the first webhook delivery, this page will unlock event history, linked commits and pull request automation."
+                : "The project owner has not configured the GitHub repository integration yet. After setup, team members will be able to view DevOps events and pull requests here."}
+            </p>
+          </CardContent>
+        </Card>
+      ) : (
+        <>
+          <div className="mb-5 grid gap-4 md:grid-cols-3">
+            {[
+              {
+                label: "Push events",
+                value: stats.push,
+                icon: GitCommitHorizontal,
+              },
+              {
+                label: "Pull requests",
+                value: stats.pullRequests,
+                icon: GitPullRequest,
+              },
+              {
+                label: "Linked tasks",
+                value: stats.linked,
+                icon: GitBranch,
+              },
+            ].map((item) => {
+              const Icon = item.icon;
+
+              return (
+                <Card key={item.label} className="border-slate-800 bg-slate-900/70">
+                  <CardContent className="p-5">
+                    <Icon className="mb-3 h-5 w-5 text-blue-300" />
+                    <p className="text-sm text-slate-500">{item.label}</p>
+                    <p className="mt-1 text-2xl font-semibold text-white">{item.value}</p>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+
+          <div className="mb-5 flex flex-wrap gap-2">
+            {(["all", "push", "pull_request"] as EventFilter[]).map((item) => (
+              <Button
+                key={item}
+                variant={filter === item ? "default" : "outline"}
+                className={cn(
+                  filter === item
+                    ? "bg-blue-600 hover:bg-blue-700"
+                    : "border-slate-700 bg-slate-950 text-slate-300 hover:bg-slate-900"
+                )}
+                onClick={() => setFilter(item)}
+              >
+                {item === "all" ? "All events" : item === "push" ? "Push" : "Pull requests"}
+              </Button>
+            ))}
+          </div>
+
+          <div className="space-y-3">
+            {events.map((event) => {
+              const Icon = eventIcon(event);
+
+              return (
+                <Card key={event.id} className="border-slate-800 bg-slate-900/70">
+                  <CardContent className="flex flex-col gap-4 p-4 lg:flex-row lg:items-start lg:justify-between">
+                    <div className="min-w-0">
+                      <div className="mb-2 flex flex-wrap items-center gap-2">
+                        <Badge className={eventTone(event)}>
+                          <Icon className="mr-1.5 h-3.5 w-3.5" />
+                          {event.event_type}
+                        </Badge>
+                        {event.action && (
+                          <Badge variant="outline" className="border-slate-700 text-slate-300">
+                            {event.action}
+                          </Badge>
+                        )}
+                        {event.task_key && (
+                          <Badge variant="outline" className="border-blue-500/30 bg-blue-500/10 text-blue-200">
+                            {event.task_key}
+                          </Badge>
+                        )}
+                      </div>
+
+                      <p className="font-semibold text-white">{event.summary || "GitHub event"}</p>
+                      <p className="mt-1 text-sm text-slate-500">
+                        {event.repository || integration?.repository_full_name || "Repository unknown"} ·{" "}
+                        {event.sender_login || "unknown sender"} · {formatDate(event.created_at)}
+                      </p>
+                    </div>
+
+                    <div className="flex flex-wrap gap-2">
+                      {event.url && (
+                        <Button
+                          asChild
+                          variant="outline"
+                          size="sm"
+                          className="border-slate-700 bg-slate-950 text-slate-200 hover:bg-slate-900"
+                        >
+                          <a href={event.url} target="_blank" rel="noreferrer">
+                            <ExternalLink className="mr-2 h-4 w-4" />
+                            GitHub
+                          </a>
+                        </Button>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })}
+
+            {events.length === 0 && (
+              <Card className="border-slate-800 bg-slate-900/70">
+                <CardContent className="p-10 text-center">
+                  <Github className="mx-auto mb-4 h-10 w-10 text-slate-600" />
+                  <h2 className="text-lg font-semibold text-white">No GitHub events yet</h2>
+                  <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-slate-500">
+                    Send a GitHub webhook containing a task key such as {project.key}-1.
+                  </p>
+                </CardContent>
+              </Card>
+            )}
+          </div>
+        </>
+      )}
     </div>
   );
 }

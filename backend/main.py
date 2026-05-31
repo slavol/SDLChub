@@ -1,6 +1,8 @@
 from pathlib import Path
 import asyncio
+import json
 from contextlib import suppress
+from time import monotonic
 
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -164,6 +166,8 @@ def _get_websocket_context(token: str):
 
         return {
             "user_id": user.id,
+            "full_name": user.full_name,
+            "avatar_url": user.avatar_url,
             "project_ids": member_project_ids | owned_project_ids,
         }
     finally:
@@ -187,10 +191,61 @@ async def websocket_endpoint(websocket: WebSocket):
 
     try:
         await websocket.send_json({"type": "connected", "payload": {"project_ids": list(context["project_ids"])}})
+        last_typing_events: dict[tuple[int, int], float] = {}
+
         while True:
             message = await websocket.receive_text()
             if message == "ping":
                 await websocket.send_json({"type": "pong", "payload": {}})
+                continue
+
+            try:
+                realtime_message = json.loads(message)
+            except json.JSONDecodeError:
+                continue
+
+            if not isinstance(realtime_message, dict):
+                continue
+
+            if realtime_message.get("type") != "comment.typing":
+                continue
+
+            payload = realtime_message.get("payload") or {}
+            if not isinstance(payload, dict):
+                continue
+
+            try:
+                project_id = int(realtime_message.get("project_id") or payload.get("project_id") or 0)
+                task_id = int(payload.get("task_id") or 0)
+            except (TypeError, ValueError):
+                continue
+
+            if project_id not in context["project_ids"] or task_id <= 0:
+                continue
+
+            is_typing = bool(payload.get("is_typing", True))
+            now = monotonic()
+            throttle_key = (project_id, task_id)
+
+            if is_typing and now - last_typing_events.get(throttle_key, 0) < 1.0:
+                continue
+
+            last_typing_events[throttle_key] = now
+
+            await realtime_manager.send_to_project(
+                project_id,
+                {
+                    "type": "comment.typing",
+                    "project_id": project_id,
+                    "payload": {
+                        "task_id": task_id,
+                        "user_id": context["user_id"],
+                        "full_name": context.get("full_name"),
+                        "avatar_url": context.get("avatar_url"),
+                        "is_typing": is_typing,
+                    },
+                },
+            )
     except WebSocketDisconnect:
         await realtime_manager.disconnect(websocket)
     except Exception:

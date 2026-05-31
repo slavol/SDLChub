@@ -3,7 +3,12 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import subprocess
+import time
+import urllib.error
+import urllib.request
 import re
+from datetime import datetime
 from typing import Any
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, Query, status
@@ -11,19 +16,298 @@ from sqlalchemy.orm import Session
 
 from backend.config import get_settings
 from backend.database.session import get_db
-from backend.models.github import GitHubEvent
-from backend.models.project import ProjectMember, Task, TaskAuditLog, TaskComment, TaskStatus
+from backend.models.github import GitHubEvent, GitHubProjectIntegration
+from backend.models.project import Project, ProjectMember, Task, TaskAuditLog, TaskComment, TaskStatus
 from backend.models.user import User
 from backend.routers.auth import get_current_user
 from backend.realtime import broadcast_project_event
-from backend.schemas.github import GitHubEventOut, GitHubPullRequestOut, PullRequestConfirmRequest
+from backend.schemas.github import (
+    GitHubEventOut,
+    GitHubIntegrationOut,
+    GitHubIntegrationTestOut,
+    GitHubIntegrationUpsert,
+    GitHubPullRequestOut,
+    PullRequestConfirmRequest,
+)
 from backend.services.documentation_service import upsert_task_documentation_page
 from backend.utils.permissions import check_project_permission, require_project_permission
 
 
 router = APIRouter(prefix="/github", tags=["GitHub / DevOps"])
 
+NGROK_PROCESS: subprocess.Popen | None = None
+NGROK_DEFAULT_PORT = 8000
+NGROK_API_URL = "http://127.0.0.1:4040/api/tunnels"
+
+
+def _read_ngrok_tunnel() -> dict:
+    try:
+        with urllib.request.urlopen(NGROK_API_URL, timeout=1.5) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except urllib.error.URLError:
+        return {
+            "running": False,
+            "public_url": None,
+            "webhook_url": None,
+            "message": "ngrok is not running.",
+        }
+    except Exception as exc:
+        return {
+            "running": False,
+            "public_url": None,
+            "webhook_url": None,
+            "message": f"Could not read ngrok status: {exc}",
+        }
+
+    tunnels = payload.get("tunnels") or []
+    https_tunnel = next(
+        (
+            tunnel
+            for tunnel in tunnels
+            if tunnel.get("public_url", "").startswith("https://")
+        ),
+        tunnels[0] if tunnels else None,
+    )
+
+    public_url = https_tunnel.get("public_url") if https_tunnel else None
+
+    return {
+        "running": bool(public_url),
+        "public_url": public_url,
+        "webhook_url": f"{public_url.rstrip('/')}/github/webhook" if public_url else None,
+        "message": "ngrok tunnel is running." if public_url else "ngrok is running, but no public tunnel was found.",
+        "tunnels": tunnels,
+    }
+
+
+def _start_ngrok_process(port: int = NGROK_DEFAULT_PORT) -> dict:
+    global NGROK_PROCESS
+
+    current = _read_ngrok_tunnel()
+    if current.get("running"):
+        return current
+
+    if NGROK_PROCESS and NGROK_PROCESS.poll() is None:
+        # Process exists but API is not ready yet. Continue polling below.
+        pass
+    else:
+        try:
+            NGROK_PROCESS = subprocess.Popen(
+                ["ngrok", "http", str(port)],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                stdin=subprocess.DEVNULL,
+                start_new_session=True,
+            )
+        except FileNotFoundError:
+            return {
+                "running": False,
+                "public_url": None,
+                "webhook_url": None,
+                "message": "ngrok command was not found. Install ngrok or make sure it is available in PATH.",
+            }
+        except Exception as exc:
+            return {
+                "running": False,
+                "public_url": None,
+                "webhook_url": None,
+                "message": f"Could not start ngrok: {exc}",
+            }
+
+    for _ in range(16):
+        time.sleep(0.5)
+        current = _read_ngrok_tunnel()
+        if current.get("running"):
+            return current
+
+        if NGROK_PROCESS and NGROK_PROCESS.poll() is not None:
+            return {
+                "running": False,
+                "public_url": None,
+                "webhook_url": None,
+                "message": "ngrok process stopped before creating a tunnel. Check your ngrok authtoken/account.",
+            }
+
+    return {
+        "running": False,
+        "public_url": None,
+        "webhook_url": None,
+        "message": "ngrok did not expose a tunnel in time. Try running ngrok http 8000 manually to inspect the error.",
+    }
+
+
+def _stop_ngrok_process() -> dict:
+    global NGROK_PROCESS
+
+    if NGROK_PROCESS and NGROK_PROCESS.poll() is None:
+        NGROK_PROCESS.terminate()
+
+        try:
+            NGROK_PROCESS.wait(timeout=4)
+        except subprocess.TimeoutExpired:
+            NGROK_PROCESS.kill()
+
+        NGROK_PROCESS = None
+
+        return {
+            "running": False,
+            "public_url": None,
+            "webhook_url": None,
+            "message": "ngrok tunnel stopped.",
+        }
+
+    NGROK_PROCESS = None
+
+    return {
+        **_read_ngrok_tunnel(),
+        "message": "No ngrok process started by SDLC Hub is currently tracked.",
+    }
+
+
 TASK_KEY_RE = re.compile(r"\b[A-Z][A-Z0-9]+-\d+\b")
+
+
+
+
+def _repo_full_name_from_payload(payload: dict[str, Any]) -> str | None:
+    repository = payload.get("repository") or {}
+    if not isinstance(repository, dict):
+        return None
+
+    full_name = repository.get("full_name")
+    if isinstance(full_name, str) and "/" in full_name:
+        return full_name.strip()
+
+    return None
+
+
+def _normalize_repository_full_name(value: str) -> str:
+    normalized = (value or "").strip()
+
+    if normalized.startswith("https://github.com/"):
+        normalized = normalized.replace("https://github.com/", "", 1)
+    if normalized.startswith("http://github.com/"):
+        normalized = normalized.replace("http://github.com/", "", 1)
+    if normalized.endswith(".git"):
+        normalized = normalized[:-4]
+
+    normalized = normalized.strip("/")
+
+    if not re.match(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$", normalized):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Repository must use the owner/repository format.",
+        )
+
+    return normalized
+
+
+def _secret_hint() -> str | None:
+    secret = get_settings().github_webhook_secret
+    if not secret:
+        return None
+
+    if len(secret) <= 4:
+        return "configured"
+
+    return f"••••{secret[-4:]}"
+
+
+
+def _require_project_owner(db: Session, current_user: User, project_id: int) -> Project:
+    project = db.query(Project).filter(Project.id == project_id).first()
+
+    if not project:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found.")
+
+    if project.owner_id == current_user.id or bool(getattr(current_user, "is_global_admin", False)):
+        return project
+
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="Only the project owner can manage the GitHub repository integration.",
+    )
+
+def _integration_to_out(project_id: int, integration: GitHubProjectIntegration | None) -> dict:
+    settings = get_settings()
+
+    if not integration:
+        return {
+            "id": None,
+            "project_id": project_id,
+            "configured": False,
+            "repository_full_name": None,
+            "repository_url": None,
+            "default_branch": "main",
+            "webhook_url": None,
+            "webhook_endpoint_path": "/github/webhook",
+            "setup_status": "NOT_CONFIGURED",
+            "auto_link_commits": True,
+            "auto_transition_prs": True,
+            "secret_configured": bool(settings.github_webhook_secret),
+            "webhook_secret_hint": _secret_hint(),
+            "last_ping_at": None,
+            "last_delivery_at": None,
+            "last_error": None,
+            "created_at": None,
+            "updated_at": None,
+        }
+
+    return {
+        "id": integration.id,
+        "project_id": integration.project_id,
+        "configured": True,
+        "repository_full_name": integration.repository_full_name,
+        "repository_url": integration.repository_url,
+        "default_branch": integration.default_branch or "main",
+        "webhook_url": integration.webhook_url,
+        "webhook_endpoint_path": "/github/webhook",
+        "setup_status": integration.setup_status or "CONFIGURED",
+        "auto_link_commits": bool(integration.auto_link_commits),
+        "auto_transition_prs": bool(integration.auto_transition_prs),
+        "secret_configured": bool(settings.github_webhook_secret),
+        "webhook_secret_hint": integration.webhook_secret_hint or _secret_hint(),
+        "last_ping_at": integration.last_ping_at,
+        "last_delivery_at": integration.last_delivery_at,
+        "last_error": integration.last_error,
+        "created_at": integration.created_at,
+        "updated_at": integration.updated_at,
+    }
+
+
+def _find_integration_for_payload(db: Session, payload: dict[str, Any]) -> GitHubProjectIntegration | None:
+    repo_full_name = _repo_full_name_from_payload(payload)
+    if not repo_full_name:
+        return None
+
+    return (
+        db.query(GitHubProjectIntegration)
+        .filter(GitHubProjectIntegration.repository_full_name.ilike(repo_full_name))
+        .first()
+    )
+
+
+def _refresh_integration_from_payload(
+    db: Session,
+    payload: dict[str, Any],
+    event_type: str,
+) -> GitHubProjectIntegration | None:
+    integration = _find_integration_for_payload(db, payload)
+    if not integration:
+        return None
+
+    now = datetime.utcnow()
+    integration.last_delivery_at = now
+    integration.last_error = None
+
+    if event_type == "ping":
+        integration.last_ping_at = now
+
+    if integration.setup_status in {"CONFIGURED", "WAITING_FOR_PING", "ERROR"}:
+        integration.setup_status = "CONNECTED"
+
+    db.flush()
+    return integration
 
 
 def _enum_value(value) -> str:
@@ -371,6 +655,216 @@ def _handle_pull_request(
     return processed
 
 
+
+
+
+
+@router.get("/ngrok/status")
+def get_ngrok_status(
+    current_user: User = Depends(get_current_user),
+):
+    return _read_ngrok_tunnel()
+
+
+@router.post("/ngrok/start")
+def start_ngrok_tunnel(
+    port: int = NGROK_DEFAULT_PORT,
+    project_id: int | None = Query(default=None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    if project_id is not None:
+        _require_project_owner(db, current_user, project_id)
+
+    safe_port = port if 1 <= port <= 65535 else NGROK_DEFAULT_PORT
+    return _start_ngrok_process(safe_port)
+
+
+@router.post("/ngrok/stop")
+def stop_ngrok_tunnel(
+    project_id: int | None = Query(default=None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    if project_id is not None:
+        _require_project_owner(db, current_user, project_id)
+
+    return _stop_ngrok_process()
+
+
+@router.get("/integration/project/{project_id}", response_model=GitHubIntegrationOut)
+def get_project_github_integration(
+    project_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    check_project_permission(db, current_user.id, project_id)
+
+    integration = (
+        db.query(GitHubProjectIntegration)
+        .filter(GitHubProjectIntegration.project_id == project_id)
+        .first()
+    )
+
+    return _integration_to_out(project_id, integration)
+
+
+@router.put("/integration/project/{project_id}", response_model=GitHubIntegrationOut)
+def upsert_project_github_integration(
+    project_id: int,
+    data: GitHubIntegrationUpsert,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    check_project_permission(db, current_user.id, project_id)
+    _require_project_owner(db, current_user, project_id)
+
+    repository_full_name = _normalize_repository_full_name(data.repository_full_name)
+    repository_url = (data.repository_url or "").strip() or f"https://github.com/{repository_full_name}"
+    webhook_url = (data.webhook_url or "").strip() or None
+
+    if webhook_url and not webhook_url.endswith("/github/webhook"):
+        webhook_url = webhook_url.rstrip("/") + "/github/webhook"
+
+    integration = (
+        db.query(GitHubProjectIntegration)
+        .filter(GitHubProjectIntegration.project_id == project_id)
+        .first()
+    )
+
+    if not integration:
+        integration = GitHubProjectIntegration(
+            project_id=project_id,
+            created_by_id=current_user.id,
+        )
+        db.add(integration)
+
+    integration.repository_full_name = repository_full_name
+    integration.repository_url = repository_url
+    integration.default_branch = (data.default_branch or "main").strip() or "main"
+    integration.webhook_url = webhook_url
+    integration.webhook_secret_hint = _secret_hint()
+    integration.auto_link_commits = bool(data.auto_link_commits)
+    integration.auto_transition_prs = bool(data.auto_transition_prs)
+
+    if integration.last_ping_at or integration.last_delivery_at:
+        integration.setup_status = "CONNECTED"
+    else:
+        integration.setup_status = "WAITING_FOR_PING"
+
+    integration.last_error = None
+
+    db.commit()
+    db.refresh(integration)
+
+    broadcast_project_event(
+        project_id,
+        "project.changed",
+        {
+            "action": "github_integration_updated",
+            "project_id": project_id,
+            "github_integration": _integration_to_out(project_id, integration),
+        },
+    )
+
+    return _integration_to_out(project_id, integration)
+
+
+@router.post("/integration/project/{project_id}/test", response_model=GitHubIntegrationTestOut)
+def test_project_github_integration(
+    project_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    check_project_permission(db, current_user.id, project_id)
+
+    settings = get_settings()
+    integration = (
+        db.query(GitHubProjectIntegration)
+        .filter(GitHubProjectIntegration.project_id == project_id)
+        .first()
+    )
+
+    if not integration:
+        return {
+            "configured": False,
+            "secret_configured": bool(settings.github_webhook_secret),
+            "status": "NOT_CONFIGURED",
+            "message": "Configure a GitHub repository before testing the webhook connection.",
+            "repository_full_name": None,
+            "webhook_url": None,
+            "last_ping_at": None,
+            "last_delivery_at": None,
+        }
+
+    if not settings.github_webhook_secret:
+        integration.setup_status = "ERROR"
+        integration.last_error = "GITHUB_WEBHOOK_SECRET is not configured."
+        db.commit()
+
+        return {
+            "configured": True,
+            "secret_configured": False,
+            "status": "ERROR",
+            "message": "Backend secret is missing. Set GITHUB_WEBHOOK_SECRET and restart the backend.",
+            "repository_full_name": integration.repository_full_name,
+            "webhook_url": integration.webhook_url,
+            "last_ping_at": integration.last_ping_at,
+            "last_delivery_at": integration.last_delivery_at,
+        }
+
+    if integration.last_ping_at or integration.last_delivery_at:
+        integration.setup_status = "CONNECTED"
+        integration.last_error = None
+        message = "GitHub connection looks active. At least one webhook delivery was received."
+    else:
+        integration.setup_status = "WAITING_FOR_PING"
+        message = "Configuration saved. Use GitHub's Redeliver/Ping button to send a webhook test."
+
+    db.commit()
+
+    return {
+        "configured": True,
+        "secret_configured": True,
+        "status": integration.setup_status,
+        "message": message,
+        "repository_full_name": integration.repository_full_name,
+        "webhook_url": integration.webhook_url,
+        "last_ping_at": integration.last_ping_at,
+        "last_delivery_at": integration.last_delivery_at,
+    }
+
+
+@router.delete("/integration/project/{project_id}")
+def delete_project_github_integration(
+    project_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    check_project_permission(db, current_user.id, project_id)
+    _require_project_owner(db, current_user, project_id)
+
+    integration = (
+        db.query(GitHubProjectIntegration)
+        .filter(GitHubProjectIntegration.project_id == project_id)
+        .first()
+    )
+
+    if not integration:
+        return {"message": "GitHub integration already disconnected."}
+
+    db.delete(integration)
+    db.commit()
+
+    broadcast_project_event(
+        project_id,
+        "project.changed",
+        {"action": "github_integration_deleted", "project_id": project_id},
+    )
+
+    return {"message": "GitHub integration disconnected."}
+
+
 @router.post("/webhook")
 async def github_webhook(
     request: Request,
@@ -401,6 +895,8 @@ async def github_webhook(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid JSON payload.") from exc
 
     event_type = x_github_event or "unknown"
+    integration = _refresh_integration_from_payload(db, payload, event_type)
+    integration_project_id = integration.project_id if integration else None
 
     if event_type == "ping":
         _store_event(

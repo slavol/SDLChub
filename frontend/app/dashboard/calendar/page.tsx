@@ -58,12 +58,18 @@ import { useRealtimeEvent } from "@/hooks/use-realtime-event";
 import { getApiErrorMessage } from "@/lib/api-error";
 import { cn } from "@/lib/utils";
 import {
+  CalendarAvailability,
+  CalendarAvailabilityStatus,
   CalendarEvent,
   CalendarEventType,
+  createProjectCalendarAvailability,
   createProjectCalendarEvent,
   deleteCalendarEvent,
   deleteCalendarEventSeries,
+  deleteProjectCalendarAvailability,
+  getProjectCalendarAvailability,
   getProjectCalendarEvents,
+  updateProjectCalendarAvailability,
   updateProjectCalendarEvent,
 } from "@/services/calendar";
 import {
@@ -98,6 +104,14 @@ type CalendarFeedItem =
     }
   | {
       id: string;
+      kind: "availability";
+      date: Date;
+      title: string;
+      availability: CalendarAvailability;
+      userName: string;
+    }
+  | {
+      id: string;
       kind: "sprint";
       date: Date;
       title: string;
@@ -120,6 +134,14 @@ const recurrenceOptions: { value: RecurrenceMode; label: string; description: st
   { value: "daily", label: "Daily", description: "Repeat every day until the selected date." },
   { value: "weekdays", label: "Weekdays", description: "Repeat Monday through Friday." },
   { value: "weekly", label: "Weekly", description: "Repeat on the same weekday." },
+];
+
+const availabilityStatusOptions: { value: CalendarAvailabilityStatus; label: string; description: string }[] = [
+  { value: "VACATION", label: "Vacation", description: "Time off / concediu planificat." },
+  { value: "SICK_LEAVE", label: "Sick leave", description: "Medical leave or health-related absence." },
+  { value: "UNAVAILABLE", label: "Unavailable", description: "The member is blocked for work/meetings." },
+  { value: "FOCUS_TIME", label: "Focus time", description: "Protected deep-work interval." },
+  { value: "AVAILABLE", label: "Available", description: "Explicit availability window." },
 ];
 
 const taskStatusClass: Record<TaskStatus, string> = {
@@ -145,6 +167,22 @@ const eventTypeClass: Record<string, string> = {
   FOCUS: "border-slate-600 bg-slate-800 text-slate-300",
   OTHER: "border-slate-600 bg-slate-800 text-slate-300",
 };
+
+const availabilityStatusClass: Record<string, string> = {
+  AVAILABLE: "border-emerald-500/25 bg-emerald-500/10 text-emerald-300",
+  UNAVAILABLE: "border-rose-500/25 bg-rose-500/10 text-rose-300",
+  VACATION: "border-sky-500/25 bg-sky-500/10 text-sky-300",
+  SICK_LEAVE: "border-orange-500/25 bg-orange-500/10 text-orange-300",
+  FOCUS_TIME: "border-violet-500/25 bg-violet-500/10 text-violet-300",
+};
+
+function availabilityLabel(status: string) {
+  return availabilityStatusOptions.find((option) => option.value === status)?.label || status.replaceAll("_", " ");
+}
+
+function rangesOverlap(startA: Date, endA: Date, startB: Date, endB: Date) {
+  return startA < endB && endA > startB;
+}
 
 function dateKey(date: Date) {
   const year = date.getFullYear();
@@ -248,12 +286,17 @@ function feedItemTone(item: CalendarFeedItem) {
       : "border border-emerald-500/20 bg-emerald-500/10 text-emerald-200";
   }
 
+  if (item.kind === "availability") {
+    return availabilityStatusClass[item.availability.status] || availabilityStatusClass.UNAVAILABLE;
+  }
+
   return eventTypeClass[item.event.event_type] || eventTypeClass.OTHER;
 }
 
 function feedItemLabel(item: CalendarFeedItem) {
   if (item.kind === "task") return item.task.key;
   if (item.kind === "sprint") return `SPRINT ${item.milestone}`;
+  if (item.kind === "availability") return availabilityLabel(item.availability.status);
   return item.event.event_type;
 }
 
@@ -263,16 +306,22 @@ function CalendarItemCard({
   onEditEvent,
   onDeleteEvent,
   onDeleteSeries,
+  onEditAvailability,
+  onDeleteAvailability,
   canEditEvent,
   canDeleteEvent,
+  canManageAvailability,
 }: {
   item: CalendarFeedItem;
   memberMap: Map<number, ProjectMember>;
   onEditEvent: (event: CalendarEvent) => void;
   onDeleteEvent: (event: CalendarEvent) => void;
   onDeleteSeries: (event: CalendarEvent) => void;
+  onEditAvailability: (availability: CalendarAvailability) => void;
+  onDeleteAvailability: (availability: CalendarAvailability) => void;
   canEditEvent: (event: CalendarEvent) => boolean;
   canDeleteEvent: (event: CalendarEvent) => boolean;
+  canManageAvailability: (availability: CalendarAvailability) => boolean;
 }) {
   if (item.kind === "task") {
     return (
@@ -333,6 +382,68 @@ function CalendarItemCard({
           <CalendarClock className="h-3.5 w-3.5" />
           {formatDateTime(item.date)}
         </p>
+      </div>
+    );
+  }
+
+
+  if (item.kind === "availability") {
+    const block = item.availability;
+    const canManage = canManageAvailability(block);
+    const statusTone = availabilityStatusClass[block.status] || availabilityStatusClass.UNAVAILABLE;
+    const statusLabel = availabilityLabel(block.status);
+    const start = parseDate(block.starts_at) || item.date;
+    const end = parseDate(block.ends_at) || start;
+
+    return (
+      <div className="rounded-2xl border border-slate-800 bg-slate-950/80 p-4">
+        <div className="mb-3 flex items-start justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge variant="outline" className={cn("border text-[10px]", statusTone)}>
+              {statusLabel}
+            </Badge>
+            {block.all_day && (
+              <Badge variant="outline" className="border-slate-700 bg-slate-900 text-[10px] text-slate-300">
+                ALL DAY
+              </Badge>
+            )}
+          </div>
+          {canManage && (
+            <div className="flex items-center gap-1">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7 text-slate-500 hover:bg-blue-950/30 hover:text-blue-300"
+                onClick={() => onEditAvailability(block)}
+              >
+                <Pencil className="h-3.5 w-3.5" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7 text-slate-500 hover:bg-red-950/30 hover:text-red-300"
+                onClick={() => onDeleteAvailability(block)}
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+          )}
+        </div>
+
+        <p className="line-clamp-2 text-sm font-semibold text-white">
+          {block.title || statusLabel}
+        </p>
+        <p className="mt-2 flex items-center gap-1.5 text-xs text-slate-500">
+          <UserRound className="h-3.5 w-3.5" />
+          {item.userName}
+        </p>
+        <p className="mt-2 flex items-center gap-1.5 text-xs text-slate-500">
+          <Clock3 className="h-3.5 w-3.5" />
+          {block.all_day ? "All day" : `${formatTime(start)} - ${formatTime(end)}`}
+        </p>
+        {block.note && (
+          <p className="mt-3 line-clamp-2 text-xs leading-5 text-slate-500">{block.note}</p>
+        )}
       </div>
     );
   }
@@ -450,6 +561,7 @@ export default function CalendarPage() {
   const [members, setMembers] = useState<ProjectMember[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [events, setEvents] = useState<CalendarEvent[]>([]);
+  const [availabilityBlocks, setAvailabilityBlocks] = useState<CalendarAvailability[]>([]);
   const [sprints, setSprints] = useState<Sprint[]>([]);
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState<CalendarView>("month");
@@ -473,6 +585,22 @@ export default function CalendarPage() {
   const [deleteEntireSeries, setDeleteEntireSeries] = useState(false);
   const [deletingEvent, setDeletingEvent] = useState(false);
 
+  const [availabilityDialogOpen, setAvailabilityDialogOpen] = useState(false);
+  const [editingAvailability, setEditingAvailability] = useState<CalendarAvailability | null>(null);
+  const [availabilityToDelete, setAvailabilityToDelete] = useState<CalendarAvailability | null>(null);
+  const [savingAvailability, setSavingAvailability] = useState(false);
+  const [deletingAvailability, setDeletingAvailability] = useState(false);
+
+  const [availabilityUserId, setAvailabilityUserId] = useState<number | null>(currentUser?.id || null);
+  const [availabilityStatus, setAvailabilityStatus] = useState<CalendarAvailabilityStatus>("VACATION");
+  const [availabilityTitle, setAvailabilityTitle] = useState("");
+  const [availabilityStartDate, setAvailabilityStartDate] = useState(selectedDate);
+  const [availabilityEndDate, setAvailabilityEndDate] = useState(selectedDate);
+  const [availabilityStartTime, setAvailabilityStartTime] = useState("09:00");
+  const [availabilityEndTime, setAvailabilityEndTime] = useState("17:00");
+  const [availabilityAllDay, setAvailabilityAllDay] = useState(true);
+  const [availabilityNote, setAvailabilityNote] = useState("");
+
   const [title, setTitle] = useState("");
   const [eventType, setEventType] = useState<CalendarEventType>("MEETING");
   const [eventDate, setEventDate] = useState(selectedDate);
@@ -489,6 +617,7 @@ export default function CalendarPage() {
   const canCreateCalendarEvent = can("CALENDAR_CREATE");
   const canUpdateCalendarEvent = can("CALENDAR_UPDATE");
   const canDeleteCalendarEvent = can("CALENDAR_DELETE");
+  const canCreateAvailability = Boolean(currentUser?.id);
 
   const memberMap = useMemo(
     () => new Map(members.map((member) => [member.user.id, member])),
@@ -516,20 +645,23 @@ export default function CalendarPage() {
         setMembers([]);
         setTasks([]);
         setEvents([]);
+        setAvailabilityBlocks([]);
         return;
       }
 
       const usesSprints = selectedProject.methodology !== "KANBAN";
-      const [projectMembers, projectTasks, projectEvents, projectSprints] = await Promise.all([
+      const [projectMembers, projectTasks, projectEvents, projectAvailability, projectSprints] = await Promise.all([
         getProjectMembers(selectedProject.id),
         getProjectTasks(selectedProject.id, "backlog"),
         getProjectCalendarEvents(selectedProject.id),
+        getProjectCalendarAvailability(selectedProject.id),
         usesSprints ? getProjectSprints(selectedProject.id) : Promise.resolve([]),
       ]);
 
       setMembers(projectMembers);
       setTasks(projectTasks);
       setEvents(projectEvents);
+      setAvailabilityBlocks(projectAvailability);
       setSprints(projectSprints);
 
       if (currentUser?.id) {
@@ -599,6 +731,24 @@ export default function CalendarPage() {
       })
       .filter(Boolean) as CalendarFeedItem[];
 
+    const availabilityItems: CalendarFeedItem[] = availabilityBlocks
+      .map((block) => {
+        const startsAt = parseDate(block.starts_at);
+        if (!startsAt) return null;
+
+        const user = memberMap.get(block.user_id);
+
+        return {
+          id: `availability-${block.id}`,
+          kind: "availability" as const,
+          date: startsAt,
+          title: block.title || availabilityLabel(block.status),
+          availability: block,
+          userName: block.user_name || memberName(user),
+        };
+      })
+      .filter(Boolean) as CalendarFeedItem[];
+
     const sprintItems: CalendarFeedItem[] = sprints.flatMap((sprint) => {
       const items: CalendarFeedItem[] = [];
       const startDate = parseDate(sprint.start_date);
@@ -629,8 +779,8 @@ export default function CalendarPage() {
       return items;
     });
 
-    return [...taskItems, ...eventItems, ...sprintItems].sort((a, b) => a.date.getTime() - b.date.getTime());
-  }, [events, memberMap, sprints, tasks]);
+    return [...taskItems, ...eventItems, ...availabilityItems, ...sprintItems].sort((a, b) => a.date.getTime() - b.date.getTime());
+  }, [availabilityBlocks, events, memberMap, sprints, tasks]);
 
   const filteredItems = useMemo(() => {
     const selectedMemberId = memberFilter === "all" ? null : Number(memberFilter);
@@ -640,8 +790,16 @@ export default function CalendarPage() {
       if (typeFilter === "tasks" && item.kind !== "task") return false;
       if (typeFilter === "events" && item.kind !== "event") return false;
       if (typeFilter === "sprints" && item.kind !== "sprint") return false;
+      if (typeFilter === "availability" && item.kind !== "availability") return false;
+
+      if (typeFilter.startsWith("availability:")) {
+        const selectedStatus = typeFilter.replace("availability:", "");
+        if (item.kind !== "availability" || item.availability.status !== selectedStatus) return false;
+      }
+
       if (
-        !["all", "tasks", "events", "sprints"].includes(typeFilter) &&
+        !["all", "tasks", "events", "sprints", "availability"].includes(typeFilter) &&
+        !typeFilter.startsWith("availability:") &&
         (item.kind !== "event" || item.event.event_type !== typeFilter)
       ) {
         return false;
@@ -651,11 +809,13 @@ export default function CalendarPage() {
 
       if (selectedMemberId) {
         if (item.kind === "task") return item.task.assignee_id === selectedMemberId;
+        if (item.kind === "availability") return item.availability.user_id === selectedMemberId;
         return item.event.attendee_ids.includes(selectedMemberId) || item.event.created_by_id === selectedMemberId;
       }
 
       if (onlyMine && currentUserId) {
         if (item.kind === "task") return item.task.assignee_id === currentUserId;
+        if (item.kind === "availability") return item.availability.user_id === currentUserId;
         return item.event.attendee_ids.includes(currentUserId) || item.event.created_by_id === currentUserId;
       }
 
@@ -671,6 +831,9 @@ export default function CalendarPage() {
     const dueDate = parseDate(task.due_date);
     return dueDate && task.status !== TaskStatus.DONE && dueDate < new Date();
   });
+  const activeTimeOffBlocks = availabilityBlocks.filter((block) =>
+    ["VACATION", "SICK_LEAVE", "UNAVAILABLE"].includes(String(block.status))
+  );
 
   const handlePrevious = () => {
     setCursor((current) => new Date(current.getFullYear(), current.getMonth() - 1, 1));
@@ -846,6 +1009,146 @@ export default function CalendarPage() {
     setEventToDelete(event);
   };
 
+  const canManageAvailability = useCallback(
+    (block: CalendarAvailability) =>
+      canUpdateCalendarEvent ||
+      block.user_id === currentUser?.id ||
+      block.created_by_id === currentUser?.id,
+    [canUpdateCalendarEvent, currentUser?.id]
+  );
+
+  const resetAvailabilityForm = () => {
+    setEditingAvailability(null);
+    setAvailabilityUserId(currentUser?.id || null);
+    setAvailabilityStatus("VACATION");
+    setAvailabilityTitle("");
+    setAvailabilityStartDate(selectedDate);
+    setAvailabilityEndDate(selectedDate);
+    setAvailabilityStartTime("09:00");
+    setAvailabilityEndTime("17:00");
+    setAvailabilityAllDay(true);
+    setAvailabilityNote("");
+  };
+
+  const fillAvailabilityForm = (block: CalendarAvailability) => {
+    const startsAt = parseDate(block.starts_at) || new Date();
+    const endsAt = parseDate(block.ends_at) || startsAt;
+
+    setEditingAvailability(block);
+    setAvailabilityUserId(block.user_id);
+    setAvailabilityStatus(block.status as CalendarAvailabilityStatus);
+    setAvailabilityTitle(block.title || "");
+    setAvailabilityStartDate(toInputDate(startsAt));
+    setAvailabilityEndDate(toInputDate(endsAt));
+    setAvailabilityStartTime(toInputTime(startsAt));
+    setAvailabilityEndTime(toInputTime(endsAt));
+    setAvailabilityAllDay(Boolean(block.all_day));
+    setAvailabilityNote(block.note || "");
+  };
+
+  const openCreateAvailabilityDialog = () => {
+    if (!canCreateAvailability) {
+      toast.error("You must be signed in to create availability blocks.");
+      return;
+    }
+
+    resetAvailabilityForm();
+    setAvailabilityDialogOpen(true);
+  };
+
+  const openEditAvailabilityDialog = (block: CalendarAvailability) => {
+    if (!canManageAvailability(block)) {
+      toast.error("You can edit only your own time off, unless you can manage calendar events.");
+      return;
+    }
+
+    fillAvailabilityForm(block);
+    setAvailabilityDialogOpen(true);
+  };
+
+  const buildAvailabilityPayload = () => {
+    const startDate = new Date(`${availabilityStartDate}T12:00:00`);
+    const endDate = new Date(`${availabilityEndDate || availabilityStartDate}T12:00:00`);
+
+    return {
+      user_id: availabilityUserId,
+      status: availabilityStatus,
+      title: availabilityTitle.trim() || null,
+      starts_at: availabilityAllDay
+        ? `${toInputDate(startDate)}T00:00:00`
+        : combineDateAndTime(startDate, availabilityStartTime),
+      ends_at: availabilityAllDay
+        ? `${toInputDate(endDate)}T23:59:59`
+        : combineDateAndTime(endDate, availabilityEndTime),
+      all_day: availabilityAllDay,
+      note: availabilityNote.trim() || null,
+    };
+  };
+
+  const handleSaveAvailability = async () => {
+    if (!project || !availabilityUserId) return;
+
+    if (availabilityUserId !== currentUser?.id && !canUpdateCalendarEvent) {
+      toast.error("You need calendar update permission to manage another member's availability.");
+      return;
+    }
+
+    setSavingAvailability(true);
+    try {
+      const payload = buildAvailabilityPayload();
+
+      if (editingAvailability) {
+        await updateProjectCalendarAvailability(editingAvailability.id, payload);
+        toast.success("Availability updated");
+      } else {
+        await createProjectCalendarAvailability(project.id, payload);
+        toast.success("Time off added");
+      }
+
+      setAvailabilityDialogOpen(false);
+      resetAvailabilityForm();
+      await loadCalendar(false);
+    } catch (error: unknown) {
+      toast.error(getApiErrorMessage(error, "Could not save availability."));
+    } finally {
+      setSavingAvailability(false);
+    }
+  };
+
+  const handleDeleteAvailability = async () => {
+    if (!availabilityToDelete) return;
+
+    setDeletingAvailability(true);
+    try {
+      await deleteProjectCalendarAvailability(availabilityToDelete.id);
+      toast.success("Availability block deleted");
+      setAvailabilityToDelete(null);
+      await loadCalendar(false);
+    } catch (error: unknown) {
+      toast.error(getApiErrorMessage(error, "Could not delete availability."));
+    } finally {
+      setDeletingAvailability(false);
+    }
+  };
+
+  const eventAvailabilityConflicts = useMemo(() => {
+    const start = parseDate(combineDateAndTime(new Date(`${eventDate}T12:00:00`), startTime));
+    const end = parseDate(combineDateAndTime(new Date(`${eventDate}T12:00:00`), endTime));
+
+    if (!start || !end || end <= start || selectedAttendees.length === 0) return [];
+
+    return availabilityBlocks.filter((block) => {
+      if (!selectedAttendees.includes(block.user_id)) return false;
+      if (block.status === "AVAILABLE") return false;
+
+      const blockStart = parseDate(block.starts_at);
+      const blockEnd = parseDate(block.ends_at);
+      if (!blockStart || !blockEnd) return false;
+
+      return rangesOverlap(start, end, blockStart, blockEnd);
+    });
+  }, [availabilityBlocks, eventDate, endTime, selectedAttendees, startTime]);
+
   const handleGenerateReminders = async () => {
     if (!project) return;
 
@@ -898,7 +1201,7 @@ export default function CalendarPage() {
                 Team Calendar
               </h1>
               <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-400">
-                See task deadlines, sprint ceremonies, meetings and personal workload in one place.
+                See task deadlines, sprint ceremonies, meetings, availability and time off in one place.
               </p>
             </div>
 
@@ -925,6 +1228,189 @@ export default function CalendarPage() {
                 )}
                 Smart reminders
               </Button>
+
+              <Dialog
+                open={availabilityDialogOpen}
+                onOpenChange={(open) => {
+                  setAvailabilityDialogOpen(open);
+
+                  if (!open) {
+                    resetAvailabilityForm();
+                  }
+                }}
+              >
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="border-slate-700 bg-slate-950/60 text-slate-200 hover:bg-slate-900"
+                  disabled={!canCreateAvailability}
+                  onClick={openCreateAvailabilityDialog}
+                >
+                  <UserRound className="mr-2 h-4 w-4" />
+                  New Time Off
+                </Button>
+                <DialogContent className="max-h-[92vh] overflow-y-auto border-slate-800 bg-slate-950 text-slate-50 sm:max-w-2xl">
+                  <DialogHeader>
+                    <DialogTitle>
+                      {editingAvailability ? "Edit availability" : "Add time off / availability"}
+                    </DialogTitle>
+                    <DialogDescription className="text-slate-400">
+                      Register vacations, sick leave, unavailable intervals or focus time for project members.
+                    </DialogDescription>
+                  </DialogHeader>
+
+                  <div className="grid gap-5 py-2">
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <div className="space-y-2">
+                        <Label>Member</Label>
+                        <Select
+                          value={availabilityUserId ? String(availabilityUserId) : ""}
+                          onValueChange={(value) => setAvailabilityUserId(Number(value))}
+                        >
+                          <SelectTrigger className="h-11 border-slate-700 bg-slate-900">
+                            <SelectValue placeholder="Select member" />
+                          </SelectTrigger>
+                          <SelectContent className="border-slate-800 bg-slate-950 text-slate-200">
+                            {members.map((member) => (
+                              <SelectItem
+                                key={member.membership_id}
+                                value={String(member.user.id)}
+                                disabled={member.user.id !== currentUser?.id && !canUpdateCalendarEvent}
+                              >
+                                {memberName(member)}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        {!canUpdateCalendarEvent && (
+                          <p className="text-xs text-slate-500">
+                            You can add or edit only your own availability.
+                          </p>
+                        )}
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label>Type</Label>
+                        <Select
+                          value={availabilityStatus}
+                          onValueChange={(value) => setAvailabilityStatus(value as CalendarAvailabilityStatus)}
+                        >
+                          <SelectTrigger className="h-11 border-slate-700 bg-slate-900">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent className="border-slate-800 bg-slate-950 text-slate-200">
+                            {availabilityStatusOptions.map((option) => (
+                              <SelectItem key={option.value} value={option.value}>
+                                {option.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <p className="text-xs text-slate-500">
+                          {availabilityStatusOptions.find((option) => option.value === availabilityStatus)?.description}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label>Title</Label>
+                      <Input
+                        value={availabilityTitle}
+                        onChange={(event) => setAvailabilityTitle(event.target.value)}
+                        placeholder="Vacation, conference day, unavailable..."
+                        className="h-11 border-slate-700 bg-slate-900"
+                      />
+                    </div>
+
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <div className="space-y-2">
+                        <Label>Start date</Label>
+                        <Input
+                          type="date"
+                          value={availabilityStartDate}
+                          onChange={(event) => setAvailabilityStartDate(event.target.value)}
+                          className="h-11 border-slate-700 bg-slate-900"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>End date</Label>
+                        <Input
+                          type="date"
+                          value={availabilityEndDate}
+                          min={availabilityStartDate}
+                          onChange={(event) => setAvailabilityEndDate(event.target.value)}
+                          className="h-11 border-slate-700 bg-slate-900"
+                        />
+                      </div>
+                    </div>
+
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className={cn(
+                        "w-fit border-slate-700 bg-slate-900 text-slate-200 hover:bg-slate-800",
+                        availabilityAllDay && "border-blue-500/35 bg-blue-500/10 text-blue-200"
+                      )}
+                      onClick={() => setAvailabilityAllDay((value) => !value)}
+                    >
+                      {availabilityAllDay ? "All day enabled" : "Use specific hours"}
+                    </Button>
+
+                    {!availabilityAllDay && (
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-2">
+                          <Label>Start</Label>
+                          <Input
+                            type="time"
+                            value={availabilityStartTime}
+                            onChange={(event) => setAvailabilityStartTime(event.target.value)}
+                            className="h-11 border-slate-700 bg-slate-900"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>End</Label>
+                          <Input
+                            type="time"
+                            value={availabilityEndTime}
+                            onChange={(event) => setAvailabilityEndTime(event.target.value)}
+                            className="h-11 border-slate-700 bg-slate-900"
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="space-y-2">
+                      <Label>Reason / note</Label>
+                      <Textarea
+                        value={availabilityNote}
+                        onChange={(event) => setAvailabilityNote(event.target.value)}
+                        placeholder="Optional note visible to the project team..."
+                        className="min-h-24 border-slate-700 bg-slate-900"
+                      />
+                    </div>
+                  </div>
+
+                  <DialogFooter>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      className="text-slate-400 hover:text-white"
+                      onClick={() => setAvailabilityDialogOpen(false)}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      type="button"
+                      disabled={savingAvailability || !availabilityUserId}
+                      className="bg-blue-600 hover:bg-blue-700"
+                      onClick={handleSaveAvailability}
+                    >
+                      {savingAvailability ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Plus className="mr-2 h-4 w-4" />}
+                      {editingAvailability ? "Save Changes" : "Add Time Off"}
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
 
               <Dialog
                 open={eventDialogOpen}
@@ -1157,6 +1643,35 @@ export default function CalendarPage() {
                         })}
                       </div>
                     </div>
+
+                    {eventAvailabilityConflicts.length > 0 && (
+                      <div className="rounded-2xl border border-amber-500/25 bg-amber-500/10 p-4">
+                        <div className="flex items-start gap-3">
+                          <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-200" />
+                          <div>
+                            <p className="font-semibold text-amber-100">Availability warning</p>
+                            <p className="mt-1 text-sm text-amber-100/80">
+                              This event overlaps with time off or unavailable intervals for{" "}
+                              {eventAvailabilityConflicts.length} selected attendee
+                              {eventAvailabilityConflicts.length === 1 ? "" : "s"}.
+                            </p>
+                            <div className="mt-3 space-y-2">
+                              {eventAvailabilityConflicts.slice(0, 3).map((block) => (
+                                <div key={block.id} className="rounded-xl border border-amber-400/20 bg-slate-950/50 px-3 py-2 text-xs text-amber-50/80">
+                                  <strong>{block.user_name || block.user_email || `User #${block.user_id}`}</strong>
+                                  {" · "}
+                                  {availabilityLabel(block.status)}
+                                  {" · "}
+                                  {block.all_day
+                                    ? "All day"
+                                    : `${formatTime(new Date(block.starts_at))} - ${formatTime(new Date(block.ends_at))}`}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   <DialogFooter>
@@ -1190,7 +1705,7 @@ export default function CalendarPage() {
           </div>
         </div>
 
-        <div className="grid gap-4 p-5 md:grid-cols-2 xl:grid-cols-4">
+        <div className="grid gap-4 p-5 md:grid-cols-2 xl:grid-cols-5">
           <div className="rounded-2xl border border-slate-800 bg-slate-950/75 p-4">
             <Video className="mb-3 h-5 w-5 text-blue-300" />
             <p className="text-sm text-slate-500">Events</p>
@@ -1214,6 +1729,11 @@ export default function CalendarPage() {
             <AlertTriangle className="mb-3 h-5 w-5 text-rose-300" />
             <p className="text-sm text-slate-500">Overdue</p>
             <p className="mt-1 text-2xl font-semibold text-white">{overdueTasks.length}</p>
+          </div>
+          <div className="rounded-2xl border border-slate-800 bg-slate-950/75 p-4">
+            <UserRound className="mb-3 h-5 w-5 text-sky-300" />
+            <p className="text-sm text-slate-500">Time off</p>
+            <p className="mt-1 text-2xl font-semibold text-white">{activeTimeOffBlocks.length}</p>
           </div>
         </div>
 
@@ -1450,8 +1970,11 @@ export default function CalendarPage() {
                           onEditEvent={openEditEventDialog}
                           onDeleteEvent={setEventToDelete}
                           onDeleteSeries={openDeleteSeriesDialog}
+                          onEditAvailability={openEditAvailabilityDialog}
+                          onDeleteAvailability={setAvailabilityToDelete}
                           canEditEvent={(event) => canUpdateCalendarEvent || event.created_by_id === currentUser?.id}
                           canDeleteEvent={(event) => canDeleteCalendarEvent || event.created_by_id === currentUser?.id}
+                          canManageAvailability={canManageAvailability}
                         />
                       ))}
                     </div>
@@ -1477,8 +2000,11 @@ export default function CalendarPage() {
                         onEditEvent={openEditEventDialog}
                         onDeleteEvent={setEventToDelete}
                         onDeleteSeries={openDeleteSeriesDialog}
+                        onEditAvailability={openEditAvailabilityDialog}
+                        onDeleteAvailability={setAvailabilityToDelete}
                         canEditEvent={(event) => canUpdateCalendarEvent || event.created_by_id === currentUser?.id}
                         canDeleteEvent={(event) => canDeleteCalendarEvent || event.created_by_id === currentUser?.id}
+                        canManageAvailability={canManageAvailability}
                       />
                     ))}
 
@@ -1520,8 +2046,11 @@ export default function CalendarPage() {
                   onEditEvent={openEditEventDialog}
                   onDeleteEvent={setEventToDelete}
                   onDeleteSeries={openDeleteSeriesDialog}
+                  onEditAvailability={openEditAvailabilityDialog}
+                  onDeleteAvailability={setAvailabilityToDelete}
                   canEditEvent={(event) => canUpdateCalendarEvent || event.created_by_id === currentUser?.id}
                   canDeleteEvent={(event) => canDeleteCalendarEvent || event.created_by_id === currentUser?.id}
+                  canManageAvailability={canManageAvailability}
                 />
               ))}
 
@@ -1578,6 +2107,12 @@ export default function CalendarPage() {
                     <SelectItem value="tasks">Task deadlines</SelectItem>
                     <SelectItem value="events">Calendar events</SelectItem>
                     <SelectItem value="sprints">Sprint milestones</SelectItem>
+                    <SelectItem value="availability">Availability / time off</SelectItem>
+                    {availabilityStatusOptions.map((option) => (
+                      <SelectItem key={option.value} value={`availability:${option.value}`}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
                     {eventTypes.map((type) => (
                       <SelectItem key={type.value} value={type.value}>
                         {type.label}
@@ -1657,6 +2192,21 @@ export default function CalendarPage() {
         destructive
         loading={deletingEvent}
         onConfirm={handleDeleteEvent}
+      />
+
+      <ConfirmDialog
+        open={availabilityToDelete !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setAvailabilityToDelete(null);
+          }
+        }}
+        title="Delete availability block?"
+        description="This removes the time off / availability entry from the team calendar."
+        confirmLabel="Delete Availability"
+        destructive
+        loading={deletingAvailability}
+        onConfirm={handleDeleteAvailability}
       />
     </div>
   );

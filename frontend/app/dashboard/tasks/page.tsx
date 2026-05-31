@@ -266,15 +266,15 @@ export default function TasksListPage() {
 
   return (
     <div className="min-h-full bg-slate-950 text-slate-50">
-      <div className="mx-auto max-w-7xl space-y-6 p-6 lg:p-8">
-        <section className="rounded-3xl border border-slate-800 bg-slate-900 p-6 shadow-2xl shadow-black/20">
-          <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+      <div className="sdlc-page space-y-5">
+        <section className="rounded-3xl border border-slate-800 bg-slate-900/80 p-5 shadow-xl shadow-black/20">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
             <div>
               <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-blue-500/20 bg-blue-500/10 px-3 py-1 text-xs font-medium text-blue-200">
                 <LayoutList className="h-3.5 w-3.5" />
                 List View
               </div>
-              <h1 className="text-3xl font-semibold tracking-tight text-white md:text-4xl">
+              <h1 className="text-2xl font-semibold tracking-tight text-white md:text-3xl">
                 Tasks for {project.name}
               </h1>
               <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-400">
@@ -296,19 +296,19 @@ export default function TasksListPage() {
           </div>
         </section>
 
-        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
           <Card className="border-slate-800 bg-slate-900 text-slate-50">
-            <CardContent className="p-5">
+            <CardContent className="p-4">
               <CheckCircle2 className="mb-3 h-5 w-5 text-blue-300" />
               <p className="text-sm text-slate-500">Active</p>
-              <p className="mt-1 text-3xl font-semibold text-white">{metrics.active}</p>
+              <p className="mt-1 text-2xl font-semibold text-white">{metrics.active}</p>
             </CardContent>
           </Card>
           <Card className="border-slate-800 bg-slate-900 text-slate-50">
-            <CardContent className="p-5">
+            <CardContent className="p-4">
               <CheckCircle2 className="mb-3 h-5 w-5 text-emerald-300" />
               <p className="text-sm text-slate-500">Done</p>
-              <p className="mt-1 text-3xl font-semibold text-white">{metrics.done}</p>
+              <p className="mt-1 text-2xl font-semibold text-white">{metrics.done}</p>
             </CardContent>
           </Card>
           <Card
@@ -320,20 +320,20 @@ export default function TasksListPage() {
             <button
               type="button"
               onClick={() => setDueFilter(dueFilter === "overdue" ? "all" : "overdue")}
-              className="block w-full rounded-[inherit] p-5 text-left transition hover:bg-rose-500/5 focus:outline-none focus:ring-2 focus:ring-rose-500/35"
+              className="block w-full rounded-[inherit] p-4 text-left transition hover:bg-rose-500/5 focus:outline-none focus:ring-2 focus:ring-rose-500/35"
             >
               <AlertTriangle className="mb-3 h-5 w-5 text-rose-300" />
               <p className="text-sm text-slate-500">Overdue</p>
-              <p className={cn("mt-1 text-3xl font-semibold", metrics.overdue ? "text-rose-200" : "text-white")}>
+              <p className={cn("mt-1 text-2xl font-semibold", metrics.overdue ? "text-rose-200" : "text-white")}>
                 {metrics.overdue}
               </p>
             </button>
           </Card>
           <Card className="border-slate-800 bg-slate-900 text-slate-50">
-            <CardContent className="p-5">
+            <CardContent className="p-4">
               <UserRound className="mb-3 h-5 w-5 text-amber-300" />
               <p className="text-sm text-slate-500">Unassigned</p>
-              <p className={cn("mt-1 text-3xl font-semibold", metrics.unassigned ? "text-amber-200" : "text-white")}>
+              <p className={cn("mt-1 text-2xl font-semibold", metrics.unassigned ? "text-amber-200" : "text-white")}>
                 {metrics.unassigned}
               </p>
             </CardContent>
@@ -341,7 +341,7 @@ export default function TasksListPage() {
         </section>
 
         <Card className="border-slate-800 bg-slate-900 text-slate-50">
-          <CardHeader className="space-y-4 border-b border-slate-800">
+          <CardHeader className="space-y-3 border-b border-slate-800 px-4 py-4">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
               <div className="min-w-0">
                 <CardTitle className="flex items-center gap-2">
@@ -390,7 +390,7 @@ export default function TasksListPage() {
               </div>
             </div>
 
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6">
+            <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6">
                 <div className="relative sm:col-span-2 lg:col-span-3 2xl:col-span-1">
                   <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
                   <Input
@@ -470,143 +470,135 @@ export default function TasksListPage() {
           </CardHeader>
 
           <CardContent className="p-0">
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[1080px] text-left text-sm">
-                <thead className="border-b border-slate-800 bg-slate-950/80 text-xs uppercase tracking-[0.18em] text-slate-500">
-                  <tr>
-                    <th className="px-5 py-4 font-medium">Issue</th>
-                    <th className="px-4 py-4 font-medium">Status</th>
-                    <th className="px-4 py-4 font-medium">Priority</th>
-                    <th className="px-4 py-4 font-medium">Assignee</th>
-                    <th className="px-4 py-4 font-medium">Planning</th>
-                    <th className="px-4 py-4 font-medium">Due</th>
-                    <th className="px-4 py-4 text-right font-medium">Open</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-800">
-                  {filteredTasks.map((task) => {
-                    const member = task.assignee_id ? memberByUserId.get(task.assignee_id) : null;
-                    const sprint = task.sprint_id ? sprintById.get(task.sprint_id) : null;
-                    const overdue = isOverdue(task);
-                    const updating = updatingTaskId === task.id;
+            <div className="divide-y divide-slate-800">
+              {filteredTasks.map((task) => {
+                const member = task.assignee_id ? memberByUserId.get(task.assignee_id) : null;
+                const sprint = task.sprint_id ? sprintById.get(task.sprint_id) : null;
+                const overdue = isOverdue(task);
+                const updating = updatingTaskId === task.id;
 
-                    return (
-                      <tr key={task.id} className="bg-slate-900/55 transition hover:bg-slate-900">
-                        <td className="px-5 py-4">
-                          <div className="flex min-w-0 flex-col gap-2">
-                            <div className="flex flex-wrap items-center gap-2">
-                              <Badge variant="outline" className="border-slate-700 bg-slate-950 font-mono text-[10px] text-slate-300">
-                                {task.key}
-                              </Badge>
-                              {task.story_points ? (
-                                <Badge variant="secondary" className="bg-slate-800 text-xs text-slate-300 hover:bg-slate-800">
-                                  {task.story_points} pts
-                                </Badge>
-                              ) : null}
-                            </div>
-                            <Link href={`/dashboard/tasks/${task.id}`} className="max-w-xl truncate font-semibold text-slate-100 hover:text-blue-300">
-                              {task.title}
-                            </Link>
-                            {task.team_name && (
-                              <p className="text-xs text-slate-500">{task.team_name}</p>
-                            )}
-                          </div>
-                        </td>
-                        <td className="px-4 py-4">
-                          {canMoveTask ? (
-                            <Select
-                              value={task.status}
-                              disabled={updating}
-                              onValueChange={(value) => updateTaskField(task, { status: value as TaskStatus })}
-                            >
-                              <SelectTrigger className="h-9 w-36 border-slate-700 bg-slate-950">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent className="border-slate-800 bg-slate-950 text-slate-200">
-                                {statusOptions.map((status) => (
-                                  <SelectItem key={status} value={status}>{statusLabels[status]}</SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          ) : (
-                            <Badge variant="outline" className={cn("border", statusStyles[task.status])}>
-                              {statusLabels[task.status]}
-                            </Badge>
-                          )}
-                        </td>
-                        <td className="px-4 py-4">
-                          <Badge variant="outline" className={cn("border", priorityStyles[task.priority])}>
-                            <Flag className="mr-1 h-3 w-3" />
-                            {task.priority}
+                return (
+                  <div
+                    key={task.id}
+                    className="grid gap-3 bg-slate-900/45 px-4 py-3.5 text-sm transition hover:bg-slate-900 lg:grid-cols-[minmax(0,1.4fr)_150px_130px_180px_130px_42px] lg:items-center"
+                  >
+                    <div className="min-w-0">
+                      <div className="mb-1.5 flex flex-wrap items-center gap-2">
+                        <Badge variant="outline" className="border-slate-700 bg-slate-950 font-mono text-[10px] text-slate-300">
+                          {task.key}
+                        </Badge>
+                        {task.story_points ? (
+                          <Badge variant="secondary" className="bg-slate-800 text-[11px] text-slate-300 hover:bg-slate-800">
+                            {task.story_points} pts
                           </Badge>
-                        </td>
-                        <td className="px-4 py-4">
-                          {canAssignTask ? (
-                            <Select
-                              value={task.assignee_id ? String(task.assignee_id) : "unassigned"}
-                              disabled={updating}
-                              onValueChange={(value) =>
-                                updateTaskField(task, {
-                                  assignee_id: value === "unassigned" ? null : Number(value),
-                                })
-                              }
-                            >
-                              <SelectTrigger className="h-9 w-48 border-slate-700 bg-slate-950">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent className="border-slate-800 bg-slate-950 text-slate-200">
-                                <SelectItem value="unassigned">Unassigned</SelectItem>
-                                {members.map((item) => (
-                                  <SelectItem key={item.membership_id} value={String(item.user.id)}>
-                                    {memberName(item)}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          ) : (
-                            <div className="flex items-center gap-2">
-                              <UserAvatar
-                                name={task.assignee_name || "Unassigned"}
-                                src={task.assignee_avatar_url || member?.user.avatar_url}
-                                className="h-8 w-8"
-                              />
-                              <span className="max-w-36 truncate text-slate-300">
-                                {task.assignee_name || "Unassigned"}
-                              </span>
-                            </div>
-                          )}
-                        </td>
-                        <td className="px-4 py-4 text-slate-400">
-                          {sprint ? sprint.name : "Backlog"}
-                        </td>
-                        <td className="px-4 py-4">
-                          <div className={cn("flex items-center gap-2", overdue ? "text-rose-300" : "text-slate-400")}>
-                            <CalendarClock className="h-4 w-4" />
-                            {formatDate(task.due_date)}
-                          </div>
-                        </td>
-                        <td className="px-4 py-4 text-right">
-                          <Button asChild variant="ghost" size="icon" className="h-9 w-9 text-slate-400 hover:text-blue-300">
-                            <Link href={`/dashboard/tasks/${task.id}`} aria-label={`Open ${task.key}`}>
-                              <ExternalLink className="h-4 w-4" />
-                            </Link>
-                          </Button>
-                        </td>
-                      </tr>
-                    );
-                  })}
+                        ) : null}
+                        {task.team_name && (
+                          <span className="truncate text-xs text-slate-500">{task.team_name}</span>
+                        )}
+                      </div>
+                      <Link
+                        href={`/dashboard/tasks/${task.id}`}
+                        className="block truncate font-semibold text-slate-100 hover:text-blue-300"
+                      >
+                        {task.title}
+                      </Link>
+                    </div>
 
-                  {filteredTasks.length === 0 && (
-                    <tr>
-                      <td colSpan={7} className="px-5 py-16 text-center">
-                        <LayoutList className="mx-auto mb-3 h-8 w-8 text-slate-700" />
-                        <p className="font-medium text-slate-300">No tasks match these filters.</p>
-                        <p className="mt-1 text-sm text-slate-500">Clear filters or create a new issue.</p>
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
+                    <div className="min-w-0">
+                      <p className="mb-1 text-[10px] uppercase tracking-[0.16em] text-slate-600 lg:hidden">Status</p>
+                      {canMoveTask ? (
+                        <Select
+                          value={task.status}
+                          disabled={updating}
+                          onValueChange={(value) => updateTaskField(task, { status: value as TaskStatus })}
+                        >
+                          <SelectTrigger className="h-9 w-full border-slate-700 bg-slate-950">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent className="border-slate-800 bg-slate-950 text-slate-200">
+                            {statusOptions.map((status) => (
+                              <SelectItem key={status} value={status}>{statusLabels[status]}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      ) : (
+                        <Badge variant="outline" className={cn("border", statusStyles[task.status])}>
+                          {statusLabels[task.status]}
+                        </Badge>
+                      )}
+                    </div>
+
+                    <div>
+                      <p className="mb-1 text-[10px] uppercase tracking-[0.16em] text-slate-600 lg:hidden">Priority</p>
+                      <Badge variant="outline" className={cn("border", priorityStyles[task.priority])}>
+                        <Flag className="mr-1 h-3 w-3" />
+                        {task.priority}
+                      </Badge>
+                    </div>
+
+                    <div className="min-w-0">
+                      <p className="mb-1 text-[10px] uppercase tracking-[0.16em] text-slate-600 lg:hidden">Assignee</p>
+                      {canAssignTask ? (
+                        <Select
+                          value={task.assignee_id ? String(task.assignee_id) : "unassigned"}
+                          disabled={updating}
+                          onValueChange={(value) =>
+                            updateTaskField(task, {
+                              assignee_id: value === "unassigned" ? null : Number(value),
+                            })
+                          }
+                        >
+                          <SelectTrigger className="h-9 w-full border-slate-700 bg-slate-950">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent className="border-slate-800 bg-slate-950 text-slate-200">
+                            <SelectItem value="unassigned">Unassigned</SelectItem>
+                            {members.map((item) => (
+                              <SelectItem key={item.membership_id} value={String(item.user.id)}>
+                                {memberName(item)}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      ) : (
+                        <div className="flex min-w-0 items-center gap-2">
+                          <UserAvatar
+                            name={task.assignee_name || "Unassigned"}
+                            src={task.assignee_avatar_url || member?.user.avatar_url}
+                            className="h-7 w-7"
+                          />
+                          <span className="truncate text-slate-300">
+                            {task.assignee_name || "Unassigned"}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="min-w-0 text-slate-400">
+                      <p className="mb-1 text-[10px] uppercase tracking-[0.16em] text-slate-600 lg:hidden">Planning / due</p>
+                      <p className="truncate">{sprint ? sprint.name : "Backlog"}</p>
+                      <div className={cn("mt-1 flex items-center gap-1.5 text-xs", overdue ? "text-rose-300" : "text-slate-500")}>
+                        <CalendarClock className="h-3.5 w-3.5" />
+                        {formatDate(task.due_date)}
+                      </div>
+                    </div>
+
+                    <Button asChild variant="ghost" size="icon" className="h-9 w-9 justify-self-start text-slate-400 hover:text-blue-300 lg:justify-self-end">
+                      <Link href={`/dashboard/tasks/${task.id}`} aria-label={`Open ${task.key}`}>
+                        <ExternalLink className="h-4 w-4" />
+                      </Link>
+                    </Button>
+                  </div>
+                );
+              })}
+
+              {filteredTasks.length === 0 && (
+                <div className="px-5 py-12 text-center">
+                  <LayoutList className="mx-auto mb-3 h-8 w-8 text-slate-700" />
+                  <p className="font-medium text-slate-300">No tasks match these filters.</p>
+                  <p className="mt-1 text-sm text-slate-500">Clear filters or create a new issue.</p>
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>

@@ -43,6 +43,34 @@ export interface AccountSummary {
   projects: AccountProjectSummary[];
 }
 
+
+
+export interface UserSession {
+  id: number;
+  user_id: number;
+  ip_address?: string | null;
+  user_agent?: string | null;
+  device_label?: string | null;
+  location_hint?: string | null;
+  created_at: string;
+  last_seen_at: string;
+  revoked_at?: string | null;
+  revoke_reason?: string | null;
+  is_current: boolean;
+}
+
+export interface UserSecurityLog {
+  id: number;
+  user_id: number;
+  session_id?: number | null;
+  event_type: string;
+  title: string;
+  detail?: string | null;
+  ip_address?: string | null;
+  user_agent?: string | null;
+  created_at: string;
+}
+
 export interface AuthResponse {
   access_token: string;
   token_type: string;
@@ -156,5 +184,25 @@ export const resetPassword = async (
     token,
     new_password,
   });
+  return response.data;
+};
+
+
+export const getCurrentUserSessions = async (): Promise<UserSession[]> => {
+  const response = await api.get("/auth/me/sessions");
+  return response.data;
+};
+
+export const revokeCurrentUserSession = async (
+  sessionId: number
+): Promise<GenericMessageResponse> => {
+  const response = await api.delete(`/auth/me/sessions/${sessionId}`);
+  return response.data;
+};
+
+export const getCurrentUserSecurityLog = async (
+  limit = 50
+): Promise<UserSecurityLog[]> => {
+  const response = await api.get("/auth/me/security-log", { params: { limit } });
   return response.data;
 };

@@ -1,12 +1,13 @@
 import json
 from datetime import datetime, timedelta
 from typing import List, Optional
+from threading import Thread
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from backend.database.session import get_db
+from backend.database.session import SessionLocal, get_db
 from backend.models.project import (
     Project,
     ProjectAuditLog,
@@ -128,6 +129,91 @@ def add_audit_log(
         )
     )
 
+
+def serialize_task_comment(comment: TaskComment) -> dict:
+    return {
+        "id": comment.id,
+        "task_id": comment.task_id,
+        "author_id": comment.author_id,
+        "author_name": comment.author_name,
+        "author_avatar_url": comment.author_avatar_url,
+        "body": comment.body,
+        "created_at": comment.created_at.isoformat() if comment.created_at else None,
+        "updated_at": comment.updated_at.isoformat() if comment.updated_at else None,
+    }
+
+
+
+def _run_comment_background_jobs(task_id: int, comment_id: int, actor_id: int, *, run_mentions: bool) -> None:
+    """
+    Runs slow comment side effects outside the request lifecycle.
+
+    This must never block or break comment posting:
+    - mention notifications may send email;
+    - AI risk analysis may call an external provider;
+    - AI usage logging may fail independently.
+    """
+    background_db = SessionLocal()
+    try:
+        task = background_db.query(Task).filter(Task.id == task_id).first()
+        comment = background_db.query(TaskComment).filter(TaskComment.id == comment_id).first()
+        actor = background_db.query(User).filter(User.id == actor_id).first()
+
+        if not task or not comment or not actor:
+            return
+
+        if run_mentions:
+            try:
+                notify_comment_mentions(background_db, task, comment, actor)
+                background_db.commit()
+            except Exception as exc:
+                background_db.rollback()
+                print(f"Comment mention notification failed: {exc}")
+
+        try:
+            risk_analysis = analyze_and_record_comment_risk(
+                background_db,
+                task=task,
+                comment=comment,
+                current_user=actor,
+            )
+            background_db.commit()
+
+            record_ai_usage(
+                background_db,
+                user_id=actor.id,
+                project_id=task.project_id,
+                feature="COMMENT_RISK_ANALYSIS",
+                source=risk_analysis.get("source"),
+                status=_ai_usage_status(risk_analysis),
+                detail=_ai_usage_detail(risk_analysis),
+            )
+            background_db.commit()
+        except Exception as exc:
+            background_db.rollback()
+            print(f"Comment AI risk background job failed: {exc}")
+    except Exception as exc:
+        background_db.rollback()
+        print(f"Comment background jobs failed: {exc}")
+    finally:
+        background_db.close()
+
+
+def queue_comment_background_jobs(task_id: int, comment_id: int, actor_id: int, *, run_mentions: bool = False) -> None:
+    try:
+        Thread(
+            target=_run_comment_background_jobs,
+            kwargs={
+                "task_id": task_id,
+                "comment_id": comment_id,
+                "actor_id": actor_id,
+                "run_mentions": run_mentions,
+            },
+            daemon=True,
+        ).start()
+    except Exception as exc:
+        # Never fail the HTTP request after the comment was already saved.
+        print(f"Could not start comment background jobs: {exc}")
 
 def get_task_for_user(task_id: int, db: Session, current_user: User):
     task = db.query(Task).filter(Task.id == task_id).first()
@@ -1065,10 +1151,14 @@ def create_comment(
     task = get_task_for_user(task_id, db, current_user)
     require_project_permission(db, current_user.id, task.project_id, "TASK_COMMENT")
 
+    body = (comment_in.body or "").strip()
+    if not body:
+        raise HTTPException(status_code=400, detail="Comment body cannot be empty.")
+
     comment = TaskComment(
         task_id=task.id,
         author_id=current_user.id,
-        body=comment_in.body,
+        body=body,
     )
 
     db.add(comment)
@@ -1079,29 +1169,25 @@ def create_comment(
     db.commit()
     db.refresh(comment)
 
-    notify_comment_mentions(db, task, comment, current_user)
-    risk_analysis = analyze_and_record_comment_risk(
-        db,
-        task=task,
-        comment=comment,
-        current_user=current_user,
-    )
-    db.commit()
-    record_ai_usage(
-        db,
-        user_id=current_user.id,
-        project_id=task.project_id,
-        feature="COMMENT_RISK_ANALYSIS",
-        source=risk_analysis.get("source"),
-        status=_ai_usage_status(risk_analysis),
-        detail=_ai_usage_detail(risk_analysis),
-    )
-    db.refresh(comment)
-    broadcast_project_event(
-        task.project_id,
-        "task.changed",
-        {"action": "comment_created", "task_id": task.id, "task_key": task.key},
-    )
+    comment_payload = {
+        "action": "comment_created",
+        "task_id": task.id,
+        "task_key": task.key,
+        "comment": serialize_task_comment(comment),
+    }
+
+    broadcast_project_event(task.project_id, "comment.created", comment_payload)
+    broadcast_project_event(task.project_id, "task.changed", comment_payload)
+
+    try:
+        queue_comment_background_jobs(
+            task_id=task.id,
+            comment_id=comment.id,
+            actor_id=current_user.id,
+            run_mentions=True,
+        )
+    except Exception as exc:
+        print(f"Could not queue comment background jobs: {exc}")
 
     return comment
 
@@ -1131,33 +1217,38 @@ def update_comment(
             detail="Only the author can edit this comment.",
         )
 
+    body = (comment_in.body or "").strip()
+    if not body:
+        raise HTTPException(status_code=400, detail="Comment body cannot be empty.")
+
     old_body = comment.body
-    comment.body = comment_in.body
+    comment.body = body
 
     add_audit_log(db, task.id, current_user.id, "COMMENT_UPDATED", "comment", old_body, comment.body)
-    risk_analysis = analyze_and_record_comment_risk(
-        db,
-        task=task,
-        comment=comment,
-        current_user=current_user,
-    )
 
     db.commit()
-    record_ai_usage(
-        db,
-        user_id=current_user.id,
-        project_id=task.project_id,
-        feature="COMMENT_RISK_ANALYSIS",
-        source=risk_analysis.get("source"),
-        status=_ai_usage_status(risk_analysis),
-        detail=_ai_usage_detail(risk_analysis),
-    )
     db.refresh(comment)
-    broadcast_project_event(
-        task.project_id,
-        "task.changed",
-        {"action": "comment_updated", "task_id": task.id, "task_key": task.key},
-    )
+
+    comment_payload = {
+        "action": "comment_updated",
+        "task_id": task.id,
+        "task_key": task.key,
+        "comment": serialize_task_comment(comment),
+    }
+
+    broadcast_project_event(task.project_id, "comment.updated", comment_payload)
+    broadcast_project_event(task.project_id, "task.changed", comment_payload)
+
+    try:
+        queue_comment_background_jobs(
+            task_id=task.id,
+            comment_id=comment.id,
+            actor_id=current_user.id,
+            run_mentions=False,
+        )
+    except Exception as exc:
+        print(f"Could not queue comment background jobs: {exc}")
+
     return comment
 
 
@@ -1186,16 +1277,24 @@ def delete_comment(
         )
 
     old_body = comment.body
-    db.delete(comment)
+    deleted_comment_id = comment.id
 
+    db.delete(comment)
     add_audit_log(db, task.id, current_user.id, "COMMENT_DELETED", "comment", old_body, None)
 
     db.commit()
-    broadcast_project_event(
-        task.project_id,
-        "task.changed",
-        {"action": "comment_deleted", "task_id": task.id, "task_key": task.key},
-    )
+
+    comment_payload = {
+        "action": "comment_deleted",
+        "task_id": task.id,
+        "task_key": task.key,
+        "comment_id": deleted_comment_id,
+        "actor_id": current_user.id,
+    }
+
+    broadcast_project_event(task.project_id, "comment.deleted", comment_payload)
+    broadcast_project_event(task.project_id, "task.changed", comment_payload)
+
     return {"message": "Comment deleted"}
 
 

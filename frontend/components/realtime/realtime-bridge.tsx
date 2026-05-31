@@ -3,7 +3,12 @@
 import { useEffect, useRef } from "react";
 import { toast } from "sonner";
 
-import { dispatchRealtimeMessage, RealtimeMessage } from "@/hooks/use-realtime-event";
+import {
+  dispatchRealtimeMessage,
+  REALTIME_OUTGOING_EVENT_NAME,
+  OutgoingRealtimeMessage,
+  RealtimeMessage,
+} from "@/hooks/use-realtime-event";
 import { useAuthStore } from "@/store/use-auth-store";
 import { usePresenceStore } from "@/store/use-presence-store";
 import { useProjectStore } from "@/store/use-project-store";
@@ -146,9 +151,24 @@ export function RealtimeBridge() {
       };
     };
 
+    const outboundListener = (event: Event) => {
+      const customEvent = event as CustomEvent<OutgoingRealtimeMessage>;
+      const message = customEvent.detail;
+
+      if (!message?.type) return;
+
+      const socket = socketRef.current;
+      if (!socket || socket.readyState !== WebSocket.OPEN) return;
+
+      socket.send(JSON.stringify(message));
+    };
+
+    window.addEventListener(REALTIME_OUTGOING_EVENT_NAME, outboundListener);
     connect();
 
     return () => {
+      window.removeEventListener(REALTIME_OUTGOING_EVENT_NAME, outboundListener);
+
       manuallyClosedRef.current = true;
 
       if (reconnectTimerRef.current) {

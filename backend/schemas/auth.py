@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Optional
 
 from pydantic import BaseModel, EmailStr
@@ -76,3 +77,36 @@ class AccountNotificationPreferencesUpdate(BaseModel):
     notify_calendar: Optional[bool] = None
     notify_due_dates: Optional[bool] = None
     notify_ai_risk: Optional[bool] = None
+
+
+
+class UserSessionOut(BaseModel):
+    id: int
+    user_id: int
+    ip_address: Optional[str] = None
+    user_agent: Optional[str] = None
+    device_label: Optional[str] = None
+    location_hint: Optional[str] = None
+    created_at: datetime
+    last_seen_at: datetime
+    revoked_at: Optional[datetime] = None
+    revoke_reason: Optional[str] = None
+    is_current: bool = False
+
+    class Config:
+        from_attributes = True
+
+
+class UserSecurityLogOut(BaseModel):
+    id: int
+    user_id: int
+    session_id: Optional[int] = None
+    event_type: str
+    title: str
+    detail: Optional[str] = None
+    ip_address: Optional[str] = None
+    user_agent: Optional[str] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True

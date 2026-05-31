@@ -1,10 +1,11 @@
 from backend.models.admin import AiUsageLog, HttpErrorLog, SupportTicket, SupportTicketComment
-from backend.models.user import User
+from backend.models.user import User, UserSecurityLog, UserSession
 from backend.models.notification import Notification
 from backend.models.documentation import DocumentationPage
-from backend.models.github import GitHubEvent
+from backend.models.github import GitHubEvent, GitHubProjectIntegration
 from backend.models.project import (
     CalendarEvent,
+    CalendarAvailability,
     Invitation,
     Project,
     ProjectAuditLog,
@@ -20,6 +21,8 @@ from backend.models.project import (
 
 __all__ = [
     "User",
+    "UserSession",
+    "UserSecurityLog",
     "SupportTicket",
     "SupportTicketComment",
     "HttpErrorLog",
@@ -36,7 +39,9 @@ __all__ = [
     "TaskComment",
     "TaskAuditLog",
     "CalendarEvent",
+    "CalendarAvailability",
     "Notification",
     "DocumentationPage",
     "GitHubEvent",
+    "GitHubProjectIntegration",
 ]
