@@ -46,7 +46,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { UserAvatar } from "@/components/user-avatar";
+import { AuditLogEvent } from "@/components/dashboard/audit-log-event";
 import { getApiErrorMessage } from "@/lib/api-error";
 import { hasProjectPermission } from "@/lib/project-permissions";
 import {
@@ -163,29 +163,6 @@ function roleTone(roleName: string) {
   if (roleName.includes("Manager") || roleName.includes("Owner")) return "border-purple-500/30 bg-purple-500/10 text-purple-300";
   if (roleName.includes("Lead") || roleName.includes("Master")) return "border-emerald-500/30 bg-emerald-500/10 text-emerald-300";
   return "border-slate-700 bg-slate-800 text-slate-300";
-}
-
-function formatAuditDate(value: string) {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "-";
-
-  return date.toLocaleString([], {
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
-
-function projectAuditLabel(action: string) {
-  return (
-    {
-      PROJECT_METHODOLOGY_CHANGED: "Methodology changed",
-      PROJECT_SETTINGS_UPDATED: "Settings updated",
-      PROJECT_WORKFLOW_UPDATED: "Workflow updated",
-      AI_SETTINGS_UPDATED: "AI settings updated",
-    }[action] || action.replaceAll("_", " ").toLowerCase()
-  );
 }
 
 export default function SettingsPage() {
@@ -644,10 +621,10 @@ export default function SettingsPage() {
 
   return (
     <div className="min-h-full bg-slate-950 text-slate-50">
-      <div className="mx-auto max-w-7xl space-y-6 p-6 lg:p-8">
+      <div className="mx-auto w-full max-w-7xl space-y-6 px-4 py-5 sm:px-6 lg:p-8">
         <section className="rounded-3xl border border-slate-800 bg-slate-900 p-6 shadow-2xl shadow-black/20">
           <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
-            <div>
+            <div className="min-w-0">
               <div className="flex flex-wrap gap-2">
                 <Badge className="bg-blue-500/10 text-blue-300 hover:bg-blue-500/10">
                   {project.key}
@@ -663,7 +640,7 @@ export default function SettingsPage() {
                 )}
               </div>
 
-              <h1 className="mt-4 text-3xl font-black tracking-tight text-white md:text-4xl">
+              <h1 className="mt-4 break-words text-2xl font-black tracking-tight text-white sm:text-3xl md:text-4xl">
                 Project settings
               </h1>
               <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-400">
@@ -674,7 +651,7 @@ export default function SettingsPage() {
             <Button
               onClick={handleSaveProject}
               disabled={savingProject || loadingTransition}
-              className="h-11 bg-blue-600 px-5 hover:bg-blue-700"
+              className="h-11 w-full bg-blue-600 px-5 hover:bg-blue-700 sm:w-auto"
             >
               {savingProject || loadingTransition ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
               {methodology !== project.methodology ? "Review change" : "Save changes"}
@@ -683,19 +660,19 @@ export default function SettingsPage() {
         </section>
 
         <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <Card className="border-slate-800 bg-slate-900 text-slate-50">
+          <Card className="min-w-0 border-slate-800 bg-slate-900 text-slate-50">
             <CardContent className="flex items-center gap-4 p-5">
               <div className="rounded-2xl bg-blue-500/10 p-3 text-blue-300">
                 <Workflow className="h-5 w-5" />
               </div>
-              <div>
+              <div className="min-w-0">
                 <p className="text-sm text-slate-400">Methodology</p>
-                <p className="text-xl font-bold">{methodology}</p>
+                <p className="truncate text-xl font-bold">{methodology}</p>
               </div>
             </CardContent>
           </Card>
 
-          <Card className="border-slate-800 bg-slate-900 text-slate-50">
+          <Card className="min-w-0 border-slate-800 bg-slate-900 text-slate-50">
             <CardContent className="flex items-center gap-4 p-5">
               <div className="rounded-2xl bg-purple-500/10 p-3 text-purple-300">
                 <Shield className="h-5 w-5" />
@@ -707,7 +684,7 @@ export default function SettingsPage() {
             </CardContent>
           </Card>
 
-          <Card className="border-slate-800 bg-slate-900 text-slate-50">
+          <Card className="min-w-0 border-slate-800 bg-slate-900 text-slate-50">
             <CardContent className="flex items-center gap-4 p-5">
               <div className="rounded-2xl bg-emerald-500/10 p-3 text-emerald-300">
                 <Users className="h-5 w-5" />
@@ -719,20 +696,20 @@ export default function SettingsPage() {
             </CardContent>
           </Card>
 
-          <Card className="border-slate-800 bg-slate-900 text-slate-50">
+          <Card className="min-w-0 border-slate-800 bg-slate-900 text-slate-50">
             <CardContent className="flex items-center gap-4 p-5">
               <div className="rounded-2xl bg-amber-500/10 p-3 text-amber-300">
                 <KeyRound className="h-5 w-5" />
               </div>
-              <div>
+              <div className="min-w-0">
                 <p className="text-sm text-slate-400">Your access</p>
-                <p className="text-lg font-bold">{isProjectOwner ? "Owner" : myRoleName}</p>
+                <p className="truncate text-lg font-bold">{isProjectOwner ? "Owner" : myRoleName}</p>
               </div>
             </CardContent>
           </Card>
         </section>
 
-        <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_420px]">
+        <section className="grid min-w-0 gap-6 xl:grid-cols-[minmax(0,1fr)_420px]">
           <div className="space-y-6">
             <Card className="border-slate-800 bg-slate-900 text-slate-50">
               <CardHeader className="border-b border-slate-800">
@@ -743,7 +720,7 @@ export default function SettingsPage() {
               </CardHeader>
 
               <CardContent className="space-y-5 p-5">
-                <div className="grid gap-4 lg:grid-cols-[1fr_220px]">
+                <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_220px]">
                   <div className="space-y-2">
                     <Label>Project name</Label>
                     <Input
@@ -773,7 +750,7 @@ export default function SettingsPage() {
                   />
                 </div>
 
-                <div className="grid gap-4 lg:grid-cols-[260px_1fr]">
+                <div className="grid gap-4 lg:grid-cols-[260px_minmax(0,1fr)]">
                   <div className="space-y-2">
                     <Label>Methodology</Label>
                     <Select value={methodology} onValueChange={setMethodology}>
@@ -841,7 +818,7 @@ export default function SettingsPage() {
                   </div>
                 ) : (
                   <>
-                    <div className="grid gap-4 lg:grid-cols-[260px_1fr]">
+                    <div className="grid gap-4 lg:grid-cols-[260px_minmax(0,1fr)]">
                       <div className="space-y-2">
                         <Label>AI mode</Label>
                         <Select
@@ -882,7 +859,7 @@ export default function SettingsPage() {
 
                     {aiMode === "PROJECT" && (
                       <div className="space-y-4">
-                        <div className="grid gap-4 lg:grid-cols-[240px_1fr]">
+                        <div className="grid gap-4 lg:grid-cols-[240px_minmax(0,1fr)]">
                           <div className="space-y-2">
                             <Label>Provider type</Label>
                             <Select
@@ -923,7 +900,7 @@ export default function SettingsPage() {
                         </div>
 
                         {aiProvider === "OPENAI_COMPATIBLE" && (
-                          <div className="grid gap-4 lg:grid-cols-[1fr_260px]">
+                          <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_260px]">
                             <div className="space-y-2">
                               <Label>Base URL</Label>
                               <Input
@@ -1058,7 +1035,7 @@ export default function SettingsPage() {
                       .map((column, index, orderedColumns) => (
                         <div
                           key={column.key}
-                          className="grid gap-3 rounded-2xl border border-slate-800 bg-slate-950 p-4 lg:grid-cols-[120px_minmax(0,1fr)_180px]"
+                          className="grid min-w-0 gap-3 rounded-2xl border border-slate-800 bg-slate-950 p-4 lg:grid-cols-[140px_minmax(0,1fr)] 2xl:grid-cols-[140px_minmax(0,1fr)_260px]"
                         >
                           <div className="flex items-center gap-2">
                             <div className={`h-2.5 w-2.5 rounded-full ${column.color || "bg-slate-500"}`} />
@@ -1070,17 +1047,17 @@ export default function SettingsPage() {
                           <Input
                             value={column.label}
                             onChange={(event) => handleColumnLabelChange(column.key, event.target.value)}
-                            className="h-10 border-slate-700 bg-slate-900"
+                            className="h-10 min-w-0 border-slate-700 bg-slate-900"
                           />
 
-                          <div className="flex items-center justify-end gap-2">
+                          <div className="flex flex-wrap items-center gap-2 lg:col-span-2 2xl:col-span-1 2xl:justify-end">
                             <Button
                               type="button"
                               variant="outline"
                               size="sm"
                               disabled={index === 0}
                               onClick={() => moveBoardColumn(column.key, -1)}
-                              className="border-slate-700 bg-slate-900 text-slate-300 hover:bg-slate-800"
+                              className="h-9 border-slate-700 bg-slate-900 px-3 text-slate-300 hover:bg-slate-800"
                             >
                               Up
                             </Button>
@@ -1090,7 +1067,7 @@ export default function SettingsPage() {
                               size="sm"
                               disabled={index === orderedColumns.length - 1}
                               onClick={() => moveBoardColumn(column.key, 1)}
-                              className="border-slate-700 bg-slate-900 text-slate-300 hover:bg-slate-800"
+                              className="h-9 border-slate-700 bg-slate-900 px-3 text-slate-300 hover:bg-slate-800"
                             >
                               Down
                             </Button>
@@ -1102,8 +1079,8 @@ export default function SettingsPage() {
                               onClick={() => handleColumnEnabledChange(column.key, !column.enabled)}
                               className={
                                 column.enabled
-                                  ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-100 hover:bg-emerald-500/15"
-                                  : "border-slate-700 bg-slate-900 text-slate-400 hover:bg-slate-800"
+                                  ? "h-9 border-emerald-500/30 bg-emerald-500/10 px-3 text-emerald-100 hover:bg-emerald-500/15"
+                                  : "h-9 border-slate-700 bg-slate-900 px-3 text-slate-400 hover:bg-slate-800"
                               }
                             >
                               {column.enabled ? (
@@ -1169,7 +1146,7 @@ export default function SettingsPage() {
               </CardHeader>
 
               <CardContent className="space-y-5 p-5">
-                <div className="grid gap-4 lg:grid-cols-[260px_1fr]">
+                <div className="grid gap-4 lg:grid-cols-[260px_minmax(0,1fr)]">
                   <div className="space-y-2">
                     <Label>Selected role</Label>
                     <Select value={selectedRoleId} onValueChange={setSelectedRoleId}>
@@ -1311,48 +1288,7 @@ export default function SettingsPage() {
 
               <CardContent className="space-y-3 p-5">
                 {auditLogs.slice(0, 8).map((log) => (
-                  <div
-                    key={log.id}
-                    className="rounded-2xl border border-slate-800 bg-slate-950 p-4"
-                  >
-                    <div className="flex items-start gap-3">
-                      <UserAvatar
-                        name={log.actor_name || "System"}
-                        src={log.actor_avatar_url}
-                        className="h-8 w-8"
-                        fallbackClassName="bg-violet-500/10 text-[10px] text-violet-200"
-                      />
-                      <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <p className="font-semibold text-slate-100">
-                            {projectAuditLabel(log.action)}
-                          </p>
-                          {log.field && (
-                            <Badge
-                              variant="outline"
-                              className="border-slate-700 bg-slate-900 text-[10px] text-slate-400"
-                            >
-                              {log.field}
-                            </Badge>
-                          )}
-                        </div>
-                        <p className="mt-1 text-xs text-slate-500">
-                          {log.actor_name || "System"} · {formatAuditDate(log.created_at)}
-                        </p>
-                        {log.field && (
-                          <div className="mt-3 rounded-xl bg-slate-900 px-3 py-2 text-xs leading-5 text-slate-400">
-                            <span className="break-words text-rose-300">
-                              {log.old_value || "-"}
-                            </span>
-                            <span className="px-2 text-slate-600">-&gt;</span>
-                            <span className="break-words text-emerald-300">
-                              {log.new_value || "-"}
-                            </span>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
+                  <AuditLogEvent key={log.id} event={log} compact />
                 ))}
 
                 {auditLogs.length === 0 && (
@@ -1431,7 +1367,7 @@ export default function SettingsPage() {
 
           {transitionPreview && (
             <div className="space-y-5">
-              <div className="grid gap-3 md:grid-cols-[1fr_auto_1fr] md:items-center">
+              <div className="grid min-w-0 gap-3 md:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] md:items-center">
                 <div className="rounded-2xl border border-slate-800 bg-slate-900 p-4">
                   <p className="text-xs uppercase tracking-[0.18em] text-slate-600">Current</p>
                   <p className="mt-2 text-2xl font-bold text-white">

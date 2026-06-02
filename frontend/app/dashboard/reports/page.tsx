@@ -77,7 +77,7 @@ function formatShortDate(value: string) {
 
 function EmptyChart({ message }: { message: string }) {
   return (
-    <div className="flex h-[260px] items-center justify-center rounded-2xl border border-dashed border-slate-800 bg-slate-950/70 text-center">
+    <div className="flex h-[260px] min-w-0 items-center justify-center rounded-2xl border border-dashed border-slate-800 bg-slate-950/70 p-4 text-center">
       <div>
         <BarChart3 className="mx-auto mb-3 h-8 w-8 text-slate-600" />
         <p className="text-sm text-slate-500">{message}</p>
@@ -100,7 +100,7 @@ function MetricCard({
   danger?: boolean;
 }) {
   return (
-    <Card className="border-slate-800 bg-slate-900/70">
+    <Card className="min-w-0 border-slate-800 bg-slate-900/70">
       <CardContent className="p-5">
         <div
           className={cn(
@@ -116,7 +116,7 @@ function MetricCard({
         <p className={cn("mt-1 text-3xl font-bold", danger ? "text-red-300" : "text-white")}>
           {value}
         </p>
-        <p className="mt-2 text-xs leading-5 text-slate-500">{subtitle}</p>
+        <p className="mt-2 break-words text-xs leading-5 text-slate-500">{subtitle}</p>
       </CardContent>
     </Card>
   );
@@ -132,9 +132,9 @@ function ChartCard({
   children: React.ReactNode;
 }) {
   return (
-    <Card className="border-slate-800 bg-slate-900/70">
+    <Card className="min-w-0 overflow-hidden border-slate-800 bg-slate-900/70">
       <CardContent className="p-5">
-        <div className="mb-5">
+        <div className="mb-5 min-w-0">
           <h2 className="text-lg font-semibold text-white">{title}</h2>
           <p className="mt-1 text-sm text-slate-500">{description}</p>
         </div>
@@ -367,14 +367,14 @@ export default function ReportsPage() {
   const metrics = report.summary;
 
   return (
-    <div className="min-h-screen bg-slate-950 px-6 py-6 text-slate-100 lg:px-10">
+    <div className="min-h-screen bg-slate-950 px-4 py-5 text-slate-100 sm:px-6 lg:px-10">
       <div className="mb-8 flex flex-col justify-between gap-5 lg:flex-row lg:items-center">
-        <div>
+        <div className="min-w-0">
           <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-blue-500/20 bg-blue-500/10 px-3 py-1 text-xs font-medium text-blue-200">
             <BarChart3 className="h-3.5 w-3.5" />
             Reports v2
           </div>
-          <h1 className="text-3xl font-bold tracking-tight text-white">
+          <h1 className="break-words text-2xl font-bold tracking-tight text-white sm:text-3xl">
             Delivery reports for {project.name}
           </h1>
           <p className="mt-2 max-w-2xl text-sm text-slate-400">
@@ -382,10 +382,10 @@ export default function ReportsPage() {
           </p>
         </div>
 
-        <div className="flex flex-wrap gap-3">
+        <div className="grid gap-3 sm:flex sm:flex-wrap">
           <Button
             variant="outline"
-            className="w-fit border-slate-700 bg-slate-900 text-slate-200 hover:bg-slate-800"
+            className="w-full border-slate-700 bg-slate-900 text-slate-200 hover:bg-slate-800 sm:w-auto"
             onClick={loadReports}
           >
             <RefreshCw className="mr-2 h-4 w-4" />
@@ -393,7 +393,7 @@ export default function ReportsPage() {
           </Button>
 
           <Button
-            className="w-fit bg-blue-600 hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+            className="w-full bg-blue-600 hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
             onClick={handleExportPdf}
             disabled={exportingPdf}
           >
@@ -407,7 +407,7 @@ export default function ReportsPage() {
 
           <Button
             variant="outline"
-            className="w-fit border-slate-700 bg-slate-900 text-slate-200 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+            className="w-full border-slate-700 bg-slate-900 text-slate-200 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
             onClick={handleGenerateReleaseNotes}
             disabled={generatingNotes || !report.velocity.length}
           >
@@ -479,7 +479,7 @@ export default function ReportsPage() {
         </Card>
       )}
 
-      <div className="mb-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
+      <div className="mb-6 grid min-w-0 gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
         <MetricCard
           title="Completion"
           value={formatPercent(metrics.completion_rate)}
@@ -542,7 +542,7 @@ export default function ReportsPage() {
         </Card>
       )}
 
-      <div className="grid gap-6 xl:grid-cols-2">
+      <div className="grid min-w-0 gap-6 xl:grid-cols-2">
         <ChartCard
           title="Velocity chart"
           description="Done story points compared with planned sprint points."

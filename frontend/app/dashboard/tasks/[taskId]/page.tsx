@@ -57,6 +57,7 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { UserAvatar } from "@/components/user-avatar";
+import { AuditLogEvent } from "@/components/dashboard/audit-log-event";
 import { useProjectPermissions } from "@/hooks/use-project-permissions";
 import { sendRealtimeMessage, useRealtimeEvent } from "@/hooks/use-realtime-event";
 import { formatAiSource, isAiFallback } from "@/lib/ai-source";
@@ -157,23 +158,6 @@ function toDateInputValue(value?: string | null) {
   if (Number.isNaN(date.getTime())) return "";
 
   return date.toISOString().slice(0, 10);
-}
-
-function actionLabel(action: string) {
-  return (
-    {
-      TASK_CREATED: "Created task",
-      TASK_UPDATED: "Updated task",
-      SUBTASK_CREATED: "Added subtask",
-      SUBTASK_UPDATED: "Updated subtask",
-      SUBTASK_DELETED: "Deleted subtask",
-      COMMENT_ADDED: "Commented",
-      COMMENT_UPDATED: "Edited comment",
-      COMMENT_DELETED: "Deleted comment",
-      ESTIMATE_INVALIDATED: "Invalidated estimate",
-      DOCUMENTATION_GENERATED: "Generated documentation",
-    }[action] || action.replaceAll("_", " ").toLowerCase()
-  );
 }
 
 export default function TaskDetailPage() {
@@ -822,7 +806,7 @@ export default function TaskDetailPage() {
   }
 
   return (
-    <div className="mx-auto max-w-[1500px] space-y-7 p-5 text-slate-50 md:p-7 xl:p-8">
+    <div className="mx-auto w-full max-w-[1500px] space-y-7 px-4 py-5 text-slate-50 sm:px-5 md:p-7 xl:p-8">
       <section className="overflow-hidden rounded-3xl border border-slate-800 bg-slate-900/80 shadow-2xl shadow-slate-950/30">
         <div className="border-b border-slate-800 bg-slate-950/45 px-6 py-5">
           <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
@@ -865,7 +849,7 @@ export default function TaskDetailPage() {
                 )}
               </div>
 
-              <h1 className="break-words text-3xl font-semibold tracking-tight text-white md:text-4xl">
+              <h1 className="break-words text-2xl font-semibold tracking-tight text-white sm:text-3xl md:text-4xl">
                 {task.title}
               </h1>
               <p className="mt-2 text-sm text-slate-500">
@@ -878,7 +862,7 @@ export default function TaskDetailPage() {
               <Button
                 onClick={handleSave}
                 disabled={saving || !canSaveTask}
-                className="h-11 bg-blue-600 hover:bg-blue-700"
+                className="h-11 w-full bg-blue-600 hover:bg-blue-700 sm:w-auto"
               >
                 {saving ? (
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -892,7 +876,7 @@ export default function TaskDetailPage() {
                   variant="outline"
                   onClick={handleRefineWithAi}
                   disabled={aiWorking}
-                  className="h-11 border-slate-700 bg-slate-950/70 text-slate-200 hover:bg-slate-900"
+                  className="h-11 w-full border-slate-700 bg-slate-950/70 text-slate-200 hover:bg-slate-900 sm:w-auto"
                 >
                   {aiWorking ? (
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -906,7 +890,7 @@ export default function TaskDetailPage() {
                 <Button
                   variant="outline"
                   onClick={() => setDeleteTaskOpen(true)}
-                  className="h-11 border-rose-500/30 bg-rose-950/20 text-rose-200 hover:bg-rose-950/40 hover:text-rose-100"
+                  className="h-11 w-full border-rose-500/30 bg-rose-950/20 text-rose-200 hover:bg-rose-950/40 hover:text-rose-100 sm:w-auto"
                 >
                   <Trash2 className="mr-2 h-4 w-4" />
                   Delete
@@ -916,22 +900,22 @@ export default function TaskDetailPage() {
           </div>
         </div>
 
-        <div className="grid gap-4 p-5 md:grid-cols-2 xl:grid-cols-5">
-          <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
+        <div className="grid gap-4 p-5 sm:grid-cols-2 xl:grid-cols-5">
+          <div className="min-w-0 rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
             <ClipboardList className="mb-3 h-5 w-5 text-blue-300" />
             <p className="text-sm text-slate-500">Status</p>
             <p className="mt-1 text-lg font-semibold text-white">
               {statusLabels[task.status]}
             </p>
           </div>
-          <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
+          <div className="min-w-0 rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
             <Flag className="mb-3 h-5 w-5 text-orange-300" />
             <p className="text-sm text-slate-500">Priority</p>
             <p className="mt-1 text-lg font-semibold text-white">
               {task.priority}
             </p>
           </div>
-          <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
+          <div className="min-w-0 rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
             <Gauge className="mb-3 h-5 w-5 text-emerald-300" />
             <p className="text-sm text-slate-500">Estimate</p>
             <p className="mt-1 text-lg font-semibold text-white">
@@ -942,14 +926,14 @@ export default function TaskDetailPage() {
               : "Disabled"}
             </p>
           </div>
-          <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
+          <div className="min-w-0 rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
             <CalendarClock className="mb-3 h-5 w-5 text-amber-300" />
             <p className="text-sm text-slate-500">Target Date</p>
             <p className="mt-1 text-lg font-semibold text-white">
               {task.due_date ? formatDate(task.due_date) : "No date"}
             </p>
           </div>
-          <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
+          <div className="min-w-0 rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
             <UserRound className="mb-3 h-5 w-5 text-violet-300" />
             <p className="text-sm text-slate-500">Assignee</p>
             <div className="mt-2 flex min-w-0 items-center gap-2">
@@ -976,7 +960,7 @@ export default function TaskDetailPage() {
                 Issue Definition
               </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-5 p-5">
+            <CardContent className="space-y-5 p-4 sm:p-5">
               <div className="space-y-2">
                 <Label>Title</Label>
                 <Input
@@ -1047,7 +1031,7 @@ export default function TaskDetailPage() {
 
           <Card className="border-slate-800 bg-slate-900/75 text-slate-50 shadow-xl shadow-slate-950/20">
             <CardHeader className="flex flex-col gap-3 border-b border-slate-800/80 md:flex-row md:items-center md:justify-between">
-              <div>
+              <div className="min-w-0">
                 <CardTitle className="flex items-center gap-2">
                   <CheckCircle2 className="h-5 w-5 text-emerald-400" />
                   Subtasks
@@ -1056,7 +1040,7 @@ export default function TaskDetailPage() {
                   Checklist progress for this issue.
                 </p>
               </div>
-              <div className="flex flex-wrap items-center gap-2">
+              <div className="grid gap-2 sm:flex sm:flex-wrap sm:items-center">
                 <Badge className="bg-slate-800 text-slate-300">
                   {completedSubtasks}/{task.subtasks.length} done
                 </Badge>
@@ -1066,7 +1050,7 @@ export default function TaskDetailPage() {
                   size="sm"
                   onClick={handleApplySdlcChecklist}
                   disabled={!canUpdateTask || aiWorking}
-                  className="border-slate-700 bg-slate-950/70 text-slate-200 hover:bg-slate-900"
+                  className="w-full border-slate-700 bg-slate-950/70 text-slate-200 hover:bg-slate-900 sm:w-auto"
                 >
                   {aiWorking ? (
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -1077,7 +1061,7 @@ export default function TaskDetailPage() {
                 </Button>
               </div>
             </CardHeader>
-            <CardContent className="space-y-5 p-5">
+            <CardContent className="space-y-5 p-4 sm:p-5">
               {aiSuggestedSubtasks.length > 0 && (
                 <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 p-4">
                   <div className="mb-3 flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
@@ -1107,7 +1091,7 @@ export default function TaskDetailPage() {
                   </div>
                   <div className="grid gap-2 md:grid-cols-2">
                     {aiSuggestedSubtasks.slice(0, 8).map((subtask) => (
-                      <div key={subtask} className="rounded-xl border border-emerald-400/15 bg-slate-950/50 px-3 py-2 text-xs text-emerald-50/85">
+                      <div key={subtask} className="break-words rounded-xl border border-emerald-400/15 bg-slate-950/50 px-3 py-2 text-xs text-emerald-50/85">
                         {subtask}
                       </div>
                     ))}
@@ -1129,7 +1113,7 @@ export default function TaskDetailPage() {
                 {task.subtasks.map((subtask) => (
                   <div
                     key={subtask.id}
-                    className="rounded-2xl border border-slate-800 bg-slate-950/75 p-4 transition hover:border-blue-500/30 hover:bg-slate-950"
+                    className="min-w-0 rounded-2xl border border-slate-800 bg-slate-950/75 p-4 transition hover:border-blue-500/30 hover:bg-slate-950"
                   >
                     {editingSubtaskId === subtask.id ? (
                       <div className="space-y-3">
@@ -1139,7 +1123,7 @@ export default function TaskDetailPage() {
                           disabled={!canUpdateTask}
                           className="h-11 border-slate-700 bg-slate-900"
                         />
-                        <div className="flex justify-end gap-2">
+                        <div className="flex flex-col justify-end gap-2 sm:flex-row">
                           <Button
                             variant="ghost"
                             size="sm"
@@ -1249,7 +1233,7 @@ export default function TaskDetailPage() {
                 )}
               </div>
 
-              <div className="flex gap-2">
+              <div className="flex flex-col gap-2 sm:flex-row">
                 <Input
                   value={newSubtaskTitle}
                   onChange={(event) => setNewSubtaskTitle(event.target.value)}
@@ -1260,7 +1244,7 @@ export default function TaskDetailPage() {
                   disabled={!canUpdateTask}
                   className="h-11 border-slate-700 bg-slate-950"
                 />
-                <Button onClick={handleAddSubtask} disabled={!canUpdateTask} className="bg-blue-600 hover:bg-blue-700">
+                <Button onClick={handleAddSubtask} disabled={!canUpdateTask} className="w-full bg-blue-600 hover:bg-blue-700 sm:w-11">
                   <Plus className="h-4 w-4" />
                 </Button>
               </div>
@@ -1274,12 +1258,12 @@ export default function TaskDetailPage() {
                 Comments
               </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-5 p-5">
+            <CardContent className="space-y-5 p-4 sm:p-5">
               <div className="space-y-3">
                 {task.comments.map((comment) => (
                   <div
                     key={comment.id}
-                    className="rounded-2xl border border-slate-800 bg-slate-950/75 p-4"
+                    className="min-w-0 rounded-2xl border border-slate-800 bg-slate-950/75 p-4"
                   >
                     <div className="mb-3 flex items-start gap-3">
                       <UserAvatar
@@ -1442,46 +1426,9 @@ export default function TaskDetailPage() {
                 Immutable activity trail for this issue.
               </p>
             </CardHeader>
-            <CardContent className="space-y-3 p-5">
+            <CardContent className="space-y-3 p-4 sm:p-5">
               {[...task.audit_logs].reverse().map((log) => (
-                <div
-                  key={log.id}
-                  className="rounded-2xl border border-slate-800 bg-slate-950/75 p-4"
-                >
-                  <div className="flex items-start gap-3">
-                    <UserAvatar
-                      name={log.actor_name || "System"}
-                      src={log.actor_avatar_url}
-                      className="h-9 w-9"
-                      fallbackClassName="bg-violet-500/10 text-[10px] text-violet-200"
-                    />
-                    <div className="min-w-0 flex-1">
-                      <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-                        <p className="font-medium text-slate-200">
-                          {actionLabel(log.action)}
-                        </p>
-                        <p className="text-xs text-slate-600">
-                          {formatDate(log.created_at)}
-                        </p>
-                      </div>
-                      <p className="text-xs text-slate-500">
-                        by {log.actor_name || "System"}
-                      </p>
-                      {log.field && (
-                        <p className="mt-3 break-words rounded-xl bg-slate-900 px-3 py-2 text-xs text-slate-400">
-                          {log.field}:{" "}
-                          <span className="text-rose-300">
-                            {log.old_value || "-"}
-                          </span>
-                          {" -> "}
-                          <span className="text-emerald-300">
-                            {log.new_value || "-"}
-                          </span>
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                </div>
+                <AuditLogEvent key={log.id} event={log} />
               ))}
 
               {task.audit_logs.length === 0 && (

@@ -1181,11 +1181,11 @@ export default function CalendarPage() {
   }
 
   return (
-    <div className="mx-auto max-w-7xl space-y-7 p-6 text-slate-50 md:p-8">
+    <div className="mx-auto w-full max-w-7xl space-y-7 px-4 py-5 text-slate-50 sm:px-6 md:p-8">
       <section className="overflow-hidden rounded-3xl border border-slate-800 bg-slate-900/80 shadow-2xl shadow-slate-950/30">
         <div className="border-b border-slate-800 bg-slate-950/45 px-6 py-5">
           <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
-            <div>
+            <div className="min-w-0">
               <div className="mb-3 flex flex-wrap items-center gap-2">
                 <Badge className="bg-blue-600 text-white">{project.key}</Badge>
                 <Badge variant="outline" className="border-slate-700 bg-slate-950/70 text-slate-300">
@@ -1197,7 +1197,7 @@ export default function CalendarPage() {
                   </Badge>
                 )}
               </div>
-              <h1 className="text-3xl font-semibold tracking-tight text-white md:text-4xl">
+              <h1 className="break-words text-2xl font-semibold tracking-tight text-white sm:text-3xl md:text-4xl">
                 Team Calendar
               </h1>
               <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-400">
@@ -1205,10 +1205,10 @@ export default function CalendarPage() {
               </p>
             </div>
 
-            <div className="flex flex-wrap gap-3">
+            <div className="grid gap-3 sm:flex sm:flex-wrap">
               <Button
                 variant="outline"
-                className="border-slate-700 bg-slate-950/60 text-slate-200 hover:bg-slate-900"
+                className="w-full border-slate-700 bg-slate-950/60 text-slate-200 hover:bg-slate-900 sm:w-auto"
                 onClick={handleToday}
               >
                 <CalendarClock className="mr-2 h-4 w-4" />
@@ -1217,7 +1217,7 @@ export default function CalendarPage() {
 
               <Button
                 variant="outline"
-                className="border-slate-700 bg-slate-950/60 text-slate-200 hover:bg-slate-900 disabled:cursor-not-allowed disabled:opacity-60"
+                className="w-full border-slate-700 bg-slate-950/60 text-slate-200 hover:bg-slate-900 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
                 disabled={generatingReminders}
                 onClick={handleGenerateReminders}
               >
@@ -1242,7 +1242,7 @@ export default function CalendarPage() {
                 <Button
                   type="button"
                   variant="outline"
-                  className="border-slate-700 bg-slate-950/60 text-slate-200 hover:bg-slate-900"
+                  className="w-full border-slate-700 bg-slate-950/60 text-slate-200 hover:bg-slate-900 sm:w-auto"
                   disabled={!canCreateAvailability}
                   onClick={openCreateAvailabilityDialog}
                 >
@@ -1705,7 +1705,7 @@ export default function CalendarPage() {
           </div>
         </div>
 
-        <div className="grid gap-4 p-5 md:grid-cols-2 xl:grid-cols-5">
+        <div className="grid gap-4 p-5 sm:grid-cols-2 xl:grid-cols-5">
           <div className="rounded-2xl border border-slate-800 bg-slate-950/75 p-4">
             <Video className="mb-3 h-5 w-5 text-blue-300" />
             <p className="text-sm text-slate-500">Events</p>
@@ -1771,9 +1771,9 @@ export default function CalendarPage() {
         )}
       </section>
 
-      <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_380px]">
-        <main className="space-y-6">
-          <Card className="border-slate-800 bg-slate-900/80 text-slate-50 shadow-xl shadow-slate-950/20">
+      <section className="grid min-w-0 gap-6 xl:grid-cols-[minmax(0,1fr)_380px]">
+        <main className="min-w-0 space-y-6">
+          <Card className="min-w-0 overflow-hidden border-slate-800 bg-slate-900/80 text-slate-50 shadow-xl shadow-slate-950/20">
             <CardHeader className="border-b border-slate-800/80">
               <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                 <div>
@@ -1786,7 +1786,7 @@ export default function CalendarPage() {
                   </p>
                 </div>
 
-                <div className="flex flex-wrap items-center gap-2">
+                <div className="grid min-w-0 gap-2 sm:flex sm:flex-wrap sm:items-center">
                   <Button
                     variant="outline"
                     size="icon"
@@ -1804,8 +1804,8 @@ export default function CalendarPage() {
                     <ChevronRight className="h-4 w-4" />
                   </Button>
 
-                  <Tabs value={view} onValueChange={(value) => setView(value as CalendarView)}>
-                    <TabsList className="border border-slate-800 bg-slate-950">
+                  <Tabs value={view} onValueChange={(value) => setView(value as CalendarView)} className="min-w-0">
+                    <TabsList className="grid grid-cols-4 border border-slate-800 bg-slate-950 sm:flex">
                       <TabsTrigger value="month" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white">
                         <LayoutGrid className="h-4 w-4" />
                         Month
@@ -1825,10 +1825,11 @@ export default function CalendarPage() {
               </div>
             </CardHeader>
 
-            <CardContent className="p-5">
+            <CardContent className="p-4 sm:p-5">
               <Tabs value={view} onValueChange={(value) => setView(value as CalendarView)}>
                 <TabsContent value="month" className="mt-0">
-                  <div className="grid grid-cols-7 overflow-hidden rounded-2xl border border-slate-800">
+                  <div className="sdlc-thin-scrollbar overflow-x-auto">
+                    <div className="grid min-w-[720px] grid-cols-7 overflow-hidden rounded-2xl border border-slate-800">
                     {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => (
                       <div key={day} className="border-b border-slate-800 bg-slate-950/80 px-3 py-2 text-xs font-medium text-slate-500">
                         {day}
@@ -1890,6 +1891,7 @@ export default function CalendarPage() {
                         </button>
                       );
                     })}
+                    </div>
                   </div>
                 </TabsContent>
 

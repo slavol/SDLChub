@@ -26,6 +26,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { AuditChangeSummary, formatAuditFieldLabel } from "@/components/dashboard/audit-log-event";
 import {
   Select,
   SelectContent,
@@ -183,20 +184,20 @@ function ActivityItem({
   const actor = item.actor_name || "System";
 
   return (
-    <div className="relative grid grid-cols-[48px_1fr] gap-4">
+    <div className="relative grid min-w-0 grid-cols-[40px_minmax(0,1fr)] gap-3 sm:grid-cols-[48px_minmax(0,1fr)] sm:gap-4">
       {!isLast && (
-        <div className="absolute left-[23px] top-14 h-[calc(100%-20px)] w-px bg-slate-800" />
+        <div className="absolute left-[19px] top-12 h-[calc(100%-16px)] w-px bg-slate-800 sm:left-[23px] sm:top-14 sm:h-[calc(100%-20px)]" />
       )}
 
       <UserAvatar
         name={actor}
         src={item.actor_avatar_url}
-        className="relative z-10 h-12 w-12 rounded-2xl border-slate-800 shadow-lg shadow-slate-950/30"
+        className="relative z-10 h-10 w-10 rounded-2xl border-slate-800 shadow-lg shadow-slate-950/30 sm:h-12 sm:w-12"
         fallbackClassName="bg-slate-950 text-sm font-semibold text-slate-200"
       />
 
-      <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4 transition hover:border-blue-500/35 hover:bg-slate-950">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+      <div className="min-w-0 overflow-hidden rounded-2xl border border-slate-800 bg-slate-950/70 p-4 transition hover:border-blue-500/35 hover:bg-slate-950">
+        <div className="flex min-w-0 flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div className="min-w-0 flex-1">
             <div className="mb-3 flex flex-wrap items-center gap-2">
               <Badge
@@ -211,9 +212,9 @@ function ActivityItem({
               {item.field && (
                 <Badge
                   variant="outline"
-                  className="border-slate-700 bg-slate-900/80 text-slate-300"
+                  className="max-w-full border-slate-700 bg-slate-900/80 text-slate-300"
                 >
-                  {item.field}
+                  <span className="truncate">{formatAuditFieldLabel(item.field)}</span>
                 </Badge>
               )}
               <span className="text-xs text-slate-500">
@@ -221,7 +222,7 @@ function ActivityItem({
               </span>
             </div>
 
-            <p className="text-sm text-slate-300">
+            <p className="break-words text-sm text-slate-300">
               <span className="font-semibold text-white">{actor}</span>{" "}
               changed{" "}
               <Link
@@ -239,20 +240,10 @@ function ActivityItem({
               {item.task_title}
             </Link>
 
-            {item.field && (
-              <div className="mt-4 grid gap-2 rounded-2xl border border-slate-800 bg-slate-900/70 p-3 text-sm md:grid-cols-[1fr_auto_1fr] md:items-center">
-                <div className="min-w-0 rounded-xl bg-rose-500/10 px-3 py-2 text-rose-200">
-                  <p className="truncate">{item.old_value || "-"}</p>
-                </div>
-                <ArrowUpRight className="hidden h-4 w-4 rotate-45 text-slate-600 md:block" />
-                <div className="min-w-0 rounded-xl bg-emerald-500/10 px-3 py-2 text-emerald-200">
-                  <p className="truncate">{item.new_value || "-"}</p>
-                </div>
-              </div>
-            )}
+            <AuditChangeSummary event={item} />
           </div>
 
-          <div className="flex items-center justify-between gap-3 lg:flex-col lg:items-end">
+          <div className="flex shrink-0 items-center justify-between gap-3 lg:flex-col lg:items-end">
             <span className="whitespace-nowrap text-xs text-slate-500">
               {formatDateTime(item.created_at)}
             </span>
@@ -445,11 +436,11 @@ export default function ActivityPage() {
   }
 
   return (
-    <div className="mx-auto max-w-7xl space-y-7 p-6 text-slate-50 md:p-8">
+      <div className="mx-auto w-full max-w-7xl space-y-7 px-4 py-5 text-slate-50 sm:px-6 md:p-8">
       <section className="overflow-hidden rounded-3xl border border-slate-800 bg-slate-900/80 shadow-2xl shadow-slate-950/30">
         <div className="border-b border-slate-800 bg-slate-950/45 px-6 py-5">
           <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
-            <div>
+            <div className="min-w-0">
               <div className="mb-3 flex flex-wrap items-center gap-2">
                 <Badge className="bg-blue-600 text-white">{project.key}</Badge>
                 <Badge
@@ -466,8 +457,8 @@ export default function ActivityPage() {
                 </Badge>
               </div>
 
-              <h1 className="flex items-center gap-3 text-3xl font-semibold tracking-tight text-white md:text-4xl">
-                <History className="h-8 w-8 text-blue-400" />
+              <h1 className="flex min-w-0 items-center gap-3 text-2xl font-semibold tracking-tight text-white sm:text-3xl md:text-4xl">
+                <History className="h-7 w-7 shrink-0 text-blue-400 sm:h-8 sm:w-8" />
                 Activity Center
               </h1>
               <p className="mt-2 max-w-2xl text-sm text-slate-400">
@@ -475,10 +466,10 @@ export default function ActivityPage() {
               </p>
             </div>
 
-            <div className="flex flex-wrap gap-3">
+            <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
               <Button
                 variant="outline"
-                className="border-slate-700 bg-slate-950/60 text-slate-200 hover:bg-slate-900"
+                className="w-full border-slate-700 bg-slate-950/60 text-slate-200 hover:bg-slate-900 sm:w-auto"
                 asChild
               >
                 <Link href="/dashboard">
@@ -486,32 +477,32 @@ export default function ActivityPage() {
                   Dashboard
                 </Link>
               </Button>
-              <Button className="bg-blue-600 hover:bg-blue-700" asChild>
+              <Button className="w-full bg-blue-600 hover:bg-blue-700 sm:w-auto" asChild>
                 <Link href="/dashboard/board">Open Board</Link>
               </Button>
             </div>
           </div>
         </div>
 
-        <div className="grid gap-4 p-5 md:grid-cols-4">
-          <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
+        <div className="grid gap-4 p-5 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="min-w-0 rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
             <Activity className="mb-3 h-5 w-5 text-blue-300" />
             <p className="text-2xl font-semibold text-white">
               {filteredActivities.length}
             </p>
             <p className="text-xs text-slate-500">events shown</p>
           </div>
-          <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
+          <div className="min-w-0 rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
             <UserRound className="mb-3 h-5 w-5 text-emerald-300" />
             <p className="text-2xl font-semibold text-white">{uniqueActors}</p>
             <p className="text-xs text-slate-500">active actors</p>
           </div>
-          <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
+          <div className="min-w-0 rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
             <CalendarClock className="mb-3 h-5 w-5 text-amber-300" />
             <p className="text-2xl font-semibold text-white">{taskEvents}</p>
             <p className="text-xs text-slate-500">task updates</p>
           </div>
-          <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
+          <div className="min-w-0 rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
             <MessageSquareText className="mb-3 h-5 w-5 text-cyan-300" />
             <p className="text-2xl font-semibold text-white">{commentEvents}</p>
             <p className="text-xs text-slate-500">comment events</p>
@@ -519,8 +510,8 @@ export default function ActivityPage() {
         </div>
       </section>
 
-      <div className="grid gap-6 xl:grid-cols-[360px_1fr]">
-        <Card className="h-fit border-slate-800 bg-slate-900/80 text-slate-50 shadow-xl shadow-slate-950/20 xl:sticky xl:top-6">
+      <div className="grid min-w-0 gap-6 xl:grid-cols-[minmax(280px,360px)_minmax(0,1fr)]">
+        <Card className="h-fit min-w-0 overflow-hidden border-slate-800 bg-slate-900/80 text-slate-50 shadow-xl shadow-slate-950/20 xl:sticky xl:top-6 xl:mb-6 xl:max-h-[calc(100dvh-3rem)]">
           <CardHeader className="border-b border-slate-800/80">
             <div className="flex items-start justify-between gap-4">
               <div>
@@ -532,16 +523,29 @@ export default function ActivityPage() {
                   Search and slice the audit stream.
                 </p>
               </div>
-              <Badge
-                variant="outline"
-                className="border-slate-700 bg-slate-950/70 text-slate-300"
-              >
-                {activeFilterCount}
-              </Badge>
+              <div className="flex shrink-0 items-center gap-2">
+                <Badge
+                  variant="outline"
+                  className="border-slate-700 bg-slate-950/70 text-slate-300"
+                >
+                  {activeFilterCount}
+                </Badge>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={resetFilters}
+                  disabled={activeFilterCount === 0}
+                  className="h-8 border-slate-700 bg-slate-950/70 px-2.5 text-xs text-slate-300 hover:bg-slate-900 disabled:cursor-not-allowed disabled:opacity-45"
+                >
+                  <RefreshCcw className="mr-1.5 h-3.5 w-3.5" />
+                  Reset
+                </Button>
+              </div>
             </div>
           </CardHeader>
 
-          <CardContent className="space-y-5 p-5">
+          <CardContent className="sdlc-thin-scrollbar space-y-5 p-5 pb-6 xl:max-h-[calc(100dvh-10rem)] xl:overflow-y-auto">
             <div className="space-y-2">
               <label className="text-xs font-medium uppercase tracking-wide text-slate-500">
                 Search
@@ -712,18 +716,10 @@ export default function ActivityPage() {
               </div>
             </div>
 
-            <Button
-              variant="outline"
-              className="w-full border-slate-700 bg-slate-950/60 text-slate-200 hover:bg-slate-900"
-              onClick={resetFilters}
-            >
-              <RefreshCcw className="mr-2 h-4 w-4" />
-              Reset Filters
-            </Button>
           </CardContent>
         </Card>
 
-        <Card className="border-slate-800 bg-slate-900/80 text-slate-50 shadow-xl shadow-slate-950/20">
+        <Card className="min-w-0 overflow-hidden border-slate-800 bg-slate-900/80 text-slate-50 shadow-xl shadow-slate-950/20">
           <CardHeader className="border-b border-slate-800/80">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
               <div>
@@ -736,7 +732,7 @@ export default function ActivityPage() {
                 </p>
               </div>
 
-              <div className="flex flex-wrap gap-2">
+              <div className="flex min-w-0 flex-wrap gap-2">
                 {scopeFilter !== "all" && (
                   <Badge
                     variant="outline"
@@ -765,8 +761,8 @@ export default function ActivityPage() {
             </div>
           </CardHeader>
 
-          <CardContent className="p-5">
-            <div className="space-y-5">
+          <CardContent className="p-4 sm:p-5">
+            <div className="min-w-0 space-y-5">
               {filteredActivities.map((item, index) => (
                 <ActivityItem
                   key={`${item.id}-${item.task_id}-${item.created_at}`}

@@ -217,6 +217,53 @@ Update 27 mai 2026:
   2. Stabilizare UI/UX pe fluxurile principale dupa toate feature-urile mari.
   3. Verificare functionala manuala la finalul functionalitatilor principale.
 
+Update UI/UX polish si bug pass - 3 iunie 2026:
+- Directia curenta este stabilizare vizuala inainte de bug-urile de logica.
+- Task 1 - Audit Log UI:
+  - toate audit log-urile trebuie afisate intr-un format uman, fara `field: old -> new` brut;
+  - valorile JSON, in special riscurile AI din comentarii, trebuie parsate si prezentate ca badge-uri, sumar si recomandare;
+  - locuri de verificat/editat: frontend/app/dashboard/tasks/[taskId]/page.tsx, frontend/app/dashboard/activity/page.tsx, frontend/app/dashboard/page.tsx, frontend/app/dashboard/settings/page.tsx;
+  - recomandare tehnica: componenta reutilizabila in frontend/components/dashboard/audit-log-event.tsx.
+- Task 2 - Liste laterale si panouri:
+  - AI Risk Radar din dashboard trebuie integrat mai bine cu pagina, cu densitate si spacing mai profesioniste;
+  - Activity/side lists trebuie sa arate ca parti naturale din layout, nu carduri lipite separat;
+  - de verificat responsive pe desktop lat, laptop si mobile.
+  - Implementat in batch-ul curent:
+    - frontend/app/dashboard/page.tsx: AI Risk Radar nu mai sta ca lista lunga in coloana din dreapta; dashboard-ul foloseste acum un flux mai unitar, iar radarul este afisat ca grid de carduri in pagina;
+    - frontend/app/dashboard/activity/page.tsx: Activity Center a fost readus la structura anterioara cu filtre in stanga si timeline in dreapta, pastrand doar sumarul audit curat introdus la Task 1;
+    - rândurile de activity din dashboard au fost facute mai elastice pentru mobile.
+  - Verificari rulate: npm run lint OK, npm run build OK.
+- Task 3 - Responsive pass general:
+  - dashboard, tasks, task detail, activity, settings, team, calendar, reports si admin trebuie verificate pe mobile;
+  - zonele cu grid/aside sticky trebuie sa cada corect pe o coloana;
+  - textul lung si JSON/audit content trebuie sa faca wrap, nu overflow.
+  - Batch curent Task 3:
+    - frontend/components/dashboard/audit-log-event.tsx: sumarul de audit/risk nu mai forteaza o singura linie; textele lungi fac wrap controlat;
+    - frontend/app/dashboard/activity/page.tsx: timeline-ul foloseste `minmax(0, 1fr)`, cardurile au `min-w-0/overflow-hidden`, avatarul si headerul se adapteaza pe mobile, iar textele lungi nu mai imping pagina in dreapta;
+    - frontend/app/dashboard/activity/page.tsx: butonul Reset este acum si in headerul cardului de filtre, pentru acces rapid fara scroll pana la finalul filtrarii;
+    - frontend/app/dashboard/page.tsx: dashboard-ul foloseste padding responsive, grile cu `minmax(0, 1fr)`, butoane full-width pe mobile si risk/activity cards mai rezistente la overflow;
+    - frontend/app/dashboard/tasks/page.tsx: lista de task-uri intra in layout tabelar doar la `xl`, nu la `lg`, ca sa nu inghesuie coloanele cand sidebar-ul consuma spatiu; filtrele si actiunile sunt full-width pe mobile;
+    - frontend/app/dashboard/tasks/[taskId]/page.tsx: header, KPI-uri, subtasks, comments si audit log au padding/grile/butoane mai sigure pe mobile, cu wrap pentru texte lungi;
+    - frontend/app/dashboard/activity/page.tsx: filtrul sticky nu se mai lipeste de marginea de jos; are `max-height`, scroll intern si spatiu de jos, iar reset-ul duplicat de la final a fost eliminat;
+    - frontend/app/dashboard/settings/page.tsx: header, metric cards si grilele interne folosesc padding responsive si `minmax(0, 1fr)` unde era risc de overflow;
+    - frontend/app/dashboard/settings/page.tsx: randurile din WIP/Board workflow nu mai suprapun controalele peste input; actiunile Up/Down/Shown se muta pe rand separat pana exista suficient spatiu;
+    - frontend/components/dashboard/audit-log-event.tsx: auditul pentru workflow_config nu mai afiseaza `[object Object]`, ci formateaza obiectele/array-urile in text citibil;
+    - frontend/app/dashboard/team/page.tsx: header, metric cards, formularul de creare echipa, invitatiile si lista de membri au controale full-width pe mobile si grile mai sigure pe desktop;
+    - frontend/app/dashboard/team/page.tsx: butonul Send invitation a fost mutat in cardul Invite a teammate, langa email/rol;
+    - frontend/app/dashboard/calendar/page.tsx: header, actiuni, metric cards si calendar month au layout responsive; calendarul lunar foloseste scroll intern pe ecrane mici, nu overflow de pagina;
+    - frontend/app/dashboard/reports/page.tsx: headerul, butoanele, metric cards si chart cards au `min-w-0`, padding responsive si butoane full-width pe mobile;
+    - verificari rulate: npm run lint OK, npm run build OK.
+  - Task 3 este complet pentru paginile principale non-admin. Ramane Global Admin Console ca pas separat/design major.
+- Task 4 - Global Admin Console redesign:
+  - refacere layout principal si sidebar admin;
+  - navigatie activa clara, fara dublari;
+  - support tickets cu comentarii complete, actiuni clare si accesibilitate buna.
+- Task 5 - Bug-uri de logica dupa UI pass:
+  - board si tranzitii intre metodologii;
+  - arhivare proiect si acces readonly pe pagini;
+  - flows support tickets, comentarii si stergeri;
+  - realtime unde inca se simte ca reload.
+
 Scopul fisierului:
 - Sa poata fi folosit ca handoff rapid daca se termina tokenii in Codex.
 - Sa explice ce este deja implementat, ce lipseste fata de master plan si in ce ordine trebuie continuat.
@@ -389,9 +436,12 @@ Implementat:
 - pagina dedicata /dashboard/devops/pull-requests pentru Pull Requests.
 - actiuni manuale de confirmare PR -> Review / Done.
 - mapping automat GitHub sender_login -> user SDLC Hub pe baza de github_username, email local-part sau nume.
+- configurare GitHub repository per proiect.
+- flow ngrok din UI pentru webhook local.
+- test/configurare webhook cu status CONNECTED/WAITING_FOR_PING/ERROR.
 
 Lipseste / partial:
-- ngrok flow documentat pentru webhooks.
+- polish/test manual pentru GitHub webhook end-to-end cu repository real.
 
 2.5. Reporting
 Implementat:
@@ -399,15 +449,18 @@ Implementat:
 - activity center exista.
 - pagina /dashboard/reports foloseste Recharts.
 - Velocity Chart pe sprinturi inchise.
+- Sprint Burndown chart.
+- Sprint Burnup chart.
+- lead time separat pentru Kanban / flow work.
+- CFD / Cumulative Flow Diagram istoric.
+- WIP history si WIP limit status.
 - status/priority distribution.
 - bottleneck/status age pe baza audit log.
 - average cycle time.
 - Export PDF raport stare proiect prin /projects/{id}/reports/status.pdf.
 
 Lipseste / partial:
-- Burndown/Burnup chart.
-- lead time separat pentru Kanban.
-- CFD/WIP historical chart.
+- polish UI si validare manuala pe proiecte cu date reale.
 
 2.6. Notifications
 Implementat:
@@ -420,15 +473,21 @@ Implementat:
 - model/tabela Notification.
 - stare read/unread.
 - WebSocket pentru update live: notification.created/read/read_all.
+- realtime comments:
+  - comment.created/comment.updated/comment.deleted updateaza pagina TaskId fara refetch complet.
+  - typing indicator prin WebSocket cu throttle/debounce pe backend.
 
 Lipseste / partial:
-- realtime mai avansat: presence online, typing/comments live fara refetch complet si debounce pentru evenimente rapide.
+- presence online globala, daca vrem polish suplimentar.
 
 2.7. Calendar
 Implementat recent:
 - evenimente/meeting-uri cu link, locatie, participanti.
 - task-uri vizibile dupa due date.
 - month/week/agenda.
+- disponibilitate/concedii/time off pentru membri.
+- warning cand un meeting se suprapune peste disponibilitatea participantilor.
+- filtre pentru availability/time off.
 - day view dedicat.
 - edit event UI.
 - sprint start/end apar ca evenimente virtuale pentru proiectele SCRUM/SCRUMBAN.
@@ -446,28 +505,33 @@ Implementat:
 - CRUD pentru pagini.
 - generare documentatie din task Done.
 - legare task -> documentatie.
+- istoric modificari / revision history pe documentatie.
+- generare automata/upsert cand task-ul ajunge Done.
 
 Lipseste / partial:
-- istoric modificari pe documentatie.
-- generare automata imediat cand task-ul ajunge Done, fara actiune manuala.
+- polish UI si validare manuala pe flow-uri cu task-uri reale.
 
 2.9. Team Hierarchy
-Partial:
-- Team page are membri si roluri.
+Implementat:
+- Team page are membri, roluri, echipe si subechipe.
+- arbore ierarhic vizual recursiv.
+- asignare task la echipa.
+- vizualizare "My team" pentru roluri de coordonare.
 
 Lipseste:
-- arbore ierarhic echipe.
-- echipe/subechipe.
-- asignare task la echipa.
-- vizualizare "echipa mea" pentru Project Manager/Tech Lead/Flow Manager.
+- polish UI si validare manuala pe proiecte cu multe echipe.
 
 2.10. Admin Global
-Neimplementat:
+Implementat:
 - rol global admin separat.
-- dashboard global cu toate proiectele.
-- statistici globale AI/API/errors.
-- support tickets catre admin global.
-- panou erori 400/500.
+- interfata /admin separata de interfata principala de proiect.
+- dashboard global cu proiecte/utilizatori/tickets/errors/AI usage.
+- support tickets catre admin global cu comentarii si stergere.
+- arhivare proiecte si read-only pe proiectele arhivate, cu Support functional.
+- export CSV/PDF si panou operational.
+
+Lipseste / partial:
+- polish UI si validare manuala pe date reale.
 
 2.11. Profil Utilizator
 Implementat:
@@ -476,6 +540,11 @@ Implementat:
 - schimbare parola din profil.
 - afisare proiecte in care se afla utilizatorul si rolul pe fiecare proiect.
 - preferinte notificari in Account Settings.
+- sesiuni active si revoke session.
+- security log in Account Settings.
+
+Ramane de facut ulterior:
+- polish UI si validare manuala pe scenarii login/logout/revoke.
 
 Ramane de facut ulterior:
 - sesiuni active / security log.
@@ -2478,12 +2547,213 @@ Verificari batch AY:
 - curl -I http://127.0.0.1:3000/dashboard/devops: 200 OK.
 - curl -I http://127.0.0.1:3000/dashboard/devops/pull-requests: 200 OK.
 
-Urmatoarea prioritate recomandata dupa batch AY:
-1. Reporting:
-   - verificare daca Burndown/Burnup, lead time Kanban si CFD/WIP sunt complet functionale sau necesita polish.
-2. Realtime comments:
-   - typing indicator.
-   - actualizare comentarii fara refetch complet si debounce suplimentar.
+Batch AZ - Reporting final, Realtime comments si Calendar availability adaugate din web batch 3 iunie 2026
+Context:
+- dupa batch AY au fost adaugate functionalitati din interfata web ChatGPT, iar planul ramasese in urma.
+
+Implementat confirmat in cod:
+- Reporting:
+  - Sprint Burndown.
+  - Sprint Burnup.
+  - Kanban/flow lead time separat.
+  - CFD / Cumulative Flow Diagram istoric.
+  - WIP history si current WIP limits.
+  - metrici noi in PDF: Flow/Kanban lead time.
+- Realtime comments:
+  - backend broadcast separat comment.created/comment.updated/comment.deleted.
+  - pagina TaskId actualizeaza comentariile incremental, fara refetch complet.
+  - typing indicator prin WebSocket cu throttle pe backend.
+- Calendar availability:
+  - tabela calendar_availability.
+  - CRUD availability/time off/vacation/focus/sick leave.
+  - integrare in calendar feed.
+  - filtre pentru availability si statusurile sale.
+  - warning cand un meeting se suprapune peste disponibilitatea participantilor.
+
+Fisiere cheie batch AZ:
+- backend/routers/projects.py
+- frontend/app/dashboard/reports/page.tsx
+- frontend/services/project.ts
+- backend/routers/tasks.py
+- backend/main.py
+- frontend/app/dashboard/tasks/[taskId]/page.tsx
+- backend/models/project.py
+- backend/routers/calendar.py
+- backend/schemas/calendar.py
+- frontend/app/dashboard/calendar/page.tsx
+- frontend/services/calendar.ts
+- backend/alembic/versions/f8a9b0c1d2e3_add_calendar_availability.py
+
+Batch BA - Account Security si GitHub/ngrok integration adaugate din web batch 3 iunie 2026
+Context:
+- au fost adaugate functionalitatile ramase pentru securitatea contului si o configurare mai completa pentru GitHub webhooks.
+
+Implementat confirmat in cod:
+- Account Security:
+  - tabele user_sessions si user_security_logs.
+  - sesiuni active in Account Settings.
+  - revoke session.
+  - security log cu evenimente de login/password/session.
+  - endpointuri /auth/me/sessions si /auth/me/security-log.
+- GitHub/ngrok integration:
+  - configurare repository per proiect.
+  - endpointuri integration/project/{project_id}.
+  - test integration.
+  - delete/disconnect integration.
+  - ngrok status/start/stop din backend.
+  - UI in /dashboard/devops pentru repository, webhook URL, secret hint si pasi de configurare.
+
+Fisiere cheie batch BA:
+- backend/models/user.py
+- backend/routers/auth.py
+- backend/schemas/auth.py
+- frontend/components/dashboard/account-security-panel.tsx
+- frontend/app/dashboard/account/page.tsx
+- frontend/services/auth.ts
+- backend/alembic/versions/f9a0b1c2d3e4_add_user_sessions_security_logs.py
+- backend/models/github.py
+- backend/routers/github.py
+- backend/schemas/github.py
+- frontend/app/dashboard/devops/page.tsx
+- frontend/services/github.ts
+- backend/alembic/versions/f9b0c1d2e3f4_add_github_project_integrations.py
+
+Verificari batch AZ/BA facute in Codex pe 3 iunie 2026:
+- .venv/bin/alembic -c backend/alembic.ini current: f9b0c1d2e3f4 (head).
+- .venv/bin/python -m compileall backend: OK.
+- npm run lint: OK.
+- npm run build: OK, ramane doar warning-ul existent Next `--localstorage-file` fara path valid.
+
+Starea curenta dupa sincronizare 3 iunie 2026:
+- Lista initiala de functionalitati mari este aproape inchisa la nivel de cod.
+- Urmatorul pas recomandat nu mai este feature development mare, ci QA functional si polish UI.
+- Trebuie verificat manual pe proiect real:
+  - login/register/verify/reset password.
+  - create project + schimbare metodologie SCRUM/KANBAN/SCRUMBAN.
+  - board/backlog/tasks/task detail.
+  - reports cu date reale.
+  - calendar availability + meeting conflict.
+  - devops integration/ngrok/webhook.
+  - account security/session revoke.
+  - global admin/support/archive.
+
+Urmatoarea prioritate recomandata dupa batch BA:
+1. Pornire aplicatie si smoke test pe paginile principale.
+2. Audit UI pe paginile cele mai folosite:
+   - Dashboard.
+   - Tasks list.
+   - TaskId.
+   - Board.
+   - Backlog.
+   - Calendar.
+   - Reports.
+   - DevOps.
+   - Account.
+   - Global Admin.
+3. Reparare bug-uri prinse in testare, pe batch-uri mici si verificate cu lint/build.
+
+
+Batch BB - Global Admin Console polish/redesign Codex 3 iunie 2026
+Context:
+- utilizatorul a cerut ca Global Admin sa fie separat, modern, foarte functional si vizibil mai bun ca UI.
+- problema principala era ca sidebar-ul parea inutil/greu de inteles, iar Support Tickets era greu de folosit cand existau multe comentarii.
+
+Implementat:
+- frontend/app/admin/layout.tsx:
+  - sidebar desktop redesenat cu active state real pe sectiuni/hash.
+  - buton Back to workspace mai clar si mereu accesibil.
+  - shell responsive: sidebar doar pe desktop, header compact pe mobil.
+  - carduri rapide Users/Projects/Tickets/Errors si status operational mai coerent.
+- frontend/app/admin/page.tsx:
+  - Command Center redesenat cu search, PDF report, refresh, quick nav si metrici vizibile.
+  - adaugat Operations Pulse pentru semnale de platforma.
+  - adaugat Incident Focus pentru tichetele active importante.
+  - Support Desk refacut din board aglomerat in triage desk:
+    - lista de tichete in stanga.
+    - ticket selectat cu detalii in dreapta.
+    - conversatie completa scrollabila, nu doar primele comentarii.
+    - stergere comentarii direct din conversatie.
+    - reply admin contextual.
+    - schimbare status si prioritate din panoul lateral.
+    - stergere ticket din panoul lateral.
+  - UI responsive pentru admin: continutul se strange pe mobil/tableta fara sidebar fix.
+
+Verificari batch BB:
+- npm run lint: OK.
+- npm run build: OK, ramane doar warning-ul existent Next `--localstorage-file` fara path valid.
+
+Fisiere cheie batch BB:
+- frontend/app/admin/layout.tsx
+- frontend/app/admin/page.tsx
+
+Urmatoarea prioritate recomandata dupa batch BB:
+1. QA vizual pe /admin la 3 viewport-uri: desktop, laptop ingust, mobile.
+2. Test functional suport:
+   - user creeaza ticket din /dashboard/support.
+   - Global Admin raspunde si schimba status/prioritate in /admin.
+   - user vede progresul si conversatia completa.
+   - user/admin pot sterge comentarii si ticket-uri conform permisiunilor.
+3. Urmator polish logic/UI:
+   - Global Admin Users/Projects table pe mobile, daca apar date multe.
+   - System Health cu detalii extinse pentru erori 500.
+   - confirmari/modaluri pentru Delete ticket si Delete comment, daca vrem protectie extra.
+
+Batch BC - Global Admin live nav si seed tickets demo Codex 3 iunie 2026
+Context:
+- utilizatorul a observat ca linkurile din sidebar-ul Global Admin ramaneau blocate pe Command Center si nu se actualizau live la scroll.
+- era nevoie si de seed data pentru multe support tickets, ca UI-ul de admin sa poata fi verificat realist.
+
+Implementat:
+- frontend/app/admin/layout.tsx:
+  - sidebar-ul admin asculta acum scroll-ul containerului intern `admin-scroll-root`.
+  - active state-ul se calculeaza live dupa sectiunea vizibila: Command Center, Identity, Project Registry, Support Desk, AI Usage, System Health.
+  - root-ul admin are `scroll-smooth`, iar navigarea pe hash ramane compatibila.
+- frontend/app/admin/page.tsx:
+  - mici corectii de UI/responsive dupa date multe:
+    - user stat cards trec pe o coloana pe mobile.
+    - titlurile lungi de tichete se sparg/limiteaza corect.
+    - butonul Reply devine full-width pe ecrane mici.
+    - priority controls se adapteaza mai bine in panoul lateral.
+- scripts/seed_admin_support_demo.py:
+  - script nou idempotent pentru seed de support tickets demo.
+  - creeaza reporteri demo daca lipsesc.
+  - creeaza 12 tichete demo cu statusuri OPEN/IN_PROGRESS/RESOLVED/CLOSED, prioritati diferite si conversatii cu comentarii user/admin.
+  - nu sterge date existente si nu dubleaza tichetele demo la rerulare.
+
+Seed rulat in baza locala:
+- comanda: `.venv/bin/python scripts/seed_admin_support_demo.py`
+- rezultat: `Seed complete. Created 12 demo support tickets.`
+- verificare DB dupa seed:
+  - total support tickets: 13
+  - CLOSED: 2
+  - IN_PROGRESS: 4
+  - OPEN: 3
+  - RESOLVED: 4
+
+Verificari batch BC:
+- `.venv/bin/python -m py_compile scripts/seed_admin_support_demo.py`: OK.
+- `npm run lint`: OK.
+- `npm run build`: OK, ramane doar warning-ul existent Next `--localstorage-file` fara path valid.
+
+Fisiere cheie batch BC:
+- frontend/app/admin/layout.tsx
+- frontend/app/admin/page.tsx
+- scripts/seed_admin_support_demo.py
+
+Urmatoarea prioritate recomandata dupa batch BC:
+1. Verificare manuala /admin cu scroll:
+   - active state-ul trebuie sa treaca live intre toate zonele din sidebar.
+   - click pe linkurile din sidebar trebuie sa faca scroll si sa coloreze zona corecta.
+2. Verificare Support Desk cu seed:
+   - filtre ALL/OPEN/IN_PROGRESS/RESOLVED/CLOSED.
+   - selectie ticket din lista.
+   - conversatie lunga scrollabila.
+   - schimbare status/prioritate.
+   - reply si delete comment/ticket.
+3. Urmator polish admin:
+   - modal de confirmare pentru delete ticket/comment.
+   - detalii extinse pentru Application Errors.
+   - daca Users/Projects devin prea lungi, adaugare paginare sau virtualized list.
 
 
 7. OBSERVATII IMPORTANTE

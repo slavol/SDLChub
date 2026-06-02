@@ -27,6 +27,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { AuditChangeSummary, formatAuditActionLabel } from "@/components/dashboard/audit-log-event";
 import { useRealtimeEvent } from "@/hooks/use-realtime-event";
 import {
   getMyProjects,
@@ -45,16 +46,6 @@ const statusLabels: Record<string, string> = {
   IN_PROGRESS: "In Progress",
   REVIEW: "Review",
   DONE: "Done",
-};
-
-const actionLabels: Record<string, string> = {
-  TASK_CREATED: "created a task",
-  TASK_UPDATED: "updated a task",
-  SUBTASK_CREATED: "added a subtask",
-  SUBTASK_UPDATED: "updated a subtask",
-  COMMENT_ADDED: "commented",
-  COMMENT_UPDATED: "edited a comment",
-  COMMENT_DELETED: "deleted a comment",
 };
 
 const severityStyles: Record<DashboardRiskCard["severity"], string> = {
@@ -214,7 +205,7 @@ function TaskRow({ task }: { task: DashboardTaskSummary }) {
   return (
     <Link
       href={`/dashboard/tasks/${task.id}`}
-      className="group grid gap-4 rounded-2xl border border-slate-800 bg-slate-950/75 p-4 transition hover:border-blue-500/40 hover:bg-slate-950 md:grid-cols-[1fr_auto]"
+      className="group grid min-w-0 gap-4 rounded-2xl border border-slate-800 bg-slate-950/75 p-4 transition hover:border-blue-500/40 hover:bg-slate-950 md:grid-cols-[minmax(0,1fr)_auto]"
     >
       <div className="min-w-0">
         <div className="mb-2 flex flex-wrap items-center gap-2">
@@ -265,9 +256,9 @@ function ActivityRow({ item }: { item: DashboardRecentActivity }) {
   return (
     <Link
       href={`/dashboard/tasks/${item.task_id}`}
-      className="group grid grid-cols-[44px_1fr_auto] gap-4 rounded-2xl border border-slate-800 bg-slate-950/75 p-4 transition hover:border-blue-500/35 hover:bg-slate-950"
+      className="group flex min-w-0 gap-3 overflow-hidden rounded-2xl border border-slate-800 bg-slate-950/75 p-4 transition hover:border-blue-500/35 hover:bg-slate-950"
     >
-      <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-slate-800 bg-slate-900 text-sm font-semibold text-slate-200">
+      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-slate-800 bg-slate-900 text-sm font-semibold text-slate-200">
         {getInitials(actor)}
       </div>
       <div className="min-w-0 flex-1">
@@ -276,8 +267,7 @@ function ActivityRow({ item }: { item: DashboardRecentActivity }) {
             variant="outline"
             className="border-blue-500/20 bg-blue-500/10 text-blue-300"
           >
-            {actionLabels[item.action] ||
-              item.action.replaceAll("_", " ").toLowerCase()}
+            {formatAuditActionLabel(item.action)}
           </Badge>
           <span className="text-xs text-slate-500">
             {formatRelativeTime(item.created_at)}
@@ -292,16 +282,9 @@ function ActivityRow({ item }: { item: DashboardRecentActivity }) {
         <p className="mt-1 truncate text-sm font-medium text-slate-100 group-hover:text-blue-200">
           {item.task_title || "Untitled task"}
         </p>
-        {item.field && (
-          <p className="mt-2 truncate text-xs text-slate-500">
-            {item.field}:{" "}
-            <span className="text-slate-400">{item.old_value || "-"}</span>
-            {" -> "}
-            <span className="text-emerald-300">{item.new_value || "-"}</span>
-          </p>
-        )}
+        <AuditChangeSummary event={item} />
       </div>
-      <div className="flex items-center">
+      <div className="flex shrink-0 items-center">
         <ArrowRight className="h-4 w-4 text-slate-600 transition group-hover:translate-x-1 group-hover:text-blue-300" />
       </div>
     </Link>
@@ -532,7 +515,7 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="mx-auto max-w-7xl space-y-7 p-6 text-slate-50 md:p-8">
+    <div className="mx-auto w-full max-w-7xl space-y-7 px-4 py-5 text-slate-50 sm:px-6 md:p-8">
       <section className="overflow-hidden rounded-3xl border border-slate-800 bg-slate-900/80 shadow-2xl shadow-slate-950/30">
         <div className="border-b border-slate-800 bg-slate-950/45 px-6 py-5">
           <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
@@ -560,10 +543,10 @@ export default function DashboardPage() {
               </p>
             </div>
 
-            <div className="flex flex-wrap gap-3">
+            <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
               <Button
                 variant="outline"
-                className="border-slate-700 bg-slate-950/60 text-slate-200 hover:bg-slate-900"
+                className="w-full border-slate-700 bg-slate-950/60 text-slate-200 hover:bg-slate-900 sm:w-auto"
                 asChild
               >
                 <Link href="/dashboard/activity">
@@ -573,7 +556,7 @@ export default function DashboardPage() {
               </Button>
               <Button
                 variant="outline"
-                className="border-slate-700 bg-slate-950/60 text-slate-200 hover:bg-slate-900"
+                className="w-full border-slate-700 bg-slate-950/60 text-slate-200 hover:bg-slate-900 sm:w-auto"
                 asChild
               >
                 <Link href="/dashboard/calendar">
@@ -581,7 +564,7 @@ export default function DashboardPage() {
                   Calendar
                 </Link>
               </Button>
-              <Button className="bg-blue-600 hover:bg-blue-700" asChild>
+              <Button className="w-full bg-blue-600 hover:bg-blue-700 sm:w-auto" asChild>
                 <Link href="/dashboard/board">
                   <KanbanSquare className="mr-2 h-4 w-4" />
                   Open Board
@@ -605,7 +588,7 @@ export default function DashboardPage() {
         </div>
       </section>
 
-      <div className="grid gap-6 xl:grid-cols-[1fr_390px]">
+      <div className="space-y-6">
         <div className="space-y-6">
           <Card className="border-slate-800 bg-slate-900/80 text-slate-50 shadow-xl shadow-slate-950/20">
             <CardHeader className="border-b border-slate-800/80">
@@ -634,8 +617,8 @@ export default function DashboardPage() {
           </Card>
 
           <Card className="border-slate-800 bg-slate-900/80 text-slate-50 shadow-xl shadow-slate-950/20">
-            <CardHeader className="flex flex-row items-center justify-between border-b border-slate-800/80">
-              <div>
+            <CardHeader className="flex flex-col gap-4 border-b border-slate-800/80 sm:flex-row sm:items-center sm:justify-between">
+              <div className="min-w-0">
                 <CardTitle className="flex items-center gap-2">
                   <Layers3 className="h-5 w-5 text-blue-400" />
                   Work Distribution
@@ -650,7 +633,7 @@ export default function DashboardPage() {
                 </Button>
               )}
             </CardHeader>
-            <CardContent className="grid gap-5 p-5 md:grid-cols-[1fr_260px]">
+            <CardContent className="grid min-w-0 gap-5 p-5 md:grid-cols-[minmax(0,1fr)_260px]">
               <div className="space-y-4">
                 {["TODO", "IN_PROGRESS", "REVIEW", "DONE"].map((status) => {
                   const count = statusDistribution[status] || 0;
@@ -695,8 +678,8 @@ export default function DashboardPage() {
           </Card>
 
           <Card className="border-slate-800 bg-slate-900/80 text-slate-50 shadow-xl shadow-slate-950/20">
-            <CardHeader className="flex flex-row items-center justify-between border-b border-slate-800/80">
-              <div>
+            <CardHeader className="flex flex-col gap-4 border-b border-slate-800/80 sm:flex-row sm:items-center sm:justify-between">
+              <div className="min-w-0">
                 <CardTitle className="flex items-center gap-2">
                   <Zap className="h-5 w-5 text-amber-300" />
                   My Active Tasks
@@ -705,7 +688,7 @@ export default function DashboardPage() {
                   Focus queue for your current account.
                 </p>
               </div>
-              <Button variant="ghost" className="text-slate-400 hover:text-white" asChild>
+              <Button variant="ghost" className="w-full text-slate-400 hover:text-white sm:w-auto" asChild>
                 <Link href="/dashboard/board">View board</Link>
               </Button>
             </CardHeader>
@@ -726,7 +709,7 @@ export default function DashboardPage() {
           </Card>
         </div>
 
-        <aside className="space-y-6 flex flex-col h-fit">
+        <aside className="grid min-w-0 h-fit gap-6 lg:grid-cols-2 xl:grid-cols-3">
           <Card className="border-slate-800 bg-slate-900/80 text-slate-50 shadow-xl shadow-slate-950/20">
             <CardHeader className="border-b border-slate-800/80">
               <CardTitle className="flex items-center gap-2">
@@ -813,76 +796,110 @@ export default function DashboardPage() {
             </CardContent>
           </Card>
 
-          <Card className="border-slate-800 bg-slate-900/80 text-slate-50 shadow-xl shadow-slate-950/20">
-            <CardHeader className="border-b border-slate-800/80">
-              <CardTitle className="flex items-center gap-2">
-                <AlertTriangle className="h-5 w-5 text-amber-300" />
-                AI Risk Radar
-              </CardTitle>
+          <Card className="overflow-hidden border-slate-800 bg-slate-900/80 text-slate-50 shadow-xl shadow-slate-950/20 lg:col-span-2 xl:col-span-2">
+            <CardHeader className="border-b border-slate-800/80 bg-slate-950/25">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <CardTitle className="flex items-center gap-2">
+                    <AlertTriangle className="h-5 w-5 text-amber-300" />
+                    AI Risk Radar
+                  </CardTitle>
+                  <p className="mt-1 text-sm text-slate-500">
+                    Delivery, deadline and methodology signals.
+                  </p>
+                </div>
+                <Badge
+                  variant="outline"
+                  className="border-amber-500/20 bg-amber-500/10 text-amber-200"
+                >
+                  {dashboard.risk_cards.length} signals
+                </Badge>
+              </div>
             </CardHeader>
-            <CardContent className="space-y-3 p-5">
-              {dashboard.risk_cards.map((risk) => (
-                <div key={`${risk.title}-${risk.value}`} className="group rounded-2xl border border-slate-800 bg-slate-950/75 p-4 transition-colors hover:border-slate-700 hover:bg-slate-950">
-                  <div className="mb-2 flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="truncate font-semibold text-white">{risk.title}</p>
-                      {(risk.status || risk.priority || risk.assignee_name) && (
-                        <div className="mt-2 flex flex-wrap items-center gap-2">
-                          {risk.status && (
-                            <Badge variant="outline" className={statusStyles[risk.status] || "border-slate-700 text-slate-300"}>
-                              {statusLabels[risk.status] || risk.status}
-                            </Badge>
-                          )}
-                          {risk.priority && (
-                            <Badge variant="outline" className={priorityStyles[risk.priority] || "border-slate-700 text-slate-300"}>
-                              {risk.priority}
-                            </Badge>
-                          )}
-                          {risk.assignee_name && (
-                            <span className="text-xs text-slate-500">{risk.assignee_name}</span>
+            <CardContent className="p-5">
+              <div className="grid gap-3 md:grid-cols-2">
+                {dashboard.risk_cards.map((risk) => (
+                  <div
+                    key={`${risk.title}-${risk.value}`}
+                    className="group flex min-w-0 gap-3 rounded-2xl border border-slate-800 bg-slate-950/75 p-4 transition-colors hover:border-slate-700 hover:bg-slate-950"
+                  >
+                    <div className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full bg-amber-400 shadow-[0_0_18px_rgba(251,191,36,0.35)]" />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-semibold text-white">
+                            {risk.title}
+                          </p>
+                          {(risk.status || risk.priority || risk.assignee_name) && (
+                            <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                              {risk.status && (
+                                <Badge
+                                  variant="outline"
+                                  className={statusStyles[risk.status] || "border-slate-700 text-slate-300"}
+                                >
+                                  {statusLabels[risk.status] || risk.status}
+                                </Badge>
+                              )}
+                              {risk.priority && (
+                                <Badge
+                                  variant="outline"
+                                  className={priorityStyles[risk.priority] || "border-slate-700 text-slate-300"}
+                                >
+                                  {risk.priority}
+                                </Badge>
+                              )}
+                              {risk.assignee_name && (
+                                <span className="truncate text-xs text-slate-500">
+                                  {risk.assignee_name}
+                                </span>
+                              )}
+                            </div>
                           )}
                         </div>
-                      )}
-                    </div>
-                    <div className="flex shrink-0 items-center gap-2">
-                      <Badge
-                        variant="outline"
-                        className={severityStyles[risk.severity]}
-                      >
-                        {risk.value}
-                      </Badge>
-                      {risk.task_id && (
-                        <Link
-                          href={`/dashboard/tasks/${risk.task_id}`}
-                          className="rounded-full border border-slate-800 p-1.5 text-slate-500 transition-colors hover:border-blue-500/40 hover:text-blue-300"
-                          aria-label={`Open ${risk.task_key || "task"}`}
-                        >
-                          <ArrowRight className="h-3.5 w-3.5" />
-                        </Link>
+                        <div className="flex shrink-0 items-center gap-2">
+                          <Badge variant="outline" className={severityStyles[risk.severity]}>
+                            {risk.value}
+                          </Badge>
+                          {risk.task_id && (
+                            <Link
+                              href={`/dashboard/tasks/${risk.task_id}`}
+                              className="rounded-full border border-slate-800 p-1.5 text-slate-500 transition-colors hover:border-blue-500/40 hover:text-blue-300"
+                              aria-label={`Open ${risk.task_key || "task"}`}
+                            >
+                              <ArrowRight className="h-3.5 w-3.5" />
+                            </Link>
+                          )}
+                        </div>
+                      </div>
+                      <p className="mt-2 break-words text-sm leading-5 text-slate-400">
+                        {risk.detail}
+                      </p>
+                      {risk.category && (
+                        <p className="mt-2 text-[10px] uppercase tracking-[0.18em] text-slate-600">
+                          {risk.category} signal
+                        </p>
                       )}
                     </div>
                   </div>
-                  <p className="text-sm text-slate-500">{risk.detail}</p>
-                  {risk.category && (
-                    <p className="mt-3 text-[11px] uppercase tracking-[0.18em] text-slate-600">
-                      {risk.category} signal
-                    </p>
-                  )}
-                </div>
-              ))}
+                ))}
+              </div>
             </CardContent>
           </Card>
 
-          {/* PROJECT ACTIVITY (Aici avem logica de minimized/expanded) */}
-          <Card className="border-slate-800 bg-slate-900/80 text-slate-50 shadow-xl shadow-slate-950/20">
+          <Card className="overflow-hidden border-slate-800 bg-slate-900/80 text-slate-50 shadow-xl shadow-slate-950/20 lg:col-span-2 xl:col-span-3">
             <div 
-              className="flex cursor-pointer items-center justify-between p-6 transition-colors hover:bg-slate-800/50"
+              className="flex cursor-pointer items-center justify-between border-b border-slate-800/80 bg-slate-950/25 p-5 transition-colors hover:bg-slate-900"
               onClick={() => setIsActivityExpanded(!isActivityExpanded)}
             >
-              <CardTitle className="flex items-center gap-2 text-lg font-semibold leading-none tracking-tight">
-                <Activity className="h-5 w-5 text-cyan-300" />
-                Activity
-              </CardTitle>
+              <div>
+                <CardTitle className="flex items-center gap-2 text-lg font-semibold leading-none tracking-tight">
+                  <Activity className="h-5 w-5 text-cyan-300" />
+                  Activity
+                </CardTitle>
+                <p className="mt-1 text-sm text-slate-500">
+                  Latest team changes and audit entries.
+                </p>
+              </div>
               <div className="flex items-center gap-2">
                 <Button variant="ghost" className="hidden h-8 px-2 text-xs text-slate-400 hover:text-white sm:flex" asChild onClick={(e) => e.stopPropagation()}>
                   <Link href="/dashboard/activity">View all</Link>
@@ -895,10 +912,8 @@ export default function DashboardPage() {
               </div>
             </div>
 
-            {/* Doar dacă este setat pe `true` arătăm conținutul */}
             {isActivityExpanded && (
               <>
-                <div className="border-t border-slate-800/80" />
                 <CardContent className="p-5">
                   {dashboard.recent_activity.length > 0 ? (
                     <div className="flex flex-col gap-3">

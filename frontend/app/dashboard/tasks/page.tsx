@@ -266,15 +266,15 @@ export default function TasksListPage() {
 
   return (
     <div className="min-h-full bg-slate-950 text-slate-50">
-      <div className="sdlc-page space-y-5">
+      <div className="sdlc-page min-w-0 space-y-5">
         <section className="rounded-3xl border border-slate-800 bg-slate-900/80 p-5 shadow-xl shadow-black/20">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-            <div>
+            <div className="min-w-0">
               <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-blue-500/20 bg-blue-500/10 px-3 py-1 text-xs font-medium text-blue-200">
                 <LayoutList className="h-3.5 w-3.5" />
                 List View
               </div>
-              <h1 className="text-2xl font-semibold tracking-tight text-white md:text-3xl">
+              <h1 className="break-words text-2xl font-semibold tracking-tight text-white md:text-3xl">
                 Tasks for {project.name}
               </h1>
               <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-400">
@@ -353,14 +353,14 @@ export default function TasksListPage() {
                 </p>
               </div>
 
-              <div className="flex flex-wrap items-center gap-2">
+              <div className="grid gap-2 sm:flex sm:flex-wrap sm:items-center">
                 <Button
                   type="button"
                   variant="outline"
                   size="sm"
                   onClick={() => setDueFilter(dueFilter === "overdue" ? "all" : "overdue")}
                   className={cn(
-                    "h-9 border-slate-700 bg-slate-950 text-slate-300 hover:bg-slate-900",
+                    "h-9 w-full border-slate-700 bg-slate-950 text-slate-300 hover:bg-slate-900 sm:w-auto",
                     dueFilter === "overdue" && "border-rose-500/40 bg-rose-500/10 text-rose-200"
                   )}
                 >
@@ -378,7 +378,7 @@ export default function TasksListPage() {
                   size="sm"
                   onClick={clearFilters}
                   disabled={activeFilterCount === 0}
-                  className="h-9 border-slate-700 bg-slate-950 text-slate-300 hover:bg-slate-900 disabled:cursor-not-allowed disabled:opacity-45"
+                  className="h-9 w-full border-slate-700 bg-slate-950 text-slate-300 hover:bg-slate-900 disabled:cursor-not-allowed disabled:opacity-45 sm:w-auto"
                 >
                   Clear filters
                   {activeFilterCount > 0 && (
@@ -480,7 +480,7 @@ export default function TasksListPage() {
                 return (
                   <div
                     key={task.id}
-                    className="grid gap-3 bg-slate-900/45 px-4 py-3.5 text-sm transition hover:bg-slate-900 lg:grid-cols-[minmax(0,1.4fr)_150px_130px_180px_130px_42px] lg:items-center"
+                    className="grid min-w-0 gap-3 bg-slate-900/45 px-4 py-3.5 text-sm transition hover:bg-slate-900 xl:grid-cols-[minmax(0,1.4fr)_150px_130px_180px_130px_42px] xl:items-center"
                   >
                     <div className="min-w-0">
                       <div className="mb-1.5 flex flex-wrap items-center gap-2">
@@ -505,7 +505,7 @@ export default function TasksListPage() {
                     </div>
 
                     <div className="min-w-0">
-                      <p className="mb-1 text-[10px] uppercase tracking-[0.16em] text-slate-600 lg:hidden">Status</p>
+                      <p className="mb-1 text-[10px] uppercase tracking-[0.16em] text-slate-600 xl:hidden">Status</p>
                       {canMoveTask ? (
                         <Select
                           value={task.status}
@@ -529,7 +529,7 @@ export default function TasksListPage() {
                     </div>
 
                     <div>
-                      <p className="mb-1 text-[10px] uppercase tracking-[0.16em] text-slate-600 lg:hidden">Priority</p>
+                      <p className="mb-1 text-[10px] uppercase tracking-[0.16em] text-slate-600 xl:hidden">Priority</p>
                       <Badge variant="outline" className={cn("border", priorityStyles[task.priority])}>
                         <Flag className="mr-1 h-3 w-3" />
                         {task.priority}
@@ -537,7 +537,7 @@ export default function TasksListPage() {
                     </div>
 
                     <div className="min-w-0">
-                      <p className="mb-1 text-[10px] uppercase tracking-[0.16em] text-slate-600 lg:hidden">Assignee</p>
+                      <p className="mb-1 text-[10px] uppercase tracking-[0.16em] text-slate-600 xl:hidden">Assignee</p>
                       {canAssignTask ? (
                         <Select
                           value={task.assignee_id ? String(task.assignee_id) : "unassigned"}
@@ -575,7 +575,7 @@ export default function TasksListPage() {
                     </div>
 
                     <div className="min-w-0 text-slate-400">
-                      <p className="mb-1 text-[10px] uppercase tracking-[0.16em] text-slate-600 lg:hidden">Planning / due</p>
+                      <p className="mb-1 text-[10px] uppercase tracking-[0.16em] text-slate-600 xl:hidden">Planning / due</p>
                       <p className="truncate">{sprint ? sprint.name : "Backlog"}</p>
                       <div className={cn("mt-1 flex items-center gap-1.5 text-xs", overdue ? "text-rose-300" : "text-slate-500")}>
                         <CalendarClock className="h-3.5 w-3.5" />
@@ -583,7 +583,7 @@ export default function TasksListPage() {
                       </div>
                     </div>
 
-                    <Button asChild variant="ghost" size="icon" className="h-9 w-9 justify-self-start text-slate-400 hover:text-blue-300 lg:justify-self-end">
+                    <Button asChild variant="ghost" size="icon" className="h-9 w-9 justify-self-start text-slate-400 hover:text-blue-300 xl:justify-self-end">
                       <Link href={`/dashboard/tasks/${task.id}`} aria-label={`Open ${task.key}`}>
                         <ExternalLink className="h-4 w-4" />
                       </Link>

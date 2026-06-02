@@ -659,10 +659,10 @@ export default function TeamPage() {
 
   return (
     <div className="min-h-full bg-slate-950 text-slate-50">
-      <div className="mx-auto max-w-7xl space-y-6 p-6 lg:p-8">
+      <div className="mx-auto w-full max-w-7xl space-y-6 px-4 py-5 sm:px-6 lg:p-8">
         <section className="rounded-3xl border border-slate-800 bg-slate-900 p-6 shadow-2xl shadow-black/20">
           <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
-            <div>
+            <div className="min-w-0">
               <div className="flex flex-wrap gap-2">
                 <Badge className="bg-blue-500/10 text-blue-300 hover:bg-blue-500/10">
                   {projectName}
@@ -675,7 +675,7 @@ export default function TeamPage() {
                 )}
               </div>
 
-              <h1 className="mt-4 text-3xl font-black tracking-tight text-white md:text-4xl">
+              <h1 className="mt-4 break-words text-2xl font-black tracking-tight text-white sm:text-3xl md:text-4xl">
                 Team management
               </h1>
               <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-400">
@@ -683,21 +683,11 @@ export default function TeamPage() {
               </p>
             </div>
 
-            {canInviteMembers && (
-              <Button
-                onClick={handleInvite}
-                disabled={inviting || !inviteEmail.trim() || !inviteRoleId}
-                className="h-11 bg-blue-600 px-5 hover:bg-blue-700"
-              >
-                {inviting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Mail className="mr-2 h-4 w-4" />}
-                Send invitation
-              </Button>
-            )}
           </div>
         </section>
 
         <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
-          <Card className="border-slate-800 bg-slate-900 text-slate-50">
+          <Card className="min-w-0 border-slate-800 bg-slate-900 text-slate-50">
             <CardContent className="flex items-center gap-4 p-5">
               <div className="rounded-2xl bg-blue-500/10 p-3 text-blue-300">
                 <Users className="h-5 w-5" />
@@ -709,7 +699,7 @@ export default function TeamPage() {
             </CardContent>
           </Card>
 
-          <Card className="border-slate-800 bg-slate-900 text-slate-50">
+          <Card className="min-w-0 border-slate-800 bg-slate-900 text-slate-50">
             <CardContent className="flex items-center gap-4 p-5">
               <div className="rounded-2xl bg-emerald-500/10 p-3 text-emerald-300">
                 <Wifi className="h-5 w-5" />
@@ -721,7 +711,7 @@ export default function TeamPage() {
             </CardContent>
           </Card>
 
-          <Card className="border-slate-800 bg-slate-900 text-slate-50">
+          <Card className="min-w-0 border-slate-800 bg-slate-900 text-slate-50">
             <CardContent className="flex items-center gap-4 p-5">
               <div className="rounded-2xl bg-purple-500/10 p-3 text-purple-300">
                 <Shield className="h-5 w-5" />
@@ -733,7 +723,7 @@ export default function TeamPage() {
             </CardContent>
           </Card>
 
-          <Card className="border-slate-800 bg-slate-900 text-slate-50">
+          <Card className="min-w-0 border-slate-800 bg-slate-900 text-slate-50">
             <CardContent className="flex items-center gap-4 p-5">
               <div className="rounded-2xl bg-cyan-500/10 p-3 text-cyan-300">
                 <Network className="h-5 w-5" />
@@ -745,7 +735,7 @@ export default function TeamPage() {
             </CardContent>
           </Card>
 
-          <Card className="border-slate-800 bg-slate-900 text-slate-50">
+          <Card className="min-w-0 border-slate-800 bg-slate-900 text-slate-50">
             <CardContent className="flex items-center gap-4 p-5">
               <div className="rounded-2xl bg-emerald-500/10 p-3 text-emerald-300">
                 <UserPlus className="h-5 w-5" />
@@ -757,14 +747,14 @@ export default function TeamPage() {
             </CardContent>
           </Card>
 
-          <Card className="border-slate-800 bg-slate-900 text-slate-50">
+          <Card className="min-w-0 border-slate-800 bg-slate-900 text-slate-50">
             <CardContent className="flex items-center gap-4 p-5">
               <div className="rounded-2xl bg-amber-500/10 p-3 text-amber-300">
                 <Crown className="h-5 w-5" />
               </div>
-              <div>
+              <div className="min-w-0">
                 <p className="text-sm text-slate-400">Your role</p>
-                <p className="text-lg font-bold">{isProjectOwner ? "Owner" : myMembership?.role?.name || "Member"}</p>
+                <p className="truncate text-lg font-bold">{isProjectOwner ? "Owner" : myMembership?.role?.name || "Member"}</p>
               </div>
             </CardContent>
           </Card>
@@ -785,7 +775,7 @@ export default function TeamPage() {
           </div>
 
           {canManageTeams && (
-            <div className="mb-5 grid gap-3 rounded-2xl border border-slate-800 bg-slate-950/70 p-4 lg:grid-cols-[1fr_1fr_220px_auto]">
+            <div className="mb-5 grid min-w-0 gap-3 rounded-2xl border border-slate-800 bg-slate-950/70 p-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_220px_auto]">
               <Input
                 value={newTeamName}
                 onChange={(event) => setNewTeamName(event.target.value)}
@@ -814,7 +804,7 @@ export default function TeamPage() {
               <Button
                 onClick={handleCreateTeam}
                 disabled={creatingTeam || !newTeamName.trim()}
-                className="h-11 bg-cyan-600 hover:bg-cyan-700"
+                className="h-11 w-full bg-cyan-600 hover:bg-cyan-700 lg:w-auto"
               >
                 {creatingTeam ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Plus className="mr-2 h-4 w-4" />}
                 Add team
@@ -870,7 +860,7 @@ export default function TeamPage() {
           </div>
         </section>
 
-        <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_400px]">
+        <section className="grid min-w-0 gap-6 xl:grid-cols-[minmax(0,1fr)_400px]">
           <div className="space-y-6">
             {canInviteMembers && (
               <Card className="border-slate-800 bg-slate-900 text-slate-50">
@@ -881,7 +871,7 @@ export default function TeamPage() {
                   </CardTitle>
                 </CardHeader>
 
-                <CardContent className="grid gap-4 p-5 lg:grid-cols-[1fr_260px]">
+                <CardContent className="grid min-w-0 gap-4 p-5 lg:grid-cols-[minmax(0,1fr)_260px_auto] lg:items-end">
                   <div className="space-y-2">
                     <Label>Email</Label>
                     <Input
@@ -908,6 +898,15 @@ export default function TeamPage() {
                       </SelectContent>
                     </Select>
                   </div>
+
+                  <Button
+                    onClick={handleInvite}
+                    disabled={inviting || !inviteEmail.trim() || !inviteRoleId}
+                    className="h-11 w-full bg-blue-600 px-5 hover:bg-blue-700 lg:w-auto"
+                  >
+                    {inviting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Mail className="mr-2 h-4 w-4" />}
+                    Send invitation
+                  </Button>
                 </CardContent>
               </Card>
             )}
@@ -920,19 +919,19 @@ export default function TeamPage() {
                     Members
                   </CardTitle>
 
-                  <div className="flex flex-col gap-3 sm:flex-row">
-                    <div className="relative">
+                  <div className="grid gap-3 sm:grid-cols-2 lg:flex lg:flex-wrap">
+                    <div className="relative min-w-0">
                       <Search className="absolute left-3 top-3 h-4 w-4 text-slate-500" />
                       <Input
                         value={search}
                         onChange={(event) => setSearch(event.target.value)}
                         placeholder="Search"
-                        className="h-10 border-slate-700 bg-slate-950 pl-9 sm:w-64"
+                        className="h-10 w-full border-slate-700 bg-slate-950 pl-9 lg:w-64"
                       />
                     </div>
 
                     <Select value={roleFilter} onValueChange={setRoleFilter}>
-                      <SelectTrigger className="h-10 border-slate-700 bg-slate-950 sm:w-52">
+                      <SelectTrigger className="h-10 w-full border-slate-700 bg-slate-950 lg:w-52">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent className="border-slate-800 bg-slate-900 text-slate-200">
@@ -958,7 +957,7 @@ export default function TeamPage() {
                   return (
                     <div
                       key={member.membership_id}
-                      className="flex flex-col gap-4 rounded-2xl border border-slate-800 bg-slate-950 p-4 md:flex-row md:items-center md:justify-between"
+                      className="flex min-w-0 flex-col gap-4 rounded-2xl border border-slate-800 bg-slate-950 p-4 md:flex-row md:items-center md:justify-between"
                     >
                       <div className="flex min-w-0 items-center gap-4">
                         <div className="relative shrink-0">
@@ -1003,13 +1002,13 @@ export default function TeamPage() {
                         </div>
                       </div>
 
-                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                      <div className="grid min-w-0 gap-2 sm:grid-cols-2 md:flex md:flex-wrap md:items-center md:justify-end">
                         {canManageTeams ? (
                           <Select
                             value={member.team?.id ? String(member.team.id) : "none"}
                             onValueChange={(value) => handleChangeMemberTeam(member.membership_id, value)}
                           >
-                            <SelectTrigger className="w-full border-slate-700 bg-slate-900 sm:w-[190px]">
+                            <SelectTrigger className="w-full border-slate-700 bg-slate-900 md:w-[190px]">
                               <SelectValue placeholder="No team" />
                             </SelectTrigger>
                             <SelectContent className="border-slate-800 bg-slate-900 text-slate-200">
@@ -1032,7 +1031,7 @@ export default function TeamPage() {
                             value={member.role?.id ? String(member.role.id) : ""}
                             onValueChange={(value) => handleChangeRole(member.membership_id, value)}
                           >
-                            <SelectTrigger className="w-full border-slate-700 bg-slate-900 sm:w-[220px]">
+                            <SelectTrigger className="w-full border-slate-700 bg-slate-900 md:w-[220px]">
                               <SelectValue placeholder="No role" />
                             </SelectTrigger>
                             <SelectContent className="border-slate-800 bg-slate-900 text-slate-200">
