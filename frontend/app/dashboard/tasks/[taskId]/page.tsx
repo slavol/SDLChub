@@ -52,6 +52,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { RichTextEditor } from "@/components/ui/rich-text-editor";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Select,
   SelectContent,
@@ -111,15 +112,6 @@ type TypingUser = {
 const COMMENT_TYPING_TTL_MS = 4500;
 const COMMENT_TYPING_THROTTLE_MS = 1200;
 const COMMENT_TYPING_STOP_DELAY_MS = 1800;
-
-const SDLC_CHECKLIST = [
-  "Planificare - clarificare scop si dependinte",
-  "Analiza - definire user story si criterii de acceptare",
-  "Design - propunere solutie tehnica si impact UI/API",
-  "Implementare - dezvoltare functionalitate",
-  "Integrare - conectare cu modulele existente",
-  "Testare - validare functionalitate si regresii",
-];
 
 const statusLabels: Record<TaskStatus, string> = {
   [TaskStatus.TODO]: "To Do",
@@ -199,6 +191,65 @@ function filterTaskGitHubEvents(
       eventSummary.includes(taskKey)
     );
   });
+}
+
+function TaskDetailSkeleton() {
+  return (
+    <div className="mx-auto w-full max-w-7xl space-y-6 px-4 py-5 text-slate-50 sm:px-6 md:p-8">
+      <section className="overflow-hidden rounded-3xl border border-slate-800 bg-slate-900/80 shadow-2xl shadow-slate-950/30">
+        <div className="flex flex-col gap-5 border-b border-slate-800 bg-slate-950/45 p-5 lg:flex-row lg:items-start lg:justify-between">
+          <div className="min-w-0 space-y-3">
+            <Skeleton className="h-9 w-28 rounded-xl" />
+            <div className="flex gap-2">
+              <Skeleton className="h-6 w-16 rounded-full" />
+              <Skeleton className="h-6 w-24 rounded-full" />
+              <Skeleton className="h-6 w-24 rounded-full" />
+            </div>
+            <Skeleton className="h-10 w-[34rem] max-w-full" />
+            <Skeleton className="h-5 w-[26rem] max-w-full" />
+          </div>
+          <div className="flex gap-2">
+            <Skeleton className="h-10 w-28 rounded-xl" />
+            <Skeleton className="h-10 w-32 rounded-xl" />
+          </div>
+        </div>
+      </section>
+
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_24rem]">
+        <div className="space-y-6">
+          {Array.from({ length: 3 }).map((_, index) => (
+            <Card key={index} className="border-slate-800 bg-slate-900/80 text-slate-50">
+              <CardHeader className="border-b border-slate-800/80">
+                <Skeleton className="h-6 w-44" />
+                <Skeleton className="h-4 w-64 max-w-full" />
+              </CardHeader>
+              <CardContent className="space-y-4 p-5">
+                <Skeleton className="h-24 rounded-2xl" />
+                <Skeleton className="h-16 rounded-2xl" />
+                <Skeleton className="h-16 rounded-2xl" />
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+
+        <aside className="space-y-6">
+          <Card className="border-slate-800 bg-slate-900/80 text-slate-50">
+            <CardHeader className="border-b border-slate-800/80">
+              <Skeleton className="h-6 w-28" />
+            </CardHeader>
+            <CardContent className="space-y-4 p-5">
+              {Array.from({ length: 6 }).map((_, index) => (
+                <div key={index} className="space-y-2">
+                  <Skeleton className="h-4 w-24" />
+                  <Skeleton className="h-10 rounded-xl" />
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        </aside>
+      </div>
+    </div>
+  );
 }
 
 export default function TaskDetailPage() {
@@ -644,7 +695,7 @@ export default function TaskDetailPage() {
 
       if (nextSubtasks.length === 0) {
         setAiSuggestedSubtasks([]);
-        toast.info("AI checklist already exists on this task.");
+        toast.info("AI subtasks already exist on this task.");
         return;
       }
 
@@ -654,33 +705,6 @@ export default function TaskDetailPage() {
       toast.success(`${nextSubtasks.length} AI subtasks added`);
     } catch (error: unknown) {
       toast.error(getApiErrorMessage(error, "Could not add AI subtasks."));
-    } finally {
-      setAiWorking(false);
-    }
-  };
-
-  const handleApplySdlcChecklist = async () => {
-    if (!task || !canUpdateTask) return;
-
-    setAiWorking(true);
-    try {
-      const existingTitles = new Set(
-        task.subtasks.map((subtask) => subtask.title.trim().toLowerCase())
-      );
-      const nextSubtasks = SDLC_CHECKLIST.filter(
-        (subtask) => !existingTitles.has(subtask.toLowerCase())
-      );
-
-      if (nextSubtasks.length === 0) {
-        toast.info("SDLC checklist already exists on this task.");
-        return;
-      }
-
-      await Promise.all(nextSubtasks.map((subtask) => createSubtask(task.id, subtask)));
-      await loadTask(false);
-      toast.success(`${nextSubtasks.length} SDLC subtasks added`);
-    } catch (error: unknown) {
-      toast.error(getApiErrorMessage(error, "Could not add SDLC subtasks."));
     } finally {
       setAiWorking(false);
     }
@@ -831,11 +855,7 @@ export default function TaskDetailPage() {
   };
 
   if (loading) {
-    return (
-      <div className="flex h-full items-center justify-center text-blue-500">
-        <Loader2 className="h-10 w-10 animate-spin" />
-      </div>
-    );
+    return <TaskDetailSkeleton />;
   }
 
   if (!task) {
@@ -1167,28 +1187,13 @@ export default function TaskDetailPage() {
                   Subtasks
                 </CardTitle>
                 <p className="mt-1 text-sm text-slate-500">
-                  Checklist progress for this issue.
+                  Subtask progress for this issue.
                 </p>
               </div>
               <div className="grid gap-2 sm:flex sm:flex-wrap sm:items-center">
                 <Badge className="bg-slate-800 text-slate-300">
                   {completedSubtasks}/{task.subtasks.length} done
                 </Badge>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={handleApplySdlcChecklist}
-                  disabled={!canUpdateTask || aiWorking}
-                  className="w-full border-slate-700 bg-slate-950/70 text-slate-200 hover:bg-slate-900 sm:w-auto"
-                >
-                  {aiWorking ? (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  ) : (
-                    <CheckCircle2 className="mr-2 h-4 w-4" />
-                  )}
-                  SDLC checklist
-                </Button>
               </div>
             </CardHeader>
             <CardContent className="space-y-5 p-4 sm:p-5">
@@ -1200,7 +1205,7 @@ export default function TaskDetailPage() {
                         AI suggested subtasks
                       </p>
                       <p className="mt-1 text-xs text-emerald-100/70">
-                        Apply these as real checklist items.
+                        Create these as real subtasks.
                         {lastRefinedSpec?.source ? ` Source: ${formatAiSource(lastRefinedSpec.source)}.` : ""}
                       </p>
                     </div>
@@ -1216,7 +1221,7 @@ export default function TaskDetailPage() {
                       ) : (
                         <Plus className="mr-2 h-4 w-4" />
                       )}
-                      Apply checklist
+                      Create subtasks
                     </Button>
                   </div>
                   <div className="grid gap-2 md:grid-cols-2">
@@ -1889,7 +1894,7 @@ export default function TaskDetailPage() {
         open={subtaskToDelete !== null}
         onOpenChange={(open) => !open && setSubtaskToDelete(null)}
         title="Delete subtask?"
-        description="This removes the checklist item from the issue. The task audit trail will keep the deletion event."
+        description="This removes the subtask from the issue. The task audit trail will keep the deletion event."
         confirmLabel="Delete Subtask"
         destructive
         loading={deletingSubtask}

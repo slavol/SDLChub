@@ -2,10 +2,11 @@
 
 import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { AlertTriangle, Archive, Loader2 } from "lucide-react";
+import { AlertTriangle, Archive } from "lucide-react";
 
 import { AppSidebar } from "@/components/dashboard/app-sidebar";
 import { RealtimeBridge } from "@/components/realtime/realtime-bridge";
+import { Skeleton } from "@/components/ui/skeleton";
 import { getMyProjects, getProjectMembers } from "@/services/project";
 import { useAuthStore } from "@/store/use-auth-store";
 import { useProjectStore } from "@/store/use-project-store";
@@ -85,18 +86,44 @@ export default function DashboardLayout({
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center text-blue-500">
-        <Loader2 className="w-10 h-10 animate-spin" />
+      <div className="flex h-dvh min-h-0 flex-col overflow-hidden bg-slate-950 md:flex-row">
+        <aside className="hidden w-[17rem] shrink-0 border-r border-slate-800 bg-slate-950 p-4 md:block">
+          <div className="flex items-center gap-3">
+            <Skeleton className="h-11 w-11 rounded-2xl" />
+            <div className="space-y-2">
+              <Skeleton className="h-5 w-28" />
+              <Skeleton className="h-4 w-36" />
+            </div>
+          </div>
+          <Skeleton className="mt-5 h-16 rounded-2xl" />
+          <div className="mt-7 space-y-3">
+            {Array.from({ length: 9 }).map((_, index) => (
+              <Skeleton key={index} className="h-10 rounded-xl" />
+            ))}
+          </div>
+          <div className="mt-auto" />
+        </aside>
+        <main className="min-h-0 min-w-0 flex-1 overflow-hidden p-5 sm:p-6 md:p-8">
+          <div className="mx-auto max-w-7xl space-y-6">
+            <Skeleton className="h-44 rounded-3xl" />
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+              {Array.from({ length: 4 }).map((_, index) => (
+                <Skeleton key={index} className="h-32 rounded-2xl" />
+              ))}
+            </div>
+            <Skeleton className="h-80 rounded-3xl" />
+          </div>
+        </main>
       </div>
     );
   }
 
   return (
-    <div className="flex h-dvh min-h-0 overflow-hidden bg-slate-950">
+    <div className="flex h-dvh min-h-0 flex-col overflow-hidden bg-slate-950 md:flex-row">
       <RealtimeBridge />
       <AppSidebar methodology={methodology} role={role} projectName={projectName} />
 
-      <main className="sdlc-thin-scrollbar min-w-0 flex-1 overflow-y-auto overflow-x-hidden bg-slate-950">
+      <main className="sdlc-thin-scrollbar min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden bg-slate-950">
         {isArchived && (
           <div className="sticky top-0 z-40 border-b border-amber-500/25 bg-amber-950/80 px-6 py-3 text-amber-50 shadow-xl shadow-slate-950/25 backdrop-blur">
             <div className="flex flex-wrap items-center gap-3">

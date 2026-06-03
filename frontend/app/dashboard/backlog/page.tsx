@@ -12,6 +12,7 @@ import { Card } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { CreateTaskDialog } from "@/components/dashboard/create-task-dialog";
+import { WorkspaceLoadingSkeleton } from "@/components/dashboard/workspace-loading-skeleton";
 import { UserAvatar } from "@/components/user-avatar";
 import { useProjectPermissions } from "@/hooks/use-project-permissions";
 import { useRealtimeEvent } from "@/hooks/use-realtime-event";
@@ -402,7 +403,7 @@ export default function BacklogPage() {
     const sprintTasksCount = tasks.length - backlogTasks.length;
     const activeSprint = sprints.find((sprint) => sprint.is_active);
 
-    if (loading) return <div className="p-10 flex justify-center"><Loader2 className="animate-spin text-blue-500" /></div>;
+    if (loading) return <WorkspaceLoadingSkeleton metricCount={4} panelCount={2} tableRows={5} />;
 
     if (isKanbanFlow) {
         return (

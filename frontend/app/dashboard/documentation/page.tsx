@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
+import { WorkspaceLoadingSkeleton } from "@/components/dashboard/workspace-loading-skeleton";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -350,11 +351,7 @@ export default function DocumentationPageRoute() {
   };
 
   if (loading) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-950 text-blue-400">
-        <Loader2 className="h-10 w-10 animate-spin" />
-      </div>
-    );
+    return <WorkspaceLoadingSkeleton metricCount={3} panelCount={2} withSidePanel />;
   }
 
   if (!project) {
@@ -377,7 +374,7 @@ export default function DocumentationPageRoute() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 px-6 py-6 text-slate-100 lg:px-10">
+    <div className="min-h-screen w-full min-w-0 overflow-x-hidden bg-slate-950 px-4 py-6 text-slate-100 sm:px-6 lg:px-10">
       <div className="mb-8 flex flex-col justify-between gap-5 lg:flex-row lg:items-center">
         <div>
           <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-blue-500/20 bg-blue-500/10 px-3 py-1 text-xs font-medium text-blue-200">
@@ -450,9 +447,9 @@ export default function DocumentationPageRoute() {
         </p>
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-[340px_1fr]">
-        <aside className="space-y-4">
-          <Card className="border-slate-800 bg-slate-900/70">
+      <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-6 xl:grid-cols-[340px_minmax(0,1fr)]">
+        <aside className="w-full min-w-0 max-w-full space-y-4 overflow-hidden">
+          <Card className="min-w-0 max-w-full overflow-hidden border-slate-800 bg-slate-900/70">
             <CardContent className="p-4">
               <div className="mb-4 flex items-center justify-between">
                 <h2 className="font-semibold text-white">Pages</h2>
@@ -461,7 +458,7 @@ export default function DocumentationPageRoute() {
                 </Badge>
               </div>
 
-              <div className="space-y-2">
+              <div className="min-w-0 space-y-2">
                 {pages.map((page) => (
                   <button
                     key={page.id}
@@ -505,7 +502,7 @@ export default function DocumentationPageRoute() {
             </CardContent>
           </Card>
 
-          <Card className="border-slate-800 bg-slate-900/70">
+          <Card className="min-w-0 max-w-full overflow-hidden border-slate-800 bg-slate-900/70">
             <CardContent className="p-4">
               <div className="mb-4 flex items-center justify-between">
                 <div className="flex items-center gap-2">
@@ -564,8 +561,8 @@ export default function DocumentationPageRoute() {
           </Card>
         </aside>
 
-        <Card className="border-slate-800 bg-slate-900/70">
-          <CardContent className="p-6">
+        <Card className="min-w-0 max-w-full overflow-hidden border-slate-800 bg-slate-900/70">
+          <CardContent className="p-4 sm:p-6">
             <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
               <div className="min-w-0">
                 <p className="mb-2 text-xs uppercase tracking-[0.18em] text-slate-600">
@@ -620,7 +617,7 @@ export default function DocumentationPageRoute() {
             </div>
 
             {isEditing ? (
-              <div className="space-y-4">
+              <div className="min-w-0 space-y-4">
                 <Input
                   value={title}
                   onChange={(event) => setTitle(event.target.value)}
@@ -631,12 +628,12 @@ export default function DocumentationPageRoute() {
                 <Textarea
                   value={content}
                   onChange={(event) => setContent(event.target.value)}
-                  className="min-h-[620px] border-slate-800 bg-slate-950 font-mono text-sm leading-6 text-slate-100"
+                  className="min-h-[620px] max-w-full border-slate-800 bg-slate-950 font-mono text-sm leading-6 text-slate-100"
                   placeholder="Write documentation..."
                 />
               </div>
             ) : (
-              <div className="min-h-[620px] rounded-2xl border border-slate-800 bg-slate-950/70 p-6">
+              <div className="min-h-[620px] min-w-0 overflow-hidden rounded-2xl border border-slate-800 bg-slate-950/70 p-4 sm:p-6">
                 <MarkdownPreview content={content} />
               </div>
             )}

@@ -29,7 +29,6 @@ import {
   ExternalLink,
   AlertTriangle,
   BarChart3,
-  Loader2,
   CalendarClock,
   CheckCircle,
   CircleDot,
@@ -42,6 +41,7 @@ import { toast } from "sonner";
 
 // 3. UI Components
 import { CreateTaskDialog } from "@/components/dashboard/create-task-dialog";
+import { BoardLoadingSkeleton } from "@/components/dashboard/workspace-loading-skeleton";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -288,7 +288,7 @@ function BoardColumn({
     <div
       ref={setNodeRef}
       className={cn(
-        "flex h-full min-w-[360px] w-[360px] flex-col rounded-lg border bg-slate-950/70 shadow-xl shadow-slate-950/20",
+        "flex h-full w-[320px] min-w-[320px] max-w-[calc(100vw-2.5rem)] flex-col rounded-lg border bg-slate-950/70 shadow-xl shadow-slate-950/20 sm:w-[340px] sm:min-w-[340px] xl:min-w-0 xl:flex-1",
         limitExceeded ? "border-red-500/45" : "border-slate-800"
       )}
     >
@@ -544,7 +544,13 @@ export default function BoardPage() {
     }
   };
 
-  if (!isMounted) return null;
+  if (!isMounted) {
+    return (
+      <div className="flex h-full flex-col bg-slate-950 p-4 text-slate-50 sm:p-5">
+        <BoardLoadingSkeleton />
+      </div>
+    );
+  }
 
   // Calculare Statistici
   const isScrumLike = methodology === "SCRUM" || methodology === "SCRUMBAN";
@@ -676,11 +682,9 @@ export default function BoardPage() {
       </div>
 
       {/* --- BOARD CONTENT --- */}
-      <div className="flex-1 overflow-x-auto overflow-y-hidden bg-slate-950 p-5">
+      <div className="flex-1 overflow-x-auto overflow-y-hidden bg-slate-950 p-4 sm:p-5">
         {loading ? (
-          <div className="flex h-full items-center justify-center">
-            <Loader2 className="h-10 w-10 animate-spin text-blue-500" />
-          </div>
+          <BoardLoadingSkeleton />
         ) : (
           <DndContext
             sensors={sensors}
@@ -689,7 +693,7 @@ export default function BoardPage() {
             onDragOver={handleDragOver}
             onDragEnd={handleDragEnd}
           >
-            <div className="flex h-full gap-6">
+            <div className="flex h-full min-w-0 gap-4 xl:w-full xl:gap-5">
               {visibleColumns.map((col) => (
                 <BoardColumn
                   key={col.id}

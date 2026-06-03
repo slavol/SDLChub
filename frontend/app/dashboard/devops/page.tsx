@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
+import { WorkspaceLoadingSkeleton } from "@/components/dashboard/workspace-loading-skeleton";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -351,12 +352,7 @@ export default function DevOpsPage() {
   }, [events]);
 
   if (loading) {
-    return (
-      <div className="flex min-h-[60vh] items-center justify-center text-slate-400">
-        <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-        Loading DevOps workspace...
-      </div>
-    );
+    return <WorkspaceLoadingSkeleton metricCount={3} panelCount={2} withSidePanel />;
   }
 
   if (!project) {
@@ -770,8 +766,8 @@ export default function DevOpsPage() {
               </div>
             </div>
 
-            <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-              <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
+            <div className="mt-5 grid min-w-0 gap-4 md:grid-cols-2 xl:grid-cols-4">
+              <div className="min-w-0 rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
                 <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Repository</p>
                 <p className="mt-2 truncate font-semibold text-white">
                   {integration?.repository_full_name || "Not configured"}
@@ -789,21 +785,21 @@ export default function DevOpsPage() {
                 )}
               </div>
 
-              <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
+              <div className="min-w-0 rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
                 <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Default branch</p>
                 <p className="mt-2 font-semibold text-white">
                   {integration?.default_branch || "main"}
                 </p>
               </div>
 
-              <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
+              <div className="min-w-0 rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
                 <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Last delivery</p>
                 <p className="mt-2 font-semibold text-white">
                   {formatDate(integration?.last_delivery_at)}
                 </p>
               </div>
 
-              <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
+              <div className="min-w-0 rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
                 <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Automation</p>
                 <div className="mt-2 flex flex-wrap gap-2">
                   <Badge className={integration?.auto_link_commits ? "border-blue-500/30 bg-blue-500/10 text-blue-200" : "border-slate-700 bg-slate-900 text-slate-400"}>
@@ -816,8 +812,8 @@ export default function DevOpsPage() {
               </div>
             </div>
 
-            <div className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
-              <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
+            <div className="mt-5 grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(280px,360px)]">
+              <div className="min-w-0 rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
                 <p className="text-sm font-semibold text-white">How this works</p>
                 <p className="mt-2 text-sm leading-6 text-slate-400">
                   Commits and pull requests that contain a valid task key, such as{" "}
@@ -826,7 +822,7 @@ export default function DevOpsPage() {
                 </p>
               </div>
 
-              <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
+              <div className="min-w-0 rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
                 <p className="text-sm font-semibold text-white">Webhook endpoint</p>
                 <div className="mt-3 flex gap-2">
                   <code className="min-w-0 flex-1 truncate rounded-xl border border-slate-800 bg-black/40 px-3 py-2 text-xs text-slate-300">

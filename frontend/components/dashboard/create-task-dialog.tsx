@@ -63,15 +63,6 @@ const formSchema = z.object({
   team_id: z.string().optional(),
 });
 
-const SDLC_CHECKLIST = [
-  "Planificare - clarificare scop si dependinte",
-  "Analiza - definire user story si criterii de acceptare",
-  "Design - propunere solutie tehnica si impact UI/API",
-  "Implementare - dezvoltare functionalitate",
-  "Integrare - conectare cu modulele existente",
-  "Testare - validare functionalitate si regresii",
-];
-
 interface CreateTaskDialogProps {
   projectId: number;
   sprintId?: number | null;
@@ -88,7 +79,6 @@ export function CreateTaskDialog({ projectId, sprintId, methodology, onTaskCreat
   const [isEstimateLoading, setIsEstimateLoading] = useState(false);
   const [lastEstimate, setLastEstimate] = useState<StoryPointEstimate | null>(null);
   const [lastRefinedSpec, setLastRefinedSpec] = useState<RefinedTaskSpec | null>(null);
-  const [templateSubtasks, setTemplateSubtasks] = useState<string[]>([]);
   const [createAiSubtasks, setCreateAiSubtasks] = useState(true);
   
   // State pentru membrii echipei
@@ -96,9 +86,7 @@ export function CreateTaskDialog({ projectId, sprintId, methodology, onTaskCreat
   const [teams, setTeams] = useState<ProjectTeam[]>([]);
   const [loadingMembers, setLoadingMembers] = useState(false);
   const supportsStoryPoints = methodology !== "KANBAN";
-  const suggestedSubtasks = lastRefinedSpec?.suggested_subtasks?.length
-    ? lastRefinedSpec.suggested_subtasks
-    : templateSubtasks;
+  const suggestedSubtasks = lastRefinedSpec?.suggested_subtasks || [];
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -225,13 +213,6 @@ export function CreateTaskDialog({ projectId, sprintId, methodology, onTaskCreat
     }
   };
 
-  const handleUseSdlcChecklist = () => {
-    setLastRefinedSpec(null);
-    setTemplateSubtasks(SDLC_CHECKLIST);
-    setCreateAiSubtasks(true);
-    toast.success("SDLC checklist prepared for this issue.");
-  };
-
   async function onSubmit(values: z.infer<typeof formSchema>) {
     setIsLoading(true);
     try {
@@ -269,7 +250,6 @@ export function CreateTaskDialog({ projectId, sprintId, methodology, onTaskCreat
       setOpen(false);
       setLastEstimate(null);
       setLastRefinedSpec(null);
-      setTemplateSubtasks([]);
       form.reset();
     } catch (error) {
       console.error(error);
@@ -460,29 +440,6 @@ export function CreateTaskDialog({ projectId, sprintId, methodology, onTaskCreat
               )}
             />
 
-            <div className="rounded-2xl border border-slate-800 bg-slate-900/70 p-3">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <p className="text-sm font-semibold text-slate-200">
-                    SDLC checklist
-                  </p>
-                  <p className="mt-1 text-xs leading-5 text-slate-500">
-                    Add standard subtasks for planning, analysis, design, implementation, integration and testing.
-                  </p>
-                </div>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={handleUseSdlcChecklist}
-                  className="border-slate-700 bg-slate-950 text-slate-200 hover:bg-slate-900"
-                >
-                  <CheckCircle2 className="mr-2 h-4 w-4" />
-                  Use checklist
-                </Button>
-              </div>
-            </div>
-
             {/* ROW 3: Description cu buton AI funcțional */}
             <FormField
               control={form.control}
@@ -581,7 +538,7 @@ export function CreateTaskDialog({ projectId, sprintId, methodology, onTaskCreat
                 <div className="mb-3 flex items-center justify-between gap-3">
                   <div className="flex items-center gap-2 text-sm font-semibold text-emerald-100">
                     <CheckCircle2 className="h-4 w-4 text-emerald-300" />
-                    {lastRefinedSpec ? "AI suggested checklist" : "SDLC checklist"}
+                    AI suggested subtasks
                   </div>
                   <button
                     type="button"

@@ -10,7 +10,6 @@ import {
   Filter,
   Flag,
   LayoutList,
-  Loader2,
   Search,
   UserRound,
 } from "lucide-react";
@@ -21,6 +20,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Select,
   SelectContent,
@@ -77,6 +77,74 @@ function isOverdue(task: Task) {
 
 function memberName(member: ProjectMember) {
   return member.user.full_name || member.user.email || `User #${member.user.id}`;
+}
+
+function TasksListSkeleton() {
+  return (
+    <div className="min-h-full bg-slate-950 text-slate-50">
+      <div className="sdlc-page min-w-0 space-y-5">
+        <section className="rounded-3xl border border-slate-800 bg-slate-900/80 p-5 shadow-xl shadow-black/20">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+            <div className="min-w-0 space-y-3">
+              <Skeleton className="h-8 w-32 rounded-full" />
+              <Skeleton className="h-10 w-72 max-w-full" />
+              <Skeleton className="h-5 w-[28rem] max-w-full" />
+            </div>
+            <Skeleton className="h-11 w-44 rounded-xl" />
+          </div>
+        </section>
+
+        <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          {Array.from({ length: 4 }).map((_, index) => (
+            <Card key={index} className="border-slate-800 bg-slate-900 text-slate-50">
+              <CardContent className="space-y-3 p-4">
+                <Skeleton className="h-5 w-5 rounded-full" />
+                <Skeleton className="h-4 w-24" />
+                <Skeleton className="h-8 w-14" />
+              </CardContent>
+            </Card>
+          ))}
+        </section>
+
+        <section className="overflow-hidden rounded-3xl border border-slate-800 bg-slate-900/80">
+          <div className="border-b border-slate-800 p-5">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+              <div className="space-y-2">
+                <Skeleton className="h-6 w-36" />
+                <Skeleton className="h-4 w-48" />
+              </div>
+              <div className="flex gap-2">
+                <Skeleton className="h-10 w-36 rounded-xl" />
+                <Skeleton className="h-10 w-36 rounded-xl" />
+              </div>
+            </div>
+            <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+              {Array.from({ length: 5 }).map((_, index) => (
+                <Skeleton key={index} className="h-11 rounded-xl" />
+              ))}
+            </div>
+          </div>
+
+          <div className="divide-y divide-slate-800">
+            {Array.from({ length: 6 }).map((_, index) => (
+              <div key={index} className="grid gap-4 p-5 lg:grid-cols-[1fr_12rem_10rem_12rem_9rem_2rem]">
+                <div className="space-y-3">
+                  <div className="flex gap-2">
+                    <Skeleton className="h-6 w-16 rounded-full" />
+                    <Skeleton className="h-6 w-14 rounded-full" />
+                  </div>
+                  <Skeleton className="h-5 w-64 max-w-full" />
+                </div>
+                {Array.from({ length: 5 }).map((__, innerIndex) => (
+                  <Skeleton key={innerIndex} className="h-11 rounded-xl" />
+                ))}
+              </div>
+            ))}
+          </div>
+        </section>
+      </div>
+    </div>
+  );
 }
 
 export default function TasksListPage() {
@@ -249,11 +317,7 @@ export default function TasksListPage() {
   };
 
   if (loading) {
-    return (
-      <div className="flex h-full items-center justify-center text-blue-400">
-        <Loader2 className="h-10 w-10 animate-spin" />
-      </div>
-    );
+    return <TasksListSkeleton />;
   }
 
   if (!project) {

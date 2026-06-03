@@ -52,6 +52,7 @@ import {
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
+import { WorkspaceLoadingSkeleton } from "@/components/dashboard/workspace-loading-skeleton";
 import { UserAvatar } from "@/components/user-avatar";
 import { useProjectPermissions } from "@/hooks/use-project-permissions";
 import { useRealtimeEvent } from "@/hooks/use-realtime-event";
@@ -1169,11 +1170,7 @@ export default function CalendarPage() {
   };
 
   if (loading) {
-    return (
-      <div className="flex h-full items-center justify-center text-blue-500">
-        <Loader2 className="h-10 w-10 animate-spin" />
-      </div>
-    );
+    return <WorkspaceLoadingSkeleton metricCount={4} panelCount={2} withSidePanel />;
   }
 
   if (!project) {

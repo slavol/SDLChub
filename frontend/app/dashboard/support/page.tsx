@@ -18,6 +18,7 @@ import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { getApiErrorMessage } from "@/lib/api-error";
 import {
@@ -342,6 +343,14 @@ export default function SupportPage() {
               </div>
 
               <div className="max-h-[520px] space-y-2 overflow-y-auto p-3">
+                {loadingTickets && (
+                  <>
+                    {Array.from({ length: 4 }).map((_, index) => (
+                      <Skeleton key={index} className="h-24 rounded-2xl" />
+                    ))}
+                  </>
+                )}
+
                 {tickets.map((ticket) => {
                   const selected = selectedTicket?.id === ticket.id;
                   return (

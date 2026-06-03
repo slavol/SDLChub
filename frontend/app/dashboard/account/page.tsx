@@ -17,7 +17,6 @@ import {
   Lock,
   Mail,
   Save,
-  Shield,
   UserRound,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -27,6 +26,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { AccountSecurityPanel } from "@/components/dashboard/account-security-panel";
 import { UserAvatar, resolveMediaUrl } from "@/components/user-avatar";
@@ -85,6 +85,77 @@ function preferencesFromUser(user?: AccountSummary["user"] | null): Notification
     notify_due_dates: user?.notify_due_dates ?? true,
     notify_ai_risk: user?.notify_ai_risk ?? true,
   };
+}
+
+function AccountPageSkeleton() {
+  return (
+    <div className="mx-auto max-w-7xl space-y-7 p-6 text-slate-50 md:p-8">
+      <section className="overflow-hidden rounded-3xl border border-slate-800 bg-slate-900/80 shadow-2xl shadow-slate-950/30">
+        <div className="border-b border-slate-800 bg-slate-950/45 px-6 py-5">
+          <div className="flex min-w-0 items-center gap-5">
+            <Skeleton className="h-20 w-20 rounded-full" />
+            <div className="min-w-0 flex-1 space-y-3">
+              <div className="flex gap-2">
+                <Skeleton className="h-6 w-20 rounded-full" />
+                <Skeleton className="h-6 w-24 rounded-full" />
+                <Skeleton className="h-6 w-20 rounded-full" />
+              </div>
+              <Skeleton className="h-10 w-80 max-w-full" />
+              <Skeleton className="h-5 w-[28rem] max-w-full" />
+            </div>
+          </div>
+        </div>
+
+        <div className="grid gap-4 p-5 md:grid-cols-3">
+          {Array.from({ length: 3 }).map((_, index) => (
+            <div key={index} className="rounded-2xl border border-slate-800 bg-slate-950/75 p-4">
+              <Skeleton className="mb-3 h-5 w-5 rounded-full" />
+              <Skeleton className="h-4 w-32" />
+              <Skeleton className="mt-2 h-8 w-16" />
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="grid gap-6 xl:grid-cols-[minmax(0,1.4fr)_minmax(22rem,1fr)]">
+        {Array.from({ length: 2 }).map((_, index) => (
+          <Card key={index} className="border-slate-800 bg-slate-900/80 text-slate-50">
+            <CardHeader className="border-b border-slate-800/80">
+              <Skeleton className="h-6 w-40" />
+            </CardHeader>
+            <CardContent className="space-y-4 p-5">
+              <Skeleton className="h-12 rounded-xl" />
+              <Skeleton className="h-24 rounded-2xl" />
+              <Skeleton className="h-10 w-36 rounded-xl" />
+            </CardContent>
+          </Card>
+        ))}
+      </section>
+
+      <section className="grid gap-6 xl:grid-cols-12">
+        <Card className="border-slate-800 bg-slate-900/80 text-slate-50 xl:col-span-7">
+          <CardHeader className="border-b border-slate-800/80">
+            <Skeleton className="h-6 w-40" />
+          </CardHeader>
+          <CardContent className="space-y-4 p-5">
+            {Array.from({ length: 3 }).map((_, index) => (
+              <Skeleton key={index} className="h-24 rounded-2xl" />
+            ))}
+          </CardContent>
+        </Card>
+        <Card className="border-slate-800 bg-slate-900/80 text-slate-50 xl:col-span-5">
+          <CardHeader className="border-b border-slate-800/80">
+            <Skeleton className="h-6 w-36" />
+          </CardHeader>
+          <CardContent className="space-y-3 p-5">
+            {Array.from({ length: 3 }).map((_, index) => (
+              <Skeleton key={index} className="h-28 rounded-2xl" />
+            ))}
+          </CardContent>
+        </Card>
+      </section>
+    </div>
+  );
 }
 
 export default function AccountPage() {
@@ -254,11 +325,7 @@ export default function AccountPage() {
   ];
 
   if (loading) {
-    return (
-      <div className="flex h-full items-center justify-center text-blue-500">
-        <Loader2 className="h-10 w-10 animate-spin" />
-      </div>
-    );
+    return <AccountPageSkeleton />;
   }
 
   return (
@@ -574,26 +641,9 @@ export default function AccountPage() {
             </CardContent>
           </Card>
 
-          <div className="space-y-6 xl:col-span-7">
+          <div className="xl:col-span-12">
             <AccountSecurityPanel />
           </div>
-
-          <Card className="border-slate-800 bg-slate-900/80 text-slate-50 shadow-xl shadow-slate-950/20 xl:col-span-5">
-            <CardHeader className="border-b border-slate-800/80">
-              <CardTitle className="flex items-center gap-2">
-                <Shield className="h-5 w-5 text-violet-300" />
-                Account notes
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3 p-5 text-sm leading-6 text-slate-400">
-              <p>
-                Your project permissions are controlled per workspace by Project Admins.
-              </p>
-              <p>
-                Changing email updates your login identifier immediately. If email re-verification is required later, this flow can be extended.
-              </p>
-            </CardContent>
-          </Card>
       </section>
     </div>
   );

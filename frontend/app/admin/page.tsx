@@ -264,6 +264,31 @@ export default function AdminConsolePage() {
     [normalizedQuery, ticketFilter, tickets]
   );
 
+  const focusSupportTicket = useCallback((ticketId?: number) => {
+    if (ticketId) {
+      setSelectedTicketId(ticketId);
+    }
+
+    setTicketFilter("ALL");
+    window.history.replaceState(null, "", "/admin#support");
+    window.dispatchEvent(new HashChangeEvent("hashchange"));
+
+    window.setTimeout(() => {
+      const scrollRoot = document.getElementById("admin-scroll-root");
+      const target = document.getElementById("support");
+
+      if (scrollRoot && target && scrollRoot.scrollHeight > scrollRoot.clientHeight) {
+        scrollRoot.scrollTo({
+          top: Math.max(target.offsetTop - 18, 0),
+          behavior: "smooth",
+        });
+        return;
+      }
+
+      target?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 0);
+  }, []);
+
   const filteredErrors = useMemo(
     () =>
       errors.filter((error) => {
@@ -528,7 +553,7 @@ export default function AdminConsolePage() {
   };
 
   return (
-    <div className="mx-auto max-w-[1560px] space-y-6 p-4 text-slate-100 sm:p-5 xl:p-7">
+    <div className="mx-auto w-full min-w-0 max-w-[1560px] space-y-6 p-4 text-slate-100 sm:p-5 xl:p-7">
       <section
         id="command"
         className="overflow-hidden rounded-3xl border border-slate-800 bg-slate-950/75 shadow-2xl shadow-slate-950/30"
@@ -671,8 +696,8 @@ export default function AdminConsolePage() {
         />
       </section>
 
-      <section className="grid gap-4 xl:grid-cols-[minmax(0,1.1fr)_minmax(360px,0.9fr)]">
-        <div className="rounded-3xl border border-slate-800 bg-slate-950/70 p-5 shadow-xl shadow-slate-950/20">
+      <section className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
+        <div className="min-w-0 rounded-3xl border border-slate-800 bg-slate-950/70 p-5 shadow-xl shadow-slate-950/20">
           <div className="mb-4 flex items-center justify-between gap-3">
             <div>
               <h2 className="text-lg font-semibold text-white">
@@ -686,7 +711,7 @@ export default function AdminConsolePage() {
               Live data
             </Badge>
           </div>
-          <div className="grid gap-3 md:grid-cols-3">
+          <div className="grid min-w-0 gap-3 md:grid-cols-3">
             <div className="rounded-2xl border border-slate-800 bg-slate-900/45 p-4">
               <p className="text-xs uppercase tracking-[0.16em] text-slate-600">
                 Triage pressure
@@ -719,7 +744,7 @@ export default function AdminConsolePage() {
           </div>
         </div>
 
-        <div className="rounded-3xl border border-slate-800 bg-slate-950/70 p-5 shadow-xl shadow-slate-950/20">
+        <div className="min-w-0 rounded-3xl border border-slate-800 bg-slate-950/70 p-5 shadow-xl shadow-slate-950/20">
           <div className="mb-4 flex items-center justify-between gap-3">
             <div>
               <h2 className="text-lg font-semibold text-white">
@@ -729,33 +754,42 @@ export default function AdminConsolePage() {
                 Open support items that need attention.
               </p>
             </div>
-            <a
-              href="#support"
+            <button
+              type="button"
+              onClick={() => focusSupportTicket()}
               className="rounded-full border border-slate-800 bg-slate-950 px-3 py-1.5 text-xs font-semibold text-slate-300 transition hover:border-blue-500/40 hover:text-white"
             >
               Open desk
-            </a>
+            </button>
           </div>
           <div className="space-y-2">
             {topIncidents.length > 0 ? (
-              topIncidents.map((ticket) => (
-                <button
-                  key={ticket.id}
-                  type="button"
-                  onClick={() => setSelectedTicketId(ticket.id)}
-                  className="flex w-full items-center justify-between gap-3 rounded-2xl border border-slate-800 bg-slate-900/45 p-3 text-left transition hover:border-blue-500/35 hover:bg-blue-500/10"
-                >
-                  <span className="min-w-0">
-                    <span className="block truncate text-sm font-semibold text-white">
-                      #{ticket.id} {ticket.title}
+              topIncidents.map((ticket) => {
+                const selected = selectedTicketId === ticket.id;
+
+                return (
+                  <button
+                    key={ticket.id}
+                    type="button"
+                    onClick={() => focusSupportTicket(ticket.id)}
+                    className={
+                      selected
+                        ? "flex w-full items-center justify-between gap-3 rounded-2xl border border-blue-500/45 bg-blue-500/10 p-3 text-left shadow-lg shadow-blue-950/10"
+                        : "flex w-full items-center justify-between gap-3 rounded-2xl border border-slate-800 bg-slate-900/45 p-3 text-left transition hover:border-blue-500/35 hover:bg-blue-500/10"
+                    }
+                  >
+                    <span className="min-w-0">
+                      <span className="block truncate text-sm font-semibold text-white">
+                        #{ticket.id} {ticket.title}
+                      </span>
+                      <span className="mt-1 block text-xs text-slate-500">
+                        {ticket.priority} · {ticket.status.replace("_", " ")}
+                      </span>
                     </span>
-                    <span className="mt-1 block text-xs text-slate-500">
-                      {ticket.priority} · {ticket.status.replace("_", " ")}
-                    </span>
-                  </span>
-                  <ArrowUpRight className="h-4 w-4 shrink-0 text-slate-500" />
-                </button>
-              ))
+                    <ArrowUpRight className="h-4 w-4 shrink-0 text-slate-500" />
+                  </button>
+                );
+              })
             ) : (
               <div className="rounded-2xl border border-dashed border-slate-800 p-5 text-sm text-slate-500">
                 No active support pressure right now.
@@ -1054,9 +1088,9 @@ export default function AdminConsolePage() {
           </div>
         </div>
 
-        <div className="grid gap-0 xl:grid-cols-[420px_minmax(0,1fr)]">
-          <div className="border-b border-slate-800 xl:border-b-0 xl:border-r">
-            <div className="grid grid-cols-2 gap-2 border-b border-slate-800 p-4 sm:grid-cols-4 xl:grid-cols-2">
+        <div className="grid min-w-0 gap-0 overflow-hidden xl:grid-cols-[420px_minmax(0,1fr)]">
+          <div className="min-w-0 border-b border-slate-800 xl:border-b-0 xl:border-r">
+            <div className="grid min-w-0 grid-cols-2 gap-2 border-b border-slate-800 p-4 sm:grid-cols-4 xl:grid-cols-2">
               {ticketStatuses.map((status) => (
                 <div
                   key={status}
@@ -1072,7 +1106,7 @@ export default function AdminConsolePage() {
               ))}
             </div>
 
-            <div className="max-h-[720px] space-y-2 overflow-y-auto p-3">
+            <div className="max-h-[720px] min-w-0 space-y-2 overflow-y-auto p-3">
               {filteredTickets.map((ticket) => {
                 const selected = selectedTicket?.id === ticket.id;
                 return (

@@ -122,6 +122,11 @@
   body {
     @apply bg-background text-foreground;
   }
+
+  :where(button, a, input, textarea, select, [role="button"], [tabindex]):focus-visible {
+    outline: 2px solid rgb(37 99 235 / 0.5);
+    outline-offset: 2px;
+  }
 }
 
 .light {
@@ -140,6 +145,11 @@
 }
 
 .light [class~="bg-slate-950"],
+.light [class~="bg-slate-950/20"],
+.light [class~="bg-slate-950/25"],
+.light [class~="bg-slate-950/30"],
+.light [class~="bg-slate-950/35"],
+.light [class~="bg-slate-950/40"],
 .light [class~="bg-slate-950/45"],
 .light [class~="bg-slate-950/50"],
 .light [class~="bg-slate-950/55"],
@@ -148,6 +158,9 @@
 .light [class~="bg-slate-950/70"],
 .light [class~="bg-slate-950/75"],
 .light [class~="bg-slate-950/80"],
+.light [class~="bg-slate-950/85"],
+.light [class~="bg-slate-950/90"],
+.light [class~="bg-slate-950/95"],
 .light [class~="bg-[#030712]"],
 .light [class~="bg-[#030712]/60"],
 .light [class~="bg-[#050712]"],
@@ -158,26 +171,46 @@
 }
 
 .light [class~="bg-slate-900"],
+.light [class~="bg-slate-900/20"],
+.light [class~="bg-slate-900/25"],
 .light [class~="bg-slate-900/30"],
 .light [class~="bg-slate-900/35"],
+.light [class~="bg-slate-900/40"],
 .light [class~="bg-slate-900/45"],
 .light [class~="bg-slate-900/50"],
 .light [class~="bg-slate-900/60"],
 .light [class~="bg-slate-900/65"],
 .light [class~="bg-slate-900/70"],
 .light [class~="bg-slate-900/75"],
-.light [class~="bg-slate-900/80"] {
+.light [class~="bg-slate-900/80"],
+.light [class~="bg-slate-900/85"],
+.light [class~="bg-slate-900/90"],
+.light [class~="bg-slate-900/95"] {
   background-color: rgb(255 255 255 / 0.94) !important;
 }
 
 .light [class~="bg-slate-800"],
+.light [class~="bg-slate-800/10"],
+.light [class~="bg-slate-800/20"],
+.light [class~="bg-slate-800/25"],
+.light [class~="bg-slate-800/30"],
+.light [class~="bg-slate-800/40"],
 .light [class~="bg-slate-800/50"],
 .light [class~="bg-slate-800/60"],
 .light [class~="bg-slate-800/70"],
 .light [class~="bg-slate-800/80"],
+.light [class~="bg-slate-800/85"],
+.light [class~="bg-slate-800/90"],
+.light [class~="bg-slate-800/95"],
 .light [class~="bg-slate-700"],
+.light [class~="bg-slate-700/20"],
+.light [class~="bg-slate-700/30"],
+.light [class~="bg-slate-700/40"],
 .light [class~="bg-slate-700/50"],
-.light [class~="bg-slate-700/60"] {
+.light [class~="bg-slate-700/60"],
+.light [class~="bg-slate-700/70"],
+.light [class~="bg-slate-700/80"],
+.light [class~="bg-slate-700/90"] {
   background-color: rgb(241 245 249 / 0.95) !important;
 }
 
@@ -282,7 +315,11 @@
 .light [class~="text-purple-200"],
 .light [class~="text-purple-300"],
 .light [class~="text-violet-50/80"],
+.light [class~="text-violet-100"],
 .light [class~="text-violet-100/75"],
+.light [class~="text-violet-100/80"],
+.light [class~="text-violet-100/85"],
+.light [class~="text-violet-100/90"],
 .light [class~="text-violet-200"],
 .light [class~="text-violet-300"] {
   color: #7c3aed !important;
@@ -360,13 +397,50 @@
 }
 
 .light [class~="bg-red-500/10"],
-.light [class~="bg-rose-500/10"] {
+.light [class~="bg-red-900/20"],
+.light [class~="bg-red-900/40"],
+.light [class~="bg-red-950/10"],
+.light [class~="bg-red-950/20"],
+.light [class~="bg-rose-500/10"],
+.light [class~="bg-rose-950/10"],
+.light [class~="bg-rose-950/20"] {
   background-color: rgb(254 226 226 / 0.72) !important;
 }
 
 .light [class~="bg-purple-500/10"],
-.light [class~="bg-violet-500/10"] {
+.light [class~="bg-purple-500/15"],
+.light [class~="bg-violet-500/10"],
+.light [class~="bg-violet-500/15"] {
   background-color: rgb(237 233 254 / 0.72) !important;
+}
+
+.light [class~="hover:bg-slate-950"]:hover,
+.light [class~="hover:bg-slate-900"]:hover,
+.light [class~="hover:bg-slate-800"]:hover,
+.light [class~="hover:bg-slate-700"]:hover,
+.light [class~="hover:bg-slate-900/70"]:hover,
+.light [class~="hover:bg-slate-900/80"]:hover,
+.light [class~="hover:bg-slate-800/70"]:hover,
+.light [class~="hover:bg-slate-800/80"]:hover {
+  background-color: rgb(226 232 240 / 0.72) !important;
+}
+
+.light [class~="hover:text-white"]:hover,
+.light [class~="hover:text-slate-50"]:hover,
+.light [class~="hover:text-slate-100"]:hover {
+  color: #0f172a !important;
+}
+
+.light [class~="focus:bg-slate-950"]:focus,
+.light [class~="focus:bg-slate-900"]:focus,
+.light [class~="focus:bg-slate-800"]:focus {
+  background-color: rgb(219 234 254 / 0.8) !important;
+}
+
+.light [class~="focus:text-white"]:focus,
+.light [class~="focus:text-slate-50"]:focus,
+.light [class~="focus:text-slate-100"]:focus {
+  color: #0f172a !important;
 }
 
 .light [data-radix-popper-content-wrapper] [class~="bg-slate-950"],

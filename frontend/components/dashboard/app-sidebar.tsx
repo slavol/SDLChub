@@ -18,11 +18,13 @@ import {
   LayoutDashboard,
   ListChecks,
   LogOut,
+  Menu,
   MessageSquareWarning,
   PlusCircle,
   Settings,
   ShieldCheck,
   Users,
+  X,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -84,6 +86,7 @@ export function AppSidebar({ methodology, role, projectName }: SidebarProps) {
   const [projects, setProjects] = useState<Project[]>([]);
   const [loadingProjects, setLoadingProjects] = useState(true);
   const [unreadNotifications, setUnreadNotifications] = useState(0);
+  const [mobileOpen, setMobileOpen] = useState(false);
 
   useEffect(() => {
     const loadProjects = async () => {
@@ -146,6 +149,10 @@ export function AppSidebar({ methodology, role, projectName }: SidebarProps) {
     }
   }, []);
 
+  useEffect(() => {
+    setMobileOpen(false);
+  }, [pathname]);
+
   const activeProject = useMemo(() => {
     if (!currentProject) return null;
 
@@ -205,8 +212,8 @@ export function AppSidebar({ methodology, role, projectName }: SidebarProps) {
 
   const avatarUrl = resolveMediaUrl(user?.avatar_url);
 
-  return (
-    <aside className="flex h-dvh w-[258px] shrink-0 flex-col border-r border-slate-800 bg-slate-950 text-slate-200">
+  const sidebarBody = (
+    <>
       <div className="shrink-0 border-b border-slate-800 px-3.5 py-3">
         <div className="flex items-center justify-between gap-3">
           <div className="flex min-w-0 items-center gap-3">
@@ -229,7 +236,7 @@ export function AppSidebar({ methodology, role, projectName }: SidebarProps) {
                 : "Notifications"
             }
             className={cn(
-              "relative flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border transition focus:outline-none focus:ring-2 focus:ring-blue-500/40",
+              "relative hidden h-9 w-9 shrink-0 items-center justify-center rounded-xl border transition focus:outline-none focus:ring-2 focus:ring-blue-500/40 md:flex",
               pathname.startsWith("/dashboard/notifications")
                 ? "border-blue-500/40 bg-blue-600 text-white shadow-lg shadow-blue-950/25"
                 : "border-slate-800 bg-slate-900/70 text-slate-400 hover:border-blue-500/35 hover:bg-slate-900 hover:text-white"
@@ -409,6 +416,74 @@ export function AppSidebar({ methodology, role, projectName }: SidebarProps) {
           Sign Out
         </Button>
       </div>
-    </aside>
+    </>
+  );
+
+  return (
+    <>
+      <header className="flex shrink-0 items-center gap-3 border-b border-slate-800 bg-slate-950 px-3 py-3 text-slate-200 md:hidden">
+        <Button
+          type="button"
+          variant="outline"
+          size="icon"
+          className="h-10 w-10 shrink-0 rounded-xl border-slate-800 bg-slate-900/70 text-slate-200 hover:bg-slate-900"
+          onClick={() => setMobileOpen(true)}
+          aria-label="Open navigation"
+        >
+          <Menu className="h-5 w-5" />
+        </Button>
+
+        <div className="flex min-w-0 flex-1 items-center gap-3">
+          <BrandMark className="h-9 w-9 shrink-0 rounded-xl" />
+          <div className="min-w-0">
+            <p className="truncate text-sm font-semibold text-white">SDLC Hub</p>
+            <p className="truncate text-xs text-slate-500">
+              {activeProjectName}
+            </p>
+          </div>
+        </div>
+
+        <Link
+          href="/dashboard/notifications"
+          className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-800 bg-slate-900/70 text-slate-400"
+          aria-label="Notifications"
+        >
+          <Bell className="h-4 w-4" />
+          {unreadNotifications > 0 && (
+            <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-blue-500 px-1.5 text-[10px] font-bold text-white ring-2 ring-slate-950">
+              {unreadNotifications > 99 ? "99+" : unreadNotifications}
+            </span>
+          )}
+        </Link>
+      </header>
+
+      {mobileOpen && (
+        <div className="fixed inset-0 z-50 md:hidden">
+          <button
+            type="button"
+            aria-label="Close navigation"
+            className="absolute inset-0 bg-slate-950/65 backdrop-blur-sm"
+            onClick={() => setMobileOpen(false)}
+          />
+          <aside className="relative flex h-dvh w-[min(21rem,calc(100vw-2rem))] flex-col border-r border-slate-800 bg-slate-950 text-slate-200 shadow-2xl shadow-slate-950/60">
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              className="absolute right-3 top-3 z-10 h-9 w-9 rounded-xl border-slate-800 bg-slate-900/80 text-slate-300 hover:bg-slate-900"
+              onClick={() => setMobileOpen(false)}
+              aria-label="Close navigation"
+            >
+              <X className="h-4 w-4" />
+            </Button>
+            {sidebarBody}
+          </aside>
+        </div>
+      )}
+
+      <aside className="hidden h-dvh w-[258px] shrink-0 flex-col border-r border-slate-800 bg-slate-950 text-slate-200 md:flex">
+        {sidebarBody}
+      </aside>
+    </>
   );
 }

@@ -34,6 +34,7 @@ import {
 } from "recharts";
 import { toast } from "sonner";
 
+import { WorkspaceLoadingSkeleton } from "@/components/dashboard/workspace-loading-skeleton";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -338,11 +339,7 @@ export default function ReportsPage() {
   const hasCombinedWipLimit = wipHistory.some((item) => item.limit !== null && item.limit !== undefined);
 
   if (loading) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-950 text-blue-400">
-        <Loader2 className="h-10 w-10 animate-spin" />
-      </div>
-    );
+    return <WorkspaceLoadingSkeleton metricCount={6} panelCount={3} withHeaderActions />;
   }
 
   if (!project || !report) {

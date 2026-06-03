@@ -22,6 +22,7 @@ import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { WorkspaceLoadingSkeleton } from "@/components/dashboard/workspace-loading-skeleton";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -80,6 +81,8 @@ const DEFAULT_ROLE_PERMISSIONS: Record<string, boolean> = {
   CALENDAR_DELETE: false,
 };
 
+const EMPTY_ONLINE_USER_IDS: number[] = [];
+
 function roleBadgeClass(role?: string | null) {
   if (role === "Project Admin") return "border-blue-500/30 bg-blue-500/10 text-blue-300";
   if (role?.includes("Owner") || role?.includes("Manager")) return "border-purple-500/30 bg-purple-500/10 text-purple-300";
@@ -125,7 +128,7 @@ export default function TeamPage() {
   const [confirmAction, setConfirmAction] = useState<TeamConfirmAction | null>(null);
   const [confirmLoading, setConfirmLoading] = useState(false);
   const onlineUserIds = usePresenceStore((state) =>
-    projectId ? state.onlineByProject[projectId] || [] : []
+    projectId ? state.onlineByProject[projectId] || EMPTY_ONLINE_USER_IDS : EMPTY_ONLINE_USER_IDS
   );
 
   const onlineUserIdSet = useMemo(() => new Set(onlineUserIds), [onlineUserIds]);
@@ -646,11 +649,7 @@ export default function TeamPage() {
   };
 
   if (loading) {
-    return (
-      <div className="flex h-full items-center justify-center bg-slate-950 text-blue-500">
-        <Loader2 className="h-10 w-10 animate-spin" />
-      </div>
-    );
+    return <WorkspaceLoadingSkeleton metricCount={6} panelCount={2} tableRows={4} withSidePanel />;
   }
 
   if (!projectId) {

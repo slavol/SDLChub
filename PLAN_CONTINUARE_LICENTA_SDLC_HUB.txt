@@ -3169,6 +3169,523 @@ Verificari manuale recomandate dupa batch BJ:
    - ruleaza `npm exec -- playwright install chromium` doar cand acceptam sa instalam browserul Playwright local.
    - apoi se pot face screenshots autentificate cu `--load-storage`.
 
+Batch BK - Playwright instalat, verificare vizuala Light/Dark si responsive dashboard Codex 3 iunie 2026
+Context:
+- utilizatorul a cerut sa folosim Playwright pentru verificari UI/UX reale, deoarece Light/Dark in browser parea neschimbat sau inconsistent.
+- prima incercare cu Playwright a esuat pentru ca browserul nu era instalat, apoi pentru ca lipseau librarii native Chromium.
+- mobile dashboard era rupt: sidebarul lateral ocupa aproape toata latimea si impingea continutul intr-o coloana foarte ingusta.
+
+Implementat:
+- frontend/package.json si frontend/package-lock.json:
+  - instalat `@playwright/test` ca dev dependency.
+  - adaugat script `npm run ui:screenshot` pentru capturi rapide cu Playwright.
+- Mediu local:
+  - instalat Chromium Playwright.
+  - instalate dependinte native necesare pentru Chromium:
+    - `libnspr4`
+    - `libnss3`
+    - `libasound2t64`
+  - dupa instalare, capturile Playwright ruleaza fara `LD_LIBRARY_PATH` temporar.
+- frontend/app/dashboard/layout.tsx:
+  - layoutul dashboard este acum `flex-col` pe mobile si `flex-row` de la `md`.
+  - `main` are `min-h-0`, astfel scrollul intern functioneaza corect.
+- frontend/components/dashboard/app-sidebar.tsx:
+  - sidebarul devine full-width si limitat la `56dvh` pe mobile.
+  - de la `md` revine la sidebar lateral fix de `258px`.
+  - efect: continutul dashboard nu mai este taiat lateral pe telefoane.
+
+Verificari Playwright batch BK:
+- Capturi Light desktop generate:
+  - `/tmp/sdlc-dashboard-light.png`
+  - `/tmp/sdlc-admin-light.png`
+  - `/tmp/sdlc-workload-light.png`
+  - `/tmp/sdlc-reports-light.png`
+  - `/tmp/sdlc-account-light.png`
+- Capturi Dark desktop generate:
+  - `/tmp/sdlc-dashboard-dark.png`
+  - `/tmp/sdlc-admin-dark.png`
+- Capturi mobile Light generate:
+  - `/tmp/sdlc-dashboard-mobile-light.png` - confirma bugul initial.
+  - `/tmp/sdlc-dashboard-mobile-light-v2.png` - confirma ca nu mai este taiat lateral.
+  - `/tmp/sdlc-dashboard-mobile-light-v3.png` - confirma sidebar mai compact pe mobile.
+- Observatie:
+  - contururile punctate galbene vazute in `view_image` nu sunt CSS real al aplicatiei; verificarea computed style prin Playwright arata `outline-style: none`.
+
+Verificari batch BK:
+- `npm run lint`: OK.
+- `npm run build`: OK, ramane warning-ul existent Next `--localstorage-file` fara path valid.
+
+Fisiere cheie batch BK:
+- frontend/package.json
+- frontend/package-lock.json
+- frontend/app/dashboard/layout.tsx
+- frontend/components/dashboard/app-sidebar.tsx
+- PLAN_CONTINUARE_LICENTA_SDLC_HUB.txt
+
+Ce ramane etapizat pentru UI/UX:
+1. Responsive complet pe mobile pentru toate paginile mari:
+   - Activity
+   - Tasks
+   - Task detail
+   - Board
+   - Backlog
+   - Team
+   - Settings
+   - DevOps
+   - Reports
+   - Workload
+   - Global Admin Console
+2. Light mode polish punctual pe paginile care mai au clase dark hardcodate si nu sunt acoperite de override-ul global.
+3. Global Admin:
+   - verificare completa Light/Dark/Mobile cu Playwright.
+   - revalidare scroll spy sidebar.
+   - verificare Support Desk cu multe tichete si comentarii.
+4. Creare set de teste/screenshot-uri Playwright organizat:
+   - storage state demo.
+   - capturi desktop/mobile Light/Dark.
+   - eventual prag vizual manual, nu E2E complet.
+
+Batch BL - Mobile hamburger sidebar si Light polish pentru afisaje ramase Codex 3 iunie 2026
+Context:
+- utilizatorul a observat ca sidebarul pe mobile ocupa in continuare prea mult ecran si trebuie ascuns intr-un meniu hamburger.
+- screenshots Light aratau inca zone cu fundaluri gri/dark:
+  - AI Risk Radar si Activity headers.
+  - Calendar month grid.
+  - Board cards.
+  - Task detail rich editor toolbar.
+  - Backlog sprint planning.
+  - Settings danger/governance/AI cards.
+
+Implementat:
+- frontend/components/dashboard/app-sidebar.tsx:
+  - mobile sidebarul nu mai este afisat inline.
+  - adaugat mobile header compact cu:
+    - hamburger menu.
+    - brand mark.
+    - numele proiectului curent.
+    - buton notificari.
+  - la tap pe hamburger se deschide un drawer lateral cu overlay si buton de inchidere.
+  - la schimbarea rutei drawerul se inchide automat.
+  - desktop pastreaza sidebarul clasic fix.
+- frontend/app/dashboard/layout.tsx:
+  - ramane layout responsive `flex-col` pe mobile si `md:flex-row` pentru desktop.
+- frontend/app/globals.css:
+  - extins override-ul Light pentru opacitati Tailwind care lipseau:
+    - `bg-slate-950/20..95`
+    - `bg-slate-900/20..95`
+    - `bg-slate-800/10..95`
+    - `bg-slate-700/20..90`
+  - adaugat tint Light pentru zone destructive:
+    - `bg-red-900/20`
+    - `bg-red-900/40`
+    - `bg-red-950/10`
+    - `bg-red-950/20`
+    - `bg-rose-950/10`
+    - `bg-rose-950/20`
+  - efect: boardul, calendarul, headers de carduri, task detail si danger zone nu mai raman gri/dark in Light.
+
+Verificari Playwright batch BL:
+- Mobile dashboard inchis:
+  - `/tmp/sdlc-mobile-drawer-light.png`
+  - confirma header compact + continut vizibil imediat.
+- Mobile drawer deschis:
+  - `/tmp/sdlc-mobile-drawer-open-light.png`
+  - confirma navigatie in drawer, overlay si buton close.
+- Desktop Light:
+  - `/tmp/sdlc-board-light-v2.png`
+  - `/tmp/sdlc-calendar-light-v2.png`
+  - `/tmp/sdlc-dashboard-light-v4.png`
+  - `/tmp/sdlc-task-detail-light-v2.png`
+  - `/tmp/sdlc-backlog-light-v2.png`
+  - `/tmp/sdlc-settings-light-v2.png`
+
+Verificari batch BL:
+- `npm run lint`: OK.
+- `npm run build`: OK, ramane warning-ul existent Next `--localstorage-file` fara path valid.
+
+Fisiere cheie batch BL:
+- frontend/components/dashboard/app-sidebar.tsx
+- frontend/app/dashboard/layout.tsx
+- frontend/app/globals.css
+- PLAN_CONTINUARE_LICENTA_SDLC_HUB.txt
+
+Ce ramane dupa batch BL:
+1. Verificare Light/Dark pe Global Admin Console cu aceeasi disciplina Playwright.
+2. Verificare responsive mobile pentru pagini complexe:
+   - Activity
+   - Tasks
+   - Task detail
+   - Board
+   - Backlog
+   - Calendar
+   - Settings
+   - DevOps
+   - Reports
+   - Workload
+3. Daca mai apar zone dark in Light, preferabil se repara punctual in componenta, nu doar prin override global.
+
+Batch BM - Fix drawer notificari, hover Light, Project AI provider si Incident Focus Codex 3 iunie 2026
+Context:
+- utilizatorul a raportat urmatoarele probleme vizuale/UX:
+  - in drawer-ul mobile, butonul `X` statea peste butonul de notificari reutilizat din headerul sidebarului.
+  - hover/select in Light arata dark/negru pe itemii din sidebar.
+  - Project AI provider din Settings avea text violet aproape invizibil in Light.
+  - Incident Focus din Global Admin nu ducea la ticket/Support Desk si nu arata selectie clara.
+  - unele pagini mobile trebuiau reverificate.
+
+Implementat:
+- frontend/components/dashboard/app-sidebar.tsx:
+  - butonul de notificari din headerul sidebarului este ascuns in drawer-ul mobile (`hidden md:flex`).
+  - pe mobile ramane doar butonul de notificari din headerul compact, deci `X` nu mai sta peste alt control.
+- frontend/app/globals.css:
+  - adaugat suport Light pentru `text-violet-100` si variantele cu opacitate.
+  - adaugat suport Light pentru `bg-violet-500/15` si `bg-purple-500/15`.
+  - adaugate override-uri Light pentru hover/focus dark:
+    - `hover:bg-slate-950/900/800/700`
+    - `hover:text-white`
+    - `focus:bg-slate-950/900/800`
+    - `focus:text-white`
+  - efect: hoverul pe itemii de navigatie nu mai devine dark/negru in Light.
+- frontend/app/admin/page.tsx:
+  - adaugata functia `focusSupportTicket`.
+  - click pe `Open desk` duce la sectiunea Support Desk.
+  - click pe un incident:
+    - seteaza ticketul selectat.
+    - reseteaza filtrul la `ALL`, ca ticketul sa fie vizibil.
+    - actualizeaza hash-ul la `#support`.
+    - face scroll in containerul admin catre Support Desk.
+  - incidentul selectat are highlight vizual in lista Incident Focus.
+
+Verificari Playwright batch BM:
+- Mobile drawer hover:
+  - `/tmp/sdlc-mobile-drawer-hover-light.png`
+  - Workload hover ramane light, nu dark/negru.
+- Settings / Project AI provider:
+  - `/tmp/sdlc-settings-ai-light-v3.png`
+  - textul violet este lizibil in Light.
+- Admin / Incident Focus:
+  - `/tmp/sdlc-admin-incident-click-light.png`
+  - click pe incident seteaza `hash="#support"` si scrollul ajunge la Support Desk.
+- Mobile overflow check:
+  - verificate rutele:
+    - `/dashboard`
+    - `/dashboard/tasks`
+    - `/dashboard/activity`
+    - `/dashboard/tasks/1`
+    - `/dashboard/board`
+    - `/dashboard/backlog`
+    - `/dashboard/calendar`
+    - `/dashboard/settings`
+    - `/dashboard/devops`
+    - `/dashboard/reports`
+    - `/dashboard/workload`
+    - `/admin`
+  - rezultat: overflow orizontal `0` pe viewport 390px.
+- Capturi mobile generate:
+  - `/tmp/sdlc-mobile-tasks-light.png`
+  - `/tmp/sdlc-mobile-activity-light.png`
+  - `/tmp/sdlc-mobile-task-detail-light.png`
+  - `/tmp/sdlc-mobile-board-light.png`
+  - `/tmp/sdlc-mobile-settings-light.png`
+  - `/tmp/sdlc-mobile-admin-light.png`
+
+Verificari batch BM:
+- `npm run lint`: OK.
+- `npm run build`: OK, ramane warning-ul existent Next `--localstorage-file` fara path valid.
+
+Fisiere cheie batch BM:
+- frontend/components/dashboard/app-sidebar.tsx
+- frontend/app/globals.css
+- frontend/app/admin/page.tsx
+- PLAN_CONTINUARE_LICENTA_SDLC_HUB.txt
+
+Ce ramane dupa batch BM:
+1. Testare manuala pe device real/emulator pentru scroll vertical lung, nu doar first viewport.
+2. Polish punctual pe pagini mobile daca apar probleme mai jos in pagina:
+   - Board lane navigation.
+   - Calendar agenda/filters.
+   - Task detail comments/audit log.
+   - Settings sectiunile DevOps/WIP/Permissions mai jos in pagina.
+3. Dupa finalizarea polish-ului vizual, revenire la functionalitatile incomplete.
+
+Batch BN - Audit vizual automat si responsive cleanup Codex 3 iunie 2026
+Context:
+- utilizatorul a cerut sa prindem bug-urile vizuale inainte de:
+  - skeleton loaders la incarcare.
+  - animatie la deschiderea/inchiderea meniului mobile.
+  - optimizari de performanta, inclusiv input lag la cautari.
+- era nevoie de un audit repetabil, nu doar verificare manuala pe screenshot-uri.
+
+Implementat:
+- scripts/visual_audit_playwright.js:
+  - script nou Playwright pentru audit UI pe light/dark si mobile/desktop.
+  - rute acoperite:
+    - `/dashboard`
+    - `/dashboard/tasks`
+    - `/dashboard/activity`
+    - `/dashboard/tasks/1`
+    - `/dashboard/board`
+    - `/dashboard/backlog`
+    - `/dashboard/calendar`
+    - `/dashboard/settings`
+    - `/dashboard/devops`
+    - `/dashboard/reports`
+    - `/dashboard/workload`
+    - `/dashboard/team`
+    - `/dashboard/support`
+    - `/dashboard/documentation`
+    - `/admin`
+  - genereaza screenshot-uri in `/tmp/sdlc-visual-audit`.
+  - scrie raport JSON in `/tmp/sdlc-visual-audit/report.json`.
+  - verifica:
+    - overflow orizontal document.
+    - elemente iesite din viewport.
+    - request failures.
+    - console errors.
+    - suprafete dark suspecte in Light.
+  - ignoreaza false positive-uri uzuale:
+    - fundaluri transparente.
+    - scroll orizontal intentionat in mobile pentru zone dedicate.
+- frontend/app/dashboard/board/page.tsx:
+  - coloanele Kanban nu mai forteaza `360px` pe desktop.
+  - coloanele sunt mai compacte pe mobile si flexibile pe desktop.
+  - board-ul ramane scrollabil orizontal acolo unde este normal, dar nu mai impinge layout-ul desktop.
+- frontend/app/dashboard/devops/page.tsx:
+  - adaugat `min-w-0`/latimi fluide la cardurile de repository si webhook.
+  - panourile "How this works" si "Webhook endpoint" nu mai forteaza latime desktop pe mobile.
+- frontend/app/admin/page.tsx:
+  - zonele Operations Pulse, Incident Focus si Support Desk au primit `min-w-0`, `overflow-hidden` si grid-uri mobile corecte.
+  - Admin mobile nu mai are panouri late care ies din viewport mai jos in pagina.
+- frontend/app/dashboard/workload/page.tsx:
+  - containerul principal este `w-full min-w-0 overflow-x-hidden`.
+  - cardurile membrilor sunt `min-w-0 max-w-full overflow-hidden`.
+  - Workload mobile nu mai produce overflow pe cardurile lungi.
+- frontend/app/dashboard/documentation/page.tsx:
+  - grid-ul principal foloseste `grid-cols-[minmax(0,1fr)]` pe mobile.
+  - Pages/Version history/editor preview au `min-w-0 max-w-full overflow-hidden`.
+  - Project Wiki nu mai este impins in afara viewportului de continutul editorului/preview-ului.
+- frontend/app/dashboard/team/page.tsx:
+  - selectorul Zustand pentru presence foloseste `EMPTY_ONLINE_USER_IDS`.
+  - a disparut warning-ul React: `The result of getSnapshot should be cached to avoid an infinite loop`.
+- frontend/components/ui/progress.tsx:
+  - Progress indicator mutat de la `translateX(-...)` la `scaleX(...)`.
+  - elimina elementul raportat in afara viewportului fara sa schimbe aspectul vizual.
+- frontend/app/globals.css:
+  - focus ring global albastru discret pentru controale interactive.
+  - evita outline-ul default punctat/galbui care aparea urat in unele screenshot-uri.
+
+Verificari Playwright batch BN:
+- audit complet:
+  - comanda:
+    - `NODE_PATH=frontend/node_modules SDLC_BASE_URL=http://127.0.0.1:3000 node scripts/visual_audit_playwright.js`
+  - rezultat final:
+    - `findings: []`
+  - raport:
+    - `/tmp/sdlc-visual-audit/report.json`
+  - screenshot-uri principale:
+    - `/tmp/sdlc-visual-audit/light-mobile-dashboard-documentation.png`
+    - `/tmp/sdlc-visual-audit/light-mobile-dashboard-workload.png`
+    - `/tmp/sdlc-visual-audit/light-mobile-admin.png`
+    - `/tmp/sdlc-visual-audit/light-desktop-dashboard-board.png`
+    - `/tmp/sdlc-visual-audit/dark-desktop-dashboard-board.png`
+
+Verificari batch BN:
+- `npm run lint`: OK.
+- `npm run build`: OK.
+- ramane warning-ul existent Next:
+  - `--localstorage-file was provided without a valid path`.
+  - nu blocheaza build-ul, dar merita investigat la polish tehnic.
+
+Fisiere cheie batch BN:
+- scripts/visual_audit_playwright.js
+- frontend/app/dashboard/board/page.tsx
+- frontend/app/dashboard/devops/page.tsx
+- frontend/app/admin/page.tsx
+- frontend/app/dashboard/workload/page.tsx
+- frontend/app/dashboard/documentation/page.tsx
+- frontend/app/dashboard/team/page.tsx
+- frontend/components/ui/progress.tsx
+- frontend/app/globals.css
+- PLAN_CONTINUARE_LICENTA_SDLC_HUB.txt
+
+Ce ramane dupa batch BN:
+1. Skeleton loaders:
+   - Dashboard.
+   - Tasks.
+   - Task detail.
+   - Board.
+   - Backlog.
+   - Calendar.
+   - Workload.
+   - Reports.
+   - Documentation.
+   - DevOps.
+   - Admin.
+2. Animatie mobile drawer:
+   - intrare/iesire meniu hamburger.
+   - overlay fade.
+   - inchidere fluida la click pe link sau backdrop.
+3. Performance pass:
+   - cautari cu debounce/useDeferredValue.
+   - liste lungi: reducere re-render si eventual virtualizare unde doare.
+   - memoizare filtre costisitoare.
+   - verificare request-uri duplicate pe pagini.
+4. Investigare warning build:
+   - `--localstorage-file was provided without a valid path`.
+5. Continuat verificari UI/UX manuale dupa fiecare batch, folosind si scriptul de audit.
+
+
+6.19. BATCH BO - Account cleanup, SDLC checklist removal si skeleton loaders initiale
+
+Context cerere:
+- Eliminare card "Account notes" din Account Settings, pentru ca nu aduce valoare vizuala/functionala.
+- Eliminare functionalitate "SDLC checklist" din Task Detail si Create Issue.
+- Continuare cu urmatorul pas logic: stari de incarcare mai bune prin skeleton loaders.
+
+Implementat:
+- frontend/app/dashboard/account/page.tsx:
+  - eliminat complet cardul "Account notes".
+  - panoul de securitate ocupa acum latimea completa a grid-ului de jos.
+  - adaugat skeleton initial pentru pagina Account:
+    - header profil.
+    - metrici cont.
+    - carduri profile/projects.
+    - zona sessions/security log.
+- frontend/components/dashboard/account-security-panel.tsx:
+  - panoul este impartit in grid modern:
+    - Active sessions: 7 coloane pe desktop.
+    - Security log: 5 coloane pe desktop.
+  - inlocuit textele "Loading sessions..." / "Loading security log..." cu skeleton cards.
+- frontend/app/dashboard/tasks/[taskId]/page.tsx:
+  - eliminat constanta `SDLC_CHECKLIST`.
+  - eliminat handler-ul de aplicare checklist SDLC.
+  - eliminat butonul "SDLC checklist" din header-ul Subtasks.
+  - texte schimbate din "checklist" in "subtasks" acolo unde era vorba de subtasks reale.
+  - adaugat skeleton initial pentru Task Detail:
+    - header task.
+    - coloana principala.
+    - properties/sidebar.
+- frontend/components/dashboard/create-task-dialog.tsx:
+  - eliminat constanta `SDLC_CHECKLIST`.
+  - eliminat state-ul `templateSubtasks`.
+  - eliminat handler-ul `handleUseSdlcChecklist`.
+  - eliminat blocul UI "SDLC checklist".
+  - ramas doar fluxul corect: subtasks sugerate de AI din Spec Refiner.
+- frontend/components/ui/skeleton.tsx:
+  - adaugat component reutilizabil `Skeleton`.
+  - suporta light/dark prin clase dedicate:
+    - `bg-slate-200/80`
+    - `dark:bg-slate-800/75`
+- frontend/components/dashboard/workspace-loading-skeleton.tsx:
+  - adaugat skeleton comun pentru pagini mari de workspace.
+  - variante incluse:
+    - header + metric cards + panels.
+    - table rows.
+    - side panel.
+    - board columns skeleton.
+- frontend/app/dashboard/tasks/page.tsx:
+  - adaugat skeleton initial pentru Tasks List:
+    - hero.
+    - metrici.
+    - filtre.
+    - randuri tabel/lista.
+- frontend/app/dashboard/page.tsx:
+  - adaugat skeleton initial pentru Dashboard:
+    - hero.
+    - metrici.
+    - Delivery Signals.
+    - Work Distribution / Activity area.
+- frontend/app/dashboard/activity/page.tsx:
+  - adaugat skeleton initial pentru Activity:
+    - hero.
+    - metrici.
+    - filters column.
+    - timeline cards.
+- frontend/app/dashboard/layout.tsx:
+  - spinner-ul initial al dashboard shell-ului a fost inlocuit cu un skeleton de layout:
+    - sidebar placeholder pe desktop.
+    - content placeholder.
+- frontend/app/dashboard/board/page.tsx:
+  - loading-ul coloanelor Board foloseste `BoardLoadingSkeleton`.
+  - montarea initiala nu mai intoarce `null`; afiseaza skeleton de board.
+- frontend/app/dashboard/workload/page.tsx:
+  - loading-ul initial foloseste skeleton comun cu zona laterala.
+- frontend/app/dashboard/reports/page.tsx:
+  - loading-ul initial foloseste skeleton comun cu metrici si panouri grafice.
+- frontend/app/dashboard/calendar/page.tsx:
+  - loading-ul initial foloseste skeleton comun pentru calendar/events/side panel.
+- frontend/app/dashboard/devops/page.tsx:
+  - loading-ul initial foloseste skeleton comun pentru repository/config/event panels.
+- frontend/app/dashboard/backlog/page.tsx:
+  - loading-ul initial foloseste skeleton comun cu randuri de planning/lista.
+- frontend/app/dashboard/documentation/page.tsx:
+  - loading-ul initial foloseste skeleton comun cu side panel.
+- frontend/app/dashboard/team/page.tsx:
+  - loading-ul initial foloseste skeleton comun cu metrici, panouri si randuri.
+- frontend/app/dashboard/support/page.tsx:
+  - lista de support tickets afiseaza skeleton cards cat timp se incarca.
+- frontend/app/dashboard/notifications/page.tsx:
+  - loading-ul initial foloseste skeleton comun cu lista.
+
+Verificari batch BO:
+- `rg` pentru ramasite:
+  - `SDLC checklist`
+  - `SDLC_CHECKLIST`
+  - `handleApplySdlcChecklist`
+  - `handleUseSdlcChecklist`
+  - `Account notes`
+  - rezultat: fara match-uri in fisierele vizate.
+- `npm run lint`: OK.
+- `npm run build`: OK.
+- Playwright visual audit:
+  - comanda:
+    - `NODE_PATH=frontend/node_modules SDLC_BASE_URL=http://127.0.0.1:3000 node scripts/visual_audit_playwright.js`
+  - rezultat:
+    - `findings: []`
+  - raport:
+    - `/tmp/sdlc-visual-audit/report.json`
+
+Fisiere cheie batch BO:
+- frontend/components/ui/skeleton.tsx
+- frontend/components/dashboard/workspace-loading-skeleton.tsx
+- frontend/app/dashboard/layout.tsx
+- frontend/app/dashboard/page.tsx
+- frontend/app/dashboard/tasks/page.tsx
+- frontend/app/dashboard/tasks/[taskId]/page.tsx
+- frontend/components/dashboard/create-task-dialog.tsx
+- frontend/app/dashboard/account/page.tsx
+- frontend/components/dashboard/account-security-panel.tsx
+- frontend/app/dashboard/activity/page.tsx
+- frontend/app/dashboard/board/page.tsx
+- frontend/app/dashboard/workload/page.tsx
+- frontend/app/dashboard/reports/page.tsx
+- frontend/app/dashboard/calendar/page.tsx
+- frontend/app/dashboard/devops/page.tsx
+- frontend/app/dashboard/backlog/page.tsx
+- frontend/app/dashboard/documentation/page.tsx
+- frontend/app/dashboard/team/page.tsx
+- frontend/app/dashboard/support/page.tsx
+- frontend/app/dashboard/notifications/page.tsx
+- PLAN_CONTINUARE_LICENTA_SDLC_HUB.txt
+
+Ce ramane imediat dupa batch BO:
+1. Admin console loading polish:
+   - consola Admin nu are inca un gate de loading global.
+   - de adaugat skeleton granular pe metrici/liste cand `loading === true`, fara sa stricam datele deja afisate.
+2. Animatie mobile drawer:
+   - intrare/iesire.
+   - overlay fade.
+   - inchidere fluida la click pe link/backdrop.
+3. Performance pass:
+   - debounce/useDeferredValue pentru cautari.
+   - reducere re-render la liste lungi.
+   - verificare request-uri duplicate.
+   - eventual virtualizare pentru listele foarte lungi.
+4. Investigare warning build:
+   - `--localstorage-file was provided without a valid path`.
+5. UI/UX bug hunting:
+   - continuat cu screenshots manuale + scriptul Playwright.
+
 
 7. OBSERVATII IMPORTANTE
 

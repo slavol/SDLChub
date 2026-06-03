@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
+import { WorkspaceLoadingSkeleton } from "@/components/dashboard/workspace-loading-skeleton";
 import { UserAvatar, resolveMediaUrl } from "@/components/user-avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -232,7 +233,7 @@ function MemberWorkloadCard({
     <Card
       ref={setNodeRef}
       className={cn(
-        "border-slate-800 bg-slate-900/70 shadow-2xl shadow-slate-950/20 transition",
+        "min-w-0 max-w-full overflow-hidden border-slate-800 bg-slate-900/70 shadow-2xl shadow-slate-950/20 transition",
         isOver && "border-blue-400/60 bg-blue-500/10"
       )}
     >
@@ -536,11 +537,7 @@ export default function WorkloadPage() {
   };
 
   if (loading) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-950 text-blue-400">
-        <Loader2 className="h-10 w-10 animate-spin" />
-      </div>
-    );
+    return <WorkspaceLoadingSkeleton metricCount={5} panelCount={1} tableRows={0} withSidePanel />;
   }
 
   if (!project || !workload) {
@@ -594,7 +591,7 @@ export default function WorkloadPage() {
   ];
 
   return (
-    <div className="min-h-screen bg-slate-950 px-6 py-6 text-slate-100 lg:px-10">
+    <div className="min-h-screen w-full min-w-0 overflow-x-hidden bg-slate-950 px-4 py-6 text-slate-100 sm:px-6 lg:px-10">
       <div className="mb-8 flex flex-col justify-between gap-5 lg:flex-row lg:items-center">
         <div>
           <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-blue-500/20 bg-blue-500/10 px-3 py-1 text-xs font-medium text-blue-200">
@@ -752,7 +749,7 @@ export default function WorkloadPage() {
           </div>
         )}
 
-        <div className="grid gap-5 xl:grid-cols-2">
+        <div className="grid min-w-0 gap-5 xl:grid-cols-2">
           {sortedMembers.map((member) => (
             <MemberWorkloadCard
               key={member.user_id}

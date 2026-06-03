@@ -12,7 +12,6 @@ import {
   Filter,
   GitBranch,
   History,
-  Loader2,
   MessageSquareText,
   RefreshCcw,
   Search,
@@ -26,6 +25,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
 import { AuditChangeSummary, formatAuditFieldLabel } from "@/components/dashboard/audit-log-event";
 import {
   Select,
@@ -264,6 +264,68 @@ function ActivityItem({
   );
 }
 
+function ActivityPageSkeleton() {
+  return (
+    <div className="mx-auto w-full max-w-7xl space-y-7 px-4 py-5 text-slate-50 sm:px-6 md:p-8">
+      <section className="overflow-hidden rounded-3xl border border-slate-800 bg-slate-900/80 shadow-2xl shadow-slate-950/30">
+        <div className="border-b border-slate-800 bg-slate-950/45 px-6 py-5">
+          <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+            <div className="space-y-3">
+              <div className="flex gap-2">
+                <Skeleton className="h-6 w-16 rounded-full" />
+                <Skeleton className="h-6 w-28 rounded-full" />
+                <Skeleton className="h-6 w-28 rounded-full" />
+              </div>
+              <Skeleton className="h-11 w-72 max-w-full" />
+              <Skeleton className="h-5 w-[32rem] max-w-full" />
+            </div>
+            <div className="flex gap-2">
+              <Skeleton className="h-10 w-32 rounded-xl" />
+              <Skeleton className="h-10 w-32 rounded-xl" />
+            </div>
+          </div>
+        </div>
+
+        <div className="grid gap-4 p-5 md:grid-cols-2 xl:grid-cols-4">
+          {Array.from({ length: 4 }).map((_, index) => (
+            <Skeleton key={index} className="h-28 rounded-2xl" />
+          ))}
+        </div>
+      </section>
+
+      <section className="grid min-w-0 gap-6 xl:grid-cols-[21rem_minmax(0,1fr)]">
+        <Card className="border-slate-800 bg-slate-900/80 text-slate-50">
+          <CardHeader className="border-b border-slate-800/80">
+            <Skeleton className="h-6 w-32" />
+            <Skeleton className="h-4 w-56 max-w-full" />
+          </CardHeader>
+          <CardContent className="space-y-4 p-5">
+            <Skeleton className="h-11 rounded-xl" />
+            {Array.from({ length: 5 }).map((_, index) => (
+              <Skeleton key={index} className="h-16 rounded-2xl" />
+            ))}
+          </CardContent>
+        </Card>
+
+        <Card className="min-w-0 border-slate-800 bg-slate-900/80 text-slate-50">
+          <CardHeader className="border-b border-slate-800/80">
+            <Skeleton className="h-6 w-32" />
+            <Skeleton className="h-4 w-56 max-w-full" />
+          </CardHeader>
+          <CardContent className="space-y-5 p-5">
+            {Array.from({ length: 6 }).map((_, index) => (
+              <div key={index} className="flex min-w-0 gap-4">
+                <Skeleton className="h-12 w-12 shrink-0 rounded-full" />
+                <Skeleton className="h-28 min-w-0 flex-1 rounded-2xl" />
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      </section>
+    </div>
+  );
+}
+
 export default function ActivityPage() {
   const { currentProject, setCurrentProject } = useProjectStore();
 
@@ -414,11 +476,7 @@ export default function ActivityPage() {
   };
 
   if (loading) {
-    return (
-      <div className="flex h-full items-center justify-center text-blue-500">
-        <Loader2 className="h-10 w-10 animate-spin" />
-      </div>
-    );
+    return <ActivityPageSkeleton />;
   }
 
   if (!project) {

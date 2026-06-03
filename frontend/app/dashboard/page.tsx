@@ -16,7 +16,6 @@ import {
   GitPullRequest,
   KanbanSquare,
   Layers3,
-  Loader2,
   ShieldCheck,
   Sparkles,
   Target,
@@ -27,6 +26,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { AuditChangeSummary, formatAuditActionLabel } from "@/components/dashboard/audit-log-event";
 import { useRealtimeEvent } from "@/hooks/use-realtime-event";
 import {
@@ -291,6 +291,77 @@ function ActivityRow({ item }: { item: DashboardRecentActivity }) {
   );
 }
 
+function DashboardPageSkeleton() {
+  return (
+    <div className="mx-auto w-full max-w-7xl space-y-7 px-4 py-5 text-slate-50 sm:px-6 md:p-8">
+      <section className="overflow-hidden rounded-3xl border border-slate-800 bg-slate-900/80 shadow-2xl shadow-slate-950/30">
+        <div className="border-b border-slate-800 bg-slate-950/45 px-6 py-5">
+          <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+            <div className="space-y-3">
+              <div className="flex gap-2">
+                <Skeleton className="h-6 w-16 rounded-full" />
+                <Skeleton className="h-6 w-24 rounded-full" />
+                <Skeleton className="h-6 w-24 rounded-full" />
+              </div>
+              <Skeleton className="h-11 w-72 max-w-full" />
+              <Skeleton className="h-5 w-[34rem] max-w-full" />
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Skeleton className="h-10 w-28 rounded-xl" />
+              <Skeleton className="h-10 w-28 rounded-xl" />
+              <Skeleton className="h-10 w-36 rounded-xl" />
+            </div>
+          </div>
+        </div>
+
+        <div className="grid gap-4 p-5 md:grid-cols-2 xl:grid-cols-4">
+          {Array.from({ length: 4 }).map((_, index) => (
+            <Skeleton key={index} className="h-36 rounded-2xl" />
+          ))}
+        </div>
+      </section>
+
+      <section className="rounded-3xl border border-slate-800 bg-slate-900/80">
+        <div className="border-b border-slate-800 p-5">
+          <Skeleton className="h-7 w-44" />
+          <Skeleton className="mt-2 h-4 w-72 max-w-full" />
+        </div>
+        <div className="grid gap-4 p-5 md:grid-cols-2 xl:grid-cols-3">
+          {Array.from({ length: 6 }).map((_, index) => (
+            <Skeleton key={index} className="h-24 rounded-2xl" />
+          ))}
+        </div>
+      </section>
+
+      <section className="grid gap-6 xl:grid-cols-[minmax(0,1.15fr)_minmax(22rem,0.85fr)]">
+        <Card className="border-slate-800 bg-slate-900/80 text-slate-50">
+          <CardHeader className="border-b border-slate-800/80">
+            <Skeleton className="h-7 w-48" />
+            <Skeleton className="h-4 w-64 max-w-full" />
+          </CardHeader>
+          <CardContent className="space-y-4 p-5">
+            {Array.from({ length: 4 }).map((_, index) => (
+              <Skeleton key={index} className="h-12 rounded-xl" />
+            ))}
+          </CardContent>
+        </Card>
+
+        <Card className="border-slate-800 bg-slate-900/80 text-slate-50">
+          <CardHeader className="border-b border-slate-800/80">
+            <Skeleton className="h-7 w-32" />
+            <Skeleton className="h-4 w-56 max-w-full" />
+          </CardHeader>
+          <CardContent className="space-y-3 p-5">
+            {Array.from({ length: 4 }).map((_, index) => (
+              <Skeleton key={index} className="h-24 rounded-2xl" />
+            ))}
+          </CardContent>
+        </Card>
+      </section>
+    </div>
+  );
+}
+
 export default function DashboardPage() {
   const router = useRouter();
   const currentUser = useAuthStore((state) => state.user);
@@ -487,11 +558,7 @@ export default function DashboardPage() {
   ];
 
   if (loading) {
-    return (
-      <div className="flex h-full items-center justify-center text-blue-500">
-        <Loader2 className="h-10 w-10 animate-spin" />
-      </div>
-    );
+    return <DashboardPageSkeleton />;
   }
 
   if (!project || !dashboard) {
