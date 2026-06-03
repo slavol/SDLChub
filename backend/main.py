@@ -55,26 +55,60 @@ def _get_request_user_id(request: Request) -> int | None:
     return int(user_id) if user_id is not None else None
 
 
+def _build_error_detail(request: Request, exc: Exception | None = None) -> str:
+    detail = {
+        "path": request.url.path,
+        "query_keys": sorted(request.query_params.keys())[:12],
+        "client_host": request.client.host if request.client else None,
+        "user_agent": request.headers.get("user-agent"),
+        "referer": request.headers.get("referer"),
+        "content_type": request.headers.get("content-type"),
+    }
+    if exc:
+        detail["exception"] = exc.__class__.__name__
+        detail["message"] = str(exc)[:1000]
+
+    return json.dumps(detail, ensure_ascii=False)
+
+
+def _record_http_error(
+    request: Request,
+    status_code: int,
+    detail: str | None = None,
+) -> None:
+    db = SessionLocal()
+    try:
+        db.add(
+            HttpErrorLog(
+                method=request.method,
+                path=request.url.path,
+                status_code=status_code,
+                user_id=_get_request_user_id(request),
+                detail=detail,
+            )
+        )
+        db.commit()
+    except Exception:
+        db.rollback()
+    finally:
+        db.close()
+
+
 @app.middleware("http")
 async def log_http_errors(request: Request, call_next):
-    response = await call_next(request)
+    try:
+        response = await call_next(request)
+    except Exception as exc:
+        if request.url.path != "/health":
+            _record_http_error(request, 500, _build_error_detail(request, exc))
+        raise
 
     if response.status_code >= 400 and request.url.path != "/health":
-        db = SessionLocal()
-        try:
-            db.add(
-                HttpErrorLog(
-                    method=request.method,
-                    path=request.url.path,
-                    status_code=response.status_code,
-                    user_id=_get_request_user_id(request),
-                )
-            )
-            db.commit()
-        except Exception:
-            db.rollback()
-        finally:
-            db.close()
+        _record_http_error(
+            request,
+            response.status_code,
+            _build_error_detail(request),
+        )
 
     return response
 

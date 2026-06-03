@@ -7,15 +7,21 @@ import {
   ArrowRight,
   Bot,
   CheckCircle2,
+  Copy,
   Crown,
   Eye,
   EyeOff,
+  ExternalLink,
   GitBranch,
+  Github,
   History,
   KeyRound,
   Loader2,
   Lock,
+  PlugZap,
+  RefreshCw,
   Save,
+  Server,
   Settings,
   Shield,
   Trash2,
@@ -74,6 +80,17 @@ import {
 } from "@/services/project";
 import { useAuthStore } from "@/store/use-auth-store";
 import { useProjectStore } from "@/store/use-project-store";
+import {
+  deleteProjectGitHubIntegration,
+  getProjectGitHubIntegration,
+  GitHubIntegration,
+  getNgrokTunnelStatus,
+  NgrokTunnelStatus,
+  startNgrokTunnel,
+  stopNgrokTunnel,
+  testProjectGitHubIntegration,
+  upsertProjectGitHubIntegration,
+} from "@/services/github";
 
 const PERMISSION_GROUPS = [
   {
@@ -165,6 +182,36 @@ function roleTone(roleName: string) {
   return "border-slate-700 bg-slate-800 text-slate-300";
 }
 
+function githubStatusTone(status?: string) {
+  if (status === "CONNECTED") return "border-emerald-500/30 bg-emerald-500/10 text-emerald-200";
+  if (status === "ERROR") return "border-red-500/30 bg-red-500/10 text-red-200";
+  if (status === "WAITING_FOR_PING") return "border-amber-500/30 bg-amber-500/10 text-amber-200";
+  return "border-slate-700 bg-slate-800 text-slate-300";
+}
+
+function normalizeGithubWebhookUrl(value: string) {
+  const trimmed = value.trim().replace(/\/+$/, "");
+  if (!trimmed) return "";
+  if (trimmed.endsWith("/github/webhook")) return trimmed;
+  return `${trimmed}/github/webhook`;
+}
+
+function githubRepoUrlFromFullName(value: string) {
+  const repo = value
+    .trim()
+    .replace(/^https?:\/\/github\.com\//, "")
+    .replace(/\.git$/, "")
+    .replace(/^\/+|\/+$/g, "");
+  return repo.includes("/") ? `https://github.com/${repo}` : "";
+}
+
+function formatSettingsDate(value?: string | null) {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "-";
+  return date.toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+}
+
 export default function SettingsPage() {
   const router = useRouter();
   const currentUser = useAuthStore((state) => state.user);
@@ -204,8 +251,24 @@ export default function SettingsPage() {
   const [aiApiKey, setAiApiKey] = useState("");
   const [savingAiSettings, setSavingAiSettings] = useState(false);
   const [testingAiSettings, setTestingAiSettings] = useState(false);
+  const [githubIntegration, setGithubIntegration] = useState<GitHubIntegration | null>(null);
+  const [githubRepositoryFullName, setGithubRepositoryFullName] = useState("");
+  const [githubRepositoryUrl, setGithubRepositoryUrl] = useState("");
+  const [githubDefaultBranch, setGithubDefaultBranch] = useState("main");
+  const [githubPublicBaseUrl, setGithubPublicBaseUrl] = useState("");
+  const [githubAutoLinkCommits, setGithubAutoLinkCommits] = useState(true);
+  const [githubAutoTransitionPrs, setGithubAutoTransitionPrs] = useState(true);
+  const [savingGithubSettings, setSavingGithubSettings] = useState(false);
+  const [testingGithubSettings, setTestingGithubSettings] = useState(false);
+  const [disconnectingGithub, setDisconnectingGithub] = useState(false);
+  const [ngrokStatus, setNgrokStatus] = useState<NgrokTunnelStatus | null>(null);
+  const [startingNgrok, setStartingNgrok] = useState(false);
+  const [stoppingNgrok, setStoppingNgrok] = useState(false);
 
   const isProjectOwner = project?.owner_id === currentUser?.id;
+  const canManageGithub = Boolean(
+    project && currentUser && (project.owner_id === currentUser.id || currentUser.is_global_admin)
+  );
   const canManageSettings = hasProjectPermission(
     project,
     currentUser,
@@ -241,13 +304,16 @@ export default function SettingsPage() {
 
       if (!selectedProject) {
         setProject(null);
+        setGithubIntegration(null);
         return;
       }
 
-      const [freshProject, remoteRoles, members] = await Promise.all([
+      const [freshProject, remoteRoles, members, nextGitHubIntegration, nextNgrokStatus] = await Promise.all([
         getProjectDetail(selectedProject.id),
         getProjectRoles(selectedProject.id),
         getProjectMembers(selectedProject.id),
+        getProjectGitHubIntegration(selectedProject.id).catch(() => null),
+        getNgrokTunnelStatus().catch(() => null),
       ]);
 
       const membership = members.find((member) => member.user.id === currentUser?.id);
@@ -266,6 +332,20 @@ export default function SettingsPage() {
       setMyRoleName(membership?.role?.name || "Member");
       setMyMembership(membership || null);
       setAuditLogs(remoteAuditLogs);
+      setGithubIntegration(nextGitHubIntegration);
+      setNgrokStatus(nextNgrokStatus);
+      setGithubRepositoryFullName(nextGitHubIntegration?.repository_full_name || "");
+      setGithubRepositoryUrl(nextGitHubIntegration?.repository_url || "");
+      setGithubDefaultBranch(nextGitHubIntegration?.default_branch || "main");
+      setGithubPublicBaseUrl(
+        nextGitHubIntegration?.webhook_url
+          ? nextGitHubIntegration.webhook_url.replace(/\/github\/webhook$/, "")
+          : nextNgrokStatus?.running && nextNgrokStatus.public_url
+            ? nextNgrokStatus.public_url
+            : ""
+      );
+      setGithubAutoLinkCommits(nextGitHubIntegration?.auto_link_commits ?? true);
+      setGithubAutoTransitionPrs(nextGitHubIntegration?.auto_transition_prs ?? true);
 
       setProjectName(freshProject.name);
       setDescription(freshProject.description || "");
@@ -533,6 +613,142 @@ export default function SettingsPage() {
       toast.error(getApiErrorMessage(error, "Could not test AI settings."));
     } finally {
       setTestingAiSettings(false);
+    }
+  };
+
+  const handleSaveGithubSettings = async () => {
+    if (!project || !canManageGithub) return;
+
+    if (!githubRepositoryFullName.trim() || !githubRepositoryFullName.includes("/")) {
+      toast.error("Repository must use owner/repository format.");
+      return;
+    }
+
+    const webhookUrl = normalizeGithubWebhookUrl(githubPublicBaseUrl);
+    if (
+      githubPublicBaseUrl.includes("<ngrok-domain>") ||
+      githubPublicBaseUrl.includes("abc123") ||
+      webhookUrl.includes("<ngrok-domain>") ||
+      webhookUrl.includes("abc123")
+    ) {
+      toast.error("Use a real public backend/ngrok URL before saving the webhook.");
+      return;
+    }
+
+    setSavingGithubSettings(true);
+    try {
+      const saved = await upsertProjectGitHubIntegration(project.id, {
+        repository_full_name: githubRepositoryFullName.trim(),
+        repository_url: githubRepositoryUrl.trim() || githubRepoUrlFromFullName(githubRepositoryFullName),
+        default_branch: githubDefaultBranch.trim() || "main",
+        webhook_url: webhookUrl || null,
+        auto_link_commits: githubAutoLinkCommits,
+        auto_transition_prs: githubAutoTransitionPrs,
+      });
+
+      setGithubIntegration(saved);
+      setGithubRepositoryFullName(saved.repository_full_name || "");
+      setGithubRepositoryUrl(saved.repository_url || "");
+      setGithubDefaultBranch(saved.default_branch || "main");
+      setGithubPublicBaseUrl(saved.webhook_url ? saved.webhook_url.replace(/\/github\/webhook$/, "") : "");
+      setGithubAutoLinkCommits(saved.auto_link_commits);
+      setGithubAutoTransitionPrs(saved.auto_transition_prs);
+      toast.success("Repository integration saved.");
+    } catch (error: unknown) {
+      toast.error(getApiErrorMessage(error, "Could not save repository integration."));
+    } finally {
+      setSavingGithubSettings(false);
+    }
+  };
+
+  const handleTestGithubSettings = async () => {
+    if (!project) return;
+
+    setTestingGithubSettings(true);
+    try {
+      const result = await testProjectGitHubIntegration(project.id);
+      toast[result.status === "CONNECTED" ? "success" : result.status === "ERROR" ? "error" : "info"](
+        result.message
+      );
+      const fresh = await getProjectGitHubIntegration(project.id);
+      setGithubIntegration(fresh);
+    } catch (error: unknown) {
+      toast.error(getApiErrorMessage(error, "Could not test repository integration."));
+    } finally {
+      setTestingGithubSettings(false);
+    }
+  };
+
+  const handleDisconnectGithubSettings = async () => {
+    if (!project || !canManageGithub) return;
+
+    setDisconnectingGithub(true);
+    try {
+      await deleteProjectGitHubIntegration(project.id);
+      setGithubIntegration(null);
+      setGithubRepositoryFullName("");
+      setGithubRepositoryUrl("");
+      setGithubDefaultBranch("main");
+      setGithubPublicBaseUrl("");
+      setGithubAutoLinkCommits(true);
+      setGithubAutoTransitionPrs(true);
+      toast.success("Repository integration disconnected.");
+    } catch (error: unknown) {
+      toast.error(getApiErrorMessage(error, "Could not disconnect repository integration."));
+    } finally {
+      setDisconnectingGithub(false);
+    }
+  };
+
+  const handleStartSettingsNgrok = async () => {
+    if (!project || !canManageGithub) return;
+
+    setStartingNgrok(true);
+    try {
+      const status = await startNgrokTunnel(8000, project.id);
+      setNgrokStatus(status);
+      if (status.running && status.public_url) {
+        setGithubPublicBaseUrl(status.public_url);
+        toast.success("ngrok tunnel started and applied.");
+      } else {
+        toast.error(status.message || "ngrok did not start.");
+      }
+    } catch (error: unknown) {
+      toast.error(getApiErrorMessage(error, "Could not start ngrok."));
+    } finally {
+      setStartingNgrok(false);
+    }
+  };
+
+  const handleStopSettingsNgrok = async () => {
+    if (!project || !canManageGithub) return;
+
+    setStoppingNgrok(true);
+    try {
+      const status = await stopNgrokTunnel(project.id);
+      setNgrokStatus(status);
+      toast.info(status.message || "ngrok stopped.");
+    } catch (error: unknown) {
+      toast.error(getApiErrorMessage(error, "Could not stop ngrok."));
+    } finally {
+      setStoppingNgrok(false);
+    }
+  };
+
+  const copyGithubWebhook = async () => {
+    const value =
+      normalizeGithubWebhookUrl(githubPublicBaseUrl) ||
+      githubIntegration?.webhook_url ||
+      ngrokStatus?.webhook_url ||
+      "";
+
+    if (!value) return;
+
+    try {
+      await navigator.clipboard.writeText(value);
+      toast.success("Webhook URL copied");
+    } catch {
+      toast.error("Could not copy webhook URL.");
     }
   };
 
@@ -998,6 +1214,305 @@ export default function SettingsPage() {
                       )}
                     </div>
                   </>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card className="border-slate-800 bg-slate-900 text-slate-50">
+              <CardHeader className="border-b border-slate-800">
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <Github className="h-5 w-5 text-slate-200" />
+                  Repository integration
+                </CardTitle>
+              </CardHeader>
+
+              <CardContent className="space-y-5 p-5">
+                <div className="flex flex-col gap-4 rounded-2xl border border-slate-800 bg-slate-950 p-4 lg:flex-row lg:items-start lg:justify-between">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge className={githubStatusTone(githubIntegration?.setup_status)}>
+                        {githubIntegration?.setup_status?.replaceAll("_", " ") || "NOT CONFIGURED"}
+                      </Badge>
+                      {githubIntegration?.configured && (
+                        <Badge className="border-blue-500/30 bg-blue-500/10 text-blue-200">
+                          One-time setup complete
+                        </Badge>
+                      )}
+                    </div>
+                    <p className="mt-3 text-sm leading-6 text-slate-400">
+                      {githubIntegration?.configured
+                        ? "Project-level GitHub settings live here. DevOps focuses on events, pull requests and operational visibility."
+                        : "Connect a GitHub repository once. After this, SDLC Hub can link commits and pull requests to task keys."}
+                    </p>
+                  </div>
+
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={handleTestGithubSettings}
+                      disabled={testingGithubSettings || !githubIntegration?.configured}
+                      className="h-11 border-slate-700 bg-slate-900 text-slate-200 hover:bg-slate-800"
+                    >
+                      {testingGithubSettings ? (
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      ) : (
+                        <CheckCircle2 className="mr-2 h-4 w-4" />
+                      )}
+                      Check status
+                    </Button>
+
+                    <Button
+                      type="button"
+                      onClick={() => router.push("/dashboard/devops")}
+                      className="h-11 shrink-0 bg-slate-100 text-slate-950 hover:bg-white"
+                    >
+                      <PlugZap className="mr-2 h-4 w-4" />
+                      Open DevOps
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                  <div className="min-w-0 rounded-2xl border border-slate-800 bg-slate-950 p-4">
+                    <p className="text-xs uppercase tracking-[0.18em] text-slate-600">Repository</p>
+                    <p className="mt-2 truncate font-semibold text-white">
+                      {githubIntegration?.repository_full_name || "Not connected"}
+                    </p>
+                    {githubIntegration?.repository_url && (
+                      <a
+                        href={githubIntegration.repository_url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="mt-2 inline-flex items-center text-xs text-blue-300 hover:text-blue-200"
+                      >
+                        Open on GitHub
+                        <ExternalLink className="ml-1 h-3 w-3" />
+                      </a>
+                    )}
+                  </div>
+
+                  <div className="rounded-2xl border border-slate-800 bg-slate-950 p-4">
+                    <p className="text-xs uppercase tracking-[0.18em] text-slate-600">Default branch</p>
+                    <p className="mt-2 font-semibold text-white">
+                      {githubIntegration?.default_branch || "main"}
+                    </p>
+                    <p className="mt-1 text-xs text-slate-600">
+                      Last delivery {formatSettingsDate(githubIntegration?.last_delivery_at)}
+                    </p>
+                  </div>
+
+                  <div className="min-w-0 rounded-2xl border border-slate-800 bg-slate-950 p-4">
+                    <p className="text-xs uppercase tracking-[0.18em] text-slate-600">Webhook</p>
+                    <p className="mt-2 truncate font-mono text-sm font-semibold text-white">
+                      {githubIntegration?.webhook_url || githubIntegration?.webhook_endpoint_path || "/github/webhook"}
+                    </p>
+                    <p className="mt-1 text-xs text-slate-600">
+                      Secret {githubIntegration?.secret_configured ? githubIntegration.webhook_secret_hint || "configured" : "missing"}
+                    </p>
+                  </div>
+
+                  <div className="rounded-2xl border border-slate-800 bg-slate-950 p-4">
+                    <p className="text-xs uppercase tracking-[0.18em] text-slate-600">Automation</p>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      <Badge className={githubIntegration?.auto_link_commits ? "border-blue-500/30 bg-blue-500/10 text-blue-200" : "border-slate-700 bg-slate-900 text-slate-400"}>
+                        Commits {githubIntegration?.auto_link_commits ? "on" : "off"}
+                      </Badge>
+                      <Badge className={githubIntegration?.auto_transition_prs ? "border-purple-500/30 bg-purple-500/10 text-purple-200" : "border-slate-700 bg-slate-900 text-slate-400"}>
+                        PRs {githubIntegration?.auto_transition_prs ? "on" : "off"}
+                      </Badge>
+                    </div>
+                  </div>
+                </div>
+
+                {!canManageGithub ? (
+                  <div className="rounded-2xl border border-slate-800 bg-slate-950 p-4">
+                    <p className="text-sm font-semibold text-slate-200">Owner-only repository settings</p>
+                    <p className="mt-2 text-sm leading-6 text-slate-500">
+                      You can inspect the current connection, but only the project owner can change repository, webhook and automation settings.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-5 rounded-3xl border border-slate-800 bg-slate-950/70 p-5">
+                    <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_220px]">
+                      <div className="space-y-2">
+                        <Label>Repository</Label>
+                        <Input
+                          value={githubRepositoryFullName}
+                          onChange={(event) => {
+                            const value = event.target.value;
+                            setGithubRepositoryFullName(value);
+                            if (!githubRepositoryUrl) {
+                              setGithubRepositoryUrl(githubRepoUrlFromFullName(value));
+                            }
+                          }}
+                          placeholder="owner/repository"
+                          className="h-11 border-slate-700 bg-slate-900 font-mono text-sm"
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label>Default branch</Label>
+                        <Input
+                          value={githubDefaultBranch}
+                          onChange={(event) => setGithubDefaultBranch(event.target.value)}
+                          placeholder="main"
+                          className="h-11 border-slate-700 bg-slate-900 font-mono text-sm"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid gap-4 lg:grid-cols-2">
+                      <div className="space-y-2">
+                        <Label>Repository URL</Label>
+                        <Input
+                          value={githubRepositoryUrl}
+                          onChange={(event) => setGithubRepositoryUrl(event.target.value)}
+                          placeholder="https://github.com/owner/repository"
+                          className="h-11 border-slate-700 bg-slate-900 font-mono text-sm"
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label>Public backend / ngrok URL</Label>
+                        <div className="flex gap-2">
+                          <Input
+                            value={githubPublicBaseUrl}
+                            onChange={(event) => setGithubPublicBaseUrl(event.target.value)}
+                            placeholder="https://abc123.ngrok-free.app"
+                            className="h-11 border-slate-700 bg-slate-900 font-mono text-sm"
+                          />
+                          <Button
+                            type="button"
+                            size="icon"
+                            variant="outline"
+                            onClick={copyGithubWebhook}
+                            disabled={!normalizeGithubWebhookUrl(githubPublicBaseUrl) && !githubIntegration?.webhook_url && !ngrokStatus?.webhook_url}
+                            className="h-11 w-11 shrink-0 border-slate-700 bg-slate-900 text-slate-200 hover:bg-slate-800"
+                          >
+                            <Copy className="h-4 w-4" />
+                          </Button>
+                        </div>
+                        <p className="text-xs leading-5 text-slate-500">
+                          Payload URL:{" "}
+                          <span className="font-mono text-slate-300">
+                            {normalizeGithubWebhookUrl(githubPublicBaseUrl) || githubIntegration?.webhook_url || ngrokStatus?.webhook_url || "/github/webhook"}
+                          </span>
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="grid gap-3 md:grid-cols-2">
+                      <button
+                        type="button"
+                        onClick={() => setGithubAutoLinkCommits((value) => !value)}
+                        className={
+                          githubAutoLinkCommits
+                            ? "rounded-2xl border border-blue-500/30 bg-blue-500/10 p-4 text-left transition hover:bg-blue-500/15"
+                            : "rounded-2xl border border-slate-800 bg-slate-900 p-4 text-left transition hover:border-slate-700"
+                        }
+                      >
+                        <p className="font-semibold text-white">Auto-link commits</p>
+                        <p className="mt-1 text-sm leading-6 text-slate-500">
+                          Commit messages containing task keys are posted to comments and audit logs.
+                        </p>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setGithubAutoTransitionPrs((value) => !value)}
+                        className={
+                          githubAutoTransitionPrs
+                            ? "rounded-2xl border border-purple-500/30 bg-purple-500/10 p-4 text-left transition hover:bg-purple-500/15"
+                            : "rounded-2xl border border-slate-800 bg-slate-900 p-4 text-left transition hover:border-slate-700"
+                        }
+                      >
+                        <p className="font-semibold text-white">PR smart transitions</p>
+                        <p className="mt-1 text-sm leading-6 text-slate-500">
+                          Pull request activity can move or suggest moving tasks through Review/Done.
+                        </p>
+                      </button>
+                    </div>
+
+                    <div className="rounded-2xl border border-slate-800 bg-slate-900 p-4">
+                      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <Server className="h-4 w-4 text-emerald-300" />
+                            <p className="font-semibold text-white">ngrok setup tunnel</p>
+                          </div>
+                          <p className="mt-2 break-words text-sm leading-6 text-slate-500">
+                            {ngrokStatus?.running
+                              ? `Running at ${ngrokStatus.public_url}`
+                              : ngrokStatus?.message || "ngrok is not running."}
+                          </p>
+                        </div>
+
+                        <div className="flex flex-wrap gap-2">
+                          <Button
+                            type="button"
+                            onClick={handleStartSettingsNgrok}
+                            disabled={startingNgrok}
+                            className="h-10 bg-emerald-600 text-white hover:bg-emerald-500"
+                          >
+                            {startingNgrok ? (
+                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            ) : (
+                              <Server className="mr-2 h-4 w-4" />
+                            )}
+                            Start
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            onClick={handleStopSettingsNgrok}
+                            disabled={stoppingNgrok}
+                            className="h-10 border-slate-700 bg-slate-950 text-slate-200 hover:bg-slate-800"
+                          >
+                            {stoppingNgrok ? (
+                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            ) : (
+                              <RefreshCw className="mr-2 h-4 w-4" />
+                            )}
+                            Stop
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex flex-wrap gap-3">
+                      <Button
+                        type="button"
+                        onClick={handleSaveGithubSettings}
+                        disabled={savingGithubSettings}
+                        className="h-11 bg-blue-600 text-white hover:bg-blue-500"
+                      >
+                        {savingGithubSettings ? (
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        ) : (
+                          <Save className="mr-2 h-4 w-4" />
+                        )}
+                        Save repository settings
+                      </Button>
+
+                      {githubIntegration?.configured && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={handleDisconnectGithubSettings}
+                          disabled={disconnectingGithub}
+                          className="h-11 border-red-500/30 bg-red-500/10 text-red-100 hover:bg-red-500/15"
+                        >
+                          {disconnectingGithub ? (
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          ) : (
+                            <Trash2 className="mr-2 h-4 w-4" />
+                          )}
+                          Disconnect repository
+                        </Button>
+                      )}
+                    </div>
+                  </div>
                 )}
               </CardContent>
             </Card>

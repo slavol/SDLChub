@@ -10,7 +10,9 @@ import {
   Bot,
   CheckCircle2,
   Clock3,
+  Copy,
   Download,
+  Eye,
   FolderKanban,
   Gauge,
   LifeBuoy,
@@ -31,6 +33,7 @@ import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import {
   Dialog,
   DialogContent,
@@ -86,6 +89,27 @@ function formatDate(value?: string | null) {
     dateStyle: "medium",
     timeStyle: "short",
   }).format(date);
+}
+
+function parseErrorDetail(detail?: string | null): Record<string, unknown> {
+  if (!detail) return {};
+
+  try {
+    const parsed = JSON.parse(detail);
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      return parsed as Record<string, unknown>;
+    }
+    return { detail: parsed };
+  } catch {
+    return { detail };
+  }
+}
+
+function formatErrorDetailValue(value: unknown) {
+  if (value === null || value === undefined || value === "") return "-";
+  if (Array.isArray(value)) return value.length ? value.join(", ") : "None";
+  if (typeof value === "object") return JSON.stringify(value, null, 2);
+  return String(value);
 }
 
 function MetricCard({
@@ -149,9 +173,17 @@ export default function AdminConsolePage() {
   const [aiTimeFilter, setAiTimeFilter] = useState("ALL");
   const [commentDrafts, setCommentDrafts] = useState<Record<number, string>>({});
   const [selectedTicketId, setSelectedTicketId] = useState<number | null>(null);
+  const [supportTicketToDelete, setSupportTicketToDelete] = useState<SupportTicket | null>(null);
+  const [supportCommentToDelete, setSupportCommentToDelete] = useState<{
+    ticket: SupportTicket;
+    commentId: number;
+  } | null>(null);
+  const [selectedError, setSelectedError] = useState<HttpErrorLog | null>(null);
   const [projectToDelete, setProjectToDelete] = useState<AdminProject | null>(null);
   const [deleteConfirmation, setDeleteConfirmation] = useState("");
   const [projectActionId, setProjectActionId] = useState<number | null>(null);
+  const [deletingSupportTicket, setDeletingSupportTicket] = useState(false);
+  const [deletingSupportComment, setDeletingSupportComment] = useState(false);
 
   const loadAdminData = useCallback(async () => {
     setLoading(true);
@@ -243,7 +275,7 @@ export default function AdminConsolePage() {
             error.status_code < 500);
         const queryMatches =
           !normalizedQuery ||
-          `${error.method} ${error.path} ${error.status_code}`
+          `${error.method} ${error.path} ${error.status_code} ${error.user_name || ""} ${error.detail || ""}`
             .toLowerCase()
             .includes(normalizedQuery);
         return severityMatches && queryMatches;
@@ -333,6 +365,10 @@ export default function AdminConsolePage() {
       null,
     [filteredTickets, selectedTicketId]
   );
+  const selectedErrorDetails = useMemo(
+    () => parseErrorDetail(selectedError?.detail),
+    [selectedError?.detail]
+  );
   const topIncidents = filteredTickets
     .filter((ticket) =>
       ["OPEN", "IN_PROGRESS"].includes(ticket.status)
@@ -389,13 +425,17 @@ export default function AdminConsolePage() {
   };
 
   const handleDeleteTicket = async (ticket: SupportTicket) => {
+    setDeletingSupportTicket(true);
     try {
       await deleteSupportTicket(ticket.id);
       setTickets((current) => current.filter((item) => item.id !== ticket.id));
       setSelectedTicketId((current) => (current === ticket.id ? null : current));
+      setSupportTicketToDelete(null);
       toast.success("Ticket deleted.");
     } catch (error: unknown) {
       toast.error(getApiErrorMessage(error, "Ticket could not be deleted."));
+    } finally {
+      setDeletingSupportTicket(false);
     }
   };
 
@@ -403,13 +443,17 @@ export default function AdminConsolePage() {
     ticket: SupportTicket,
     commentId: number
   ) => {
+    setDeletingSupportComment(true);
     try {
       await deleteSupportTicketComment(ticket.id, commentId);
       const refreshedTickets = await getAdminTickets();
       setTickets(refreshedTickets);
+      setSupportCommentToDelete(null);
       toast.success("Comment deleted.");
     } catch (error: unknown) {
       toast.error(getApiErrorMessage(error, "Comment could not be deleted."));
+    } finally {
+      setDeletingSupportComment(false);
     }
   };
 
@@ -1170,10 +1214,10 @@ export default function AdminConsolePage() {
                                 type="button"
                                 className="rounded-lg border border-red-500/20 bg-red-500/10 p-2 text-red-200 transition hover:bg-red-500/20"
                                 onClick={() =>
-                                  handleDeleteTicketComment(
-                                    selectedTicket,
-                                    comment.id
-                                  )
+                                  setSupportCommentToDelete({
+                                    ticket: selectedTicket,
+                                    commentId: comment.id,
+                                  })
                                 }
                                 title="Delete comment"
                               >
@@ -1307,7 +1351,7 @@ export default function AdminConsolePage() {
                       size="sm"
                       variant="outline"
                       className="h-10 w-full rounded-xl border-red-500/30 bg-red-500/10 text-red-200 hover:bg-red-500/20 hover:text-white"
-                      onClick={() => handleDeleteTicket(selectedTicket)}
+                      onClick={() => setSupportTicketToDelete(selectedTicket)}
                     >
                       <Trash2 className="mr-2 h-4 w-4" />
                       Delete ticket
@@ -1521,7 +1565,7 @@ export default function AdminConsolePage() {
           {filteredErrors.slice(0, 30).map((error) => (
             <div
               key={error.id}
-              className="grid gap-3 p-4 text-sm md:grid-cols-[120px_1fr_180px_180px]"
+              className="grid gap-3 p-4 text-sm md:grid-cols-[120px_minmax(0,1fr)_170px_170px_120px]"
             >
               <div className="flex items-center gap-2">
                 <Badge
@@ -1537,15 +1581,31 @@ export default function AdminConsolePage() {
                   {error.method}
                 </span>
               </div>
-              <p className="truncate font-mono text-slate-300">
-                {error.path}
-              </p>
+              <div className="min-w-0">
+                <p className="truncate font-mono text-slate-300">
+                  {error.path}
+                </p>
+                {error.detail && (
+                  <p className="mt-1 truncate text-xs text-slate-600">
+                    Extended context captured
+                  </p>
+                )}
+              </div>
               <p className="truncate text-slate-500">
                 {error.user_name || "Anonymous"}
               </p>
               <p className="text-slate-500 md:text-right">
                 {formatDate(error.created_at)}
               </p>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-9 w-full rounded-lg border-slate-700 bg-slate-950 text-slate-300 hover:bg-slate-800 hover:text-white md:w-auto"
+                onClick={() => setSelectedError(error)}
+              >
+                <Eye className="mr-2 h-4 w-4" />
+                Inspect
+              </Button>
             </div>
           ))}
 
@@ -1557,6 +1617,158 @@ export default function AdminConsolePage() {
           )}
         </div>
       </section>
+
+      <Dialog
+        open={Boolean(selectedError)}
+        onOpenChange={(open) => {
+          if (!open) setSelectedError(null);
+        }}
+      >
+        <DialogContent className="border-slate-800 bg-slate-950 text-slate-100 sm:max-w-2xl">
+          {selectedError && (
+            <>
+              <DialogHeader>
+                <div className="mb-2 flex h-12 w-12 items-center justify-center rounded-xl border border-red-500/30 bg-red-500/10 text-red-200">
+                  <ServerCrash className="h-6 w-6" />
+                </div>
+                <DialogTitle className="text-white">
+                  HTTP {selectedError.status_code} inspection
+                </DialogTitle>
+                <DialogDescription className="text-slate-400">
+                  Captured platform context for this request. Sensitive header
+                  values and query values are not stored.
+                </DialogDescription>
+              </DialogHeader>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-4">
+                  <p className="text-xs uppercase tracking-[0.24em] text-slate-500">
+                    Request
+                  </p>
+                  <p className="mt-2 break-words font-mono text-sm text-white">
+                    {selectedError.method} {selectedError.path}
+                  </p>
+                </div>
+                <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-4">
+                  <p className="text-xs uppercase tracking-[0.24em] text-slate-500">
+                    Actor
+                  </p>
+                  <p className="mt-2 text-sm font-semibold text-white">
+                    {selectedError.user_name || "Anonymous request"}
+                  </p>
+                  <p className="mt-1 text-xs text-slate-500">
+                    {formatDate(selectedError.created_at)}
+                  </p>
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-4">
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.24em] text-slate-500">
+                      Extended context
+                    </p>
+                    <p className="mt-1 text-sm text-slate-400">
+                      Metadata saved by the backend error middleware.
+                    </p>
+                  </div>
+                  <Badge
+                    className={
+                      selectedError.status_code >= 500
+                        ? "border-red-500/30 bg-red-500/10 text-red-200"
+                        : "border-amber-500/30 bg-amber-500/10 text-amber-200"
+                    }
+                  >
+                    {selectedError.status_code >= 500 ? "Server" : "Client"} error
+                  </Badge>
+                </div>
+
+                {Object.keys(selectedErrorDetails).length > 0 ? (
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    {Object.entries(selectedErrorDetails).map(([key, value]) => (
+                      <div
+                        key={key}
+                        className="min-w-0 rounded-lg border border-slate-800 bg-slate-950/70 p-3"
+                      >
+                        <p className="text-[11px] uppercase tracking-[0.2em] text-slate-500">
+                          {key.replaceAll("_", " ")}
+                        </p>
+                        <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-6 text-slate-200">
+                          {formatErrorDetailValue(value)}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="rounded-lg border border-dashed border-slate-800 bg-slate-950/70 p-5 text-sm text-slate-500">
+                    This older error was captured before extended context was
+                    enabled.
+                  </div>
+                )}
+              </div>
+
+              <DialogFooter>
+                <Button
+                  variant="outline"
+                  className="rounded-xl border-slate-700 bg-slate-950 text-slate-300 hover:bg-slate-800 hover:text-white"
+                  onClick={() => {
+                    navigator.clipboard?.writeText(
+                      `${selectedError.method} ${selectedError.path} -> ${selectedError.status_code}`
+                    );
+                    toast.success("Error summary copied.");
+                  }}
+                >
+                  <Copy className="mr-2 h-4 w-4" />
+                  Copy summary
+                </Button>
+                <Button
+                  className="rounded-xl bg-blue-600 text-white hover:bg-blue-500"
+                  onClick={() => setSelectedError(null)}
+                >
+                  Done
+                </Button>
+              </DialogFooter>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <ConfirmDialog
+        open={supportCommentToDelete !== null}
+        onOpenChange={(open) => {
+          if (!open) setSupportCommentToDelete(null);
+        }}
+        title="Delete support comment?"
+        description="This removes the selected message from the ticket conversation."
+        confirmLabel="Delete comment"
+        destructive
+        loading={deletingSupportComment}
+        onConfirm={() => {
+          if (supportCommentToDelete) {
+            handleDeleteTicketComment(
+              supportCommentToDelete.ticket,
+              supportCommentToDelete.commentId
+            );
+          }
+        }}
+      />
+
+      <ConfirmDialog
+        open={supportTicketToDelete !== null}
+        onOpenChange={(open) => {
+          if (!open) setSupportTicketToDelete(null);
+        }}
+        title="Delete support ticket?"
+        description="This removes the selected support ticket and its full conversation."
+        confirmLabel="Delete ticket"
+        destructive
+        loading={deletingSupportTicket}
+        onConfirm={() => {
+          if (supportTicketToDelete) {
+            handleDeleteTicket(supportTicketToDelete);
+          }
+        }}
+      />
 
       <Dialog
         open={Boolean(projectToDelete)}

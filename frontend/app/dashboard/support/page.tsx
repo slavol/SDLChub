@@ -15,6 +15,7 @@ import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -81,6 +82,10 @@ export default function SupportPage() {
   const [comment, setComment] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [sendingComment, setSendingComment] = useState(false);
+  const [ticketToDelete, setTicketToDelete] = useState<SupportTicket | null>(null);
+  const [commentToDelete, setCommentToDelete] = useState<number | null>(null);
+  const [deletingTicket, setDeletingTicket] = useState(false);
+  const [deletingComment, setDeletingComment] = useState(false);
 
   const openTickets = useMemo(
     () =>
@@ -165,30 +170,39 @@ export default function SupportPage() {
   };
 
   const handleDeleteSelectedTicket = async () => {
-    if (!selectedTicket) return;
+    if (!ticketToDelete) return;
 
+    setDeletingTicket(true);
     try {
-      await deleteSupportTicket(selectedTicket.id);
+      await deleteSupportTicket(ticketToDelete.id);
       setTickets((current) => {
-        const remaining = current.filter((ticket) => ticket.id !== selectedTicket.id);
+        const remaining = current.filter((ticket) => ticket.id !== ticketToDelete.id);
         setSelectedTicket(remaining[0] || null);
         return remaining;
       });
+      setTicketToDelete(null);
       toast.success("Ticket deleted.");
     } catch (error: unknown) {
       toast.error(getApiErrorMessage(error, "Ticket could not be deleted."));
+    } finally {
+      setDeletingTicket(false);
     }
   };
 
-  const handleDeleteComment = async (commentId: number) => {
+  const handleDeleteComment = async () => {
     if (!selectedTicket) return;
+    if (!commentToDelete) return;
 
+    setDeletingComment(true);
     try {
-      await deleteSupportTicketComment(selectedTicket.id, commentId);
+      await deleteSupportTicketComment(selectedTicket.id, commentToDelete);
+      setCommentToDelete(null);
       await refreshSelectedTicket(selectedTicket.id);
       toast.success("Comment deleted.");
     } catch (error: unknown) {
       toast.error(getApiErrorMessage(error, "Comment could not be deleted."));
+    } finally {
+      setDeletingComment(false);
     }
   };
 
@@ -412,7 +426,7 @@ export default function SupportPage() {
                       size="sm"
                       variant="outline"
                       className="w-fit rounded-xl border-red-500/30 bg-red-500/10 text-red-200 hover:bg-red-500/20 hover:text-white"
-                      onClick={handleDeleteSelectedTicket}
+                      onClick={() => setTicketToDelete(selectedTicket)}
                     >
                       <Trash2 className="mr-2 h-4 w-4" />
                       Delete ticket
@@ -501,7 +515,7 @@ export default function SupportPage() {
                                 <button
                                   type="button"
                                   className="rounded-md p-1 text-slate-600 transition hover:bg-red-500/10 hover:text-red-300"
-                                  onClick={() => handleDeleteComment(item.id)}
+                                  onClick={() => setCommentToDelete(item.id)}
                                   title="Delete comment"
                                 >
                                   <Trash2 className="h-4 w-4" />
@@ -562,6 +576,30 @@ export default function SupportPage() {
           </div>
         </div>
       </section>
+      <ConfirmDialog
+        open={ticketToDelete !== null}
+        onOpenChange={(open) => {
+          if (!open) setTicketToDelete(null);
+        }}
+        title="Delete support ticket?"
+        description="This removes the ticket and its conversation from your support history."
+        confirmLabel="Delete ticket"
+        destructive
+        loading={deletingTicket}
+        onConfirm={handleDeleteSelectedTicket}
+      />
+      <ConfirmDialog
+        open={commentToDelete !== null}
+        onOpenChange={(open) => {
+          if (!open) setCommentToDelete(null);
+        }}
+        title="Delete comment?"
+        description="This removes your comment from the support conversation."
+        confirmLabel="Delete comment"
+        destructive
+        loading={deletingComment}
+        onConfirm={handleDeleteComment}
+      />
     </div>
   );
 }

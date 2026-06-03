@@ -319,9 +319,8 @@ export default function AccountPage() {
         </div>
       </section>
 
-      <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_420px]">
-        <main className="space-y-6">
-          <Card className="border-slate-800 bg-slate-900/80 text-slate-50 shadow-xl shadow-slate-950/20">
+      <section className="grid gap-6 xl:grid-cols-12">
+          <Card className="border-slate-800 bg-slate-900/80 text-slate-50 shadow-xl shadow-slate-950/20 xl:col-span-7">
             <CardHeader className="border-b border-slate-800/80">
               <CardTitle className="flex items-center gap-2">
                 <UserRound className="h-5 w-5 text-blue-400" />
@@ -402,7 +401,7 @@ export default function AccountPage() {
             </CardContent>
           </Card>
 
-          <Card className="border-slate-800 bg-slate-900/80 text-slate-50 shadow-xl shadow-slate-950/20">
+          <Card className="border-slate-800 bg-slate-900/80 text-slate-50 shadow-xl shadow-slate-950/20 xl:col-span-5">
             <CardHeader className="border-b border-slate-800/80">
               <CardTitle className="flex items-center gap-2">
                 <BriefcaseBusiness className="h-5 w-5 text-emerald-300" />
@@ -447,10 +446,8 @@ export default function AccountPage() {
               )}
             </CardContent>
           </Card>
-        </main>
 
-        <aside className="space-y-6">
-          <Card className="border-slate-800 bg-slate-900/80 text-slate-50 shadow-xl shadow-slate-950/20">
+          <Card className="border-slate-800 bg-slate-900/80 text-slate-50 shadow-xl shadow-slate-950/20 xl:col-span-5">
             <CardHeader className="border-b border-slate-800/80">
               <CardTitle className="flex items-center gap-2">
                 <Lock className="h-5 w-5 text-amber-300" />
@@ -497,7 +494,7 @@ export default function AccountPage() {
             </CardContent>
           </Card>
 
-          <Card className="border-slate-800 bg-slate-900/80 text-slate-50 shadow-xl shadow-slate-950/20">
+          <Card className="border-slate-800 bg-slate-900/80 text-slate-50 shadow-xl shadow-slate-950/20 xl:col-span-7">
             <CardHeader className="border-b border-slate-800/80">
               <CardTitle className="flex items-center gap-2">
                 <BellRing className="h-5 w-5 text-blue-300" />
@@ -577,9 +574,11 @@ export default function AccountPage() {
             </CardContent>
           </Card>
 
-          <AccountSecurityPanel />
+          <div className="space-y-6 xl:col-span-7">
+            <AccountSecurityPanel />
+          </div>
 
-          <Card className="border-slate-800 bg-slate-900/80 text-slate-50 shadow-xl shadow-slate-950/20">
+          <Card className="border-slate-800 bg-slate-900/80 text-slate-50 shadow-xl shadow-slate-950/20 xl:col-span-5">
             <CardHeader className="border-b border-slate-800/80">
               <CardTitle className="flex items-center gap-2">
                 <Shield className="h-5 w-5 text-violet-300" />
@@ -595,7 +594,6 @@ export default function AccountPage() {
               </p>
             </CardContent>
           </Card>
-        </aside>
       </section>
     </div>
   );

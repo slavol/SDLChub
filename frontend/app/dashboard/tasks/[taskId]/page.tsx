@@ -10,8 +10,12 @@ import {
   CheckCircle2,
   Circle,
   ClipboardList,
+  ExternalLink,
   Flag,
   Gauge,
+  GitCommitHorizontal,
+  Github,
+  GitPullRequest,
   History,
   Loader2,
   MessageSquare,
@@ -90,6 +94,7 @@ import {
   updateTask,
   updateTaskComment,
 } from "@/services/task";
+import { getProjectGitHubEvents, GitHubEventItem } from "@/services/github";
 import { useAuthStore } from "@/store/use-auth-store";
 import { useProjectStore } from "@/store/use-project-store";
 
@@ -137,6 +142,23 @@ const priorityClass: Record<TaskPriority, string> = {
   [TaskPriority.CRITICAL]: "border-rose-500/25 bg-rose-500/10 text-rose-300",
 };
 
+function githubEventTone(event: GitHubEventItem) {
+  if (event.event_type === "pull_request") return "border-purple-500/25 bg-purple-500/10 text-purple-200";
+  if (event.event_type === "push") return "border-blue-500/25 bg-blue-500/10 text-blue-200";
+  return "border-slate-700 bg-slate-900 text-slate-300";
+}
+
+function GithubEventIcon({ event }: { event: GitHubEventItem }) {
+  if (event.event_type === "pull_request") return <GitPullRequest className="h-4 w-4" />;
+  if (event.event_type === "push") return <GitCommitHorizontal className="h-4 w-4" />;
+  return <Github className="h-4 w-4" />;
+}
+
+function shortSha(value?: string | null) {
+  if (!value) return null;
+  return value.slice(0, 7);
+}
+
 function formatDate(value?: string | null) {
   if (!value) return "-";
 
@@ -160,6 +182,25 @@ function toDateInputValue(value?: string | null) {
   return date.toISOString().slice(0, 10);
 }
 
+function filterTaskGitHubEvents(
+  events: GitHubEventItem[],
+  task: TaskDetail
+) {
+  const taskKey = task.key.toUpperCase();
+
+  return events.filter((event) => {
+    const eventTaskId = Number(event.task_id || 0);
+    const eventTaskKey = (event.task_key || "").toUpperCase();
+    const eventSummary = (event.summary || "").toUpperCase();
+
+    return (
+      eventTaskId === task.id ||
+      eventTaskKey === taskKey ||
+      eventSummary.includes(taskKey)
+    );
+  });
+}
+
 export default function TaskDetailPage() {
   const params = useParams<{ taskId: string }>();
   const router = useRouter();
@@ -171,6 +212,7 @@ export default function TaskDetailPage() {
   const [project, setProject] = useState<Project | null>(currentProject);
   const [members, setMembers] = useState<ProjectMember[]>([]);
   const [teams, setTeams] = useState<ProjectTeam[]>([]);
+  const [githubEvents, setGithubEvents] = useState<GitHubEventItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [newSubtaskTitle, setNewSubtaskTitle] = useState("");
@@ -232,16 +274,18 @@ export default function TaskDetailPage() {
       const data = await getTaskDetail(taskId);
       setTask(data);
 
-      const [projectMembers, projectTeams, detailProject] = await Promise.all([
+      const [projectMembers, projectTeams, detailProject, projectGithubEvents] = await Promise.all([
         getProjectMembers(data.project_id).catch(() => []),
         getProjectTeams(data.project_id).catch(() => []),
         currentProject?.id === data.project_id
           ? Promise.resolve(currentProject)
           : getProjectDetail(data.project_id).catch(() => null),
+        getProjectGitHubEvents(data.project_id, null, 200).catch(() => []),
       ]);
 
       setMembers(projectMembers);
       setTeams(projectTeams);
+      setGithubEvents(filterTaskGitHubEvents(projectGithubEvents, data));
 
       if (detailProject) {
         setProject(detailProject);
@@ -804,6 +848,92 @@ export default function TaskDetailPage() {
       </div>
     );
   }
+
+  const developmentLinksCard = (
+    <Card className="border-slate-800 bg-slate-900/75 text-slate-50 shadow-xl shadow-slate-950/20">
+      <CardHeader className="border-b border-slate-800/80">
+        <CardTitle className="flex items-center gap-2">
+          <Github className="h-5 w-5 text-slate-200" />
+          Development links
+        </CardTitle>
+        <p className="text-sm text-slate-500">
+          GitHub commits and pull requests linked through task keys.
+        </p>
+      </CardHeader>
+      <CardContent className="space-y-3 p-4 sm:p-5">
+        {githubEvents.map((event) => (
+          <div
+            key={event.id}
+            className="rounded-2xl border border-slate-800 bg-slate-950/75 p-4 transition hover:border-blue-500/25"
+          >
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+              <div className="min-w-0">
+                <div className="mb-3 flex flex-wrap items-center gap-2">
+                  <Badge className={githubEventTone(event)}>
+                    <span className="mr-1.5 inline-flex">
+                      <GithubEventIcon event={event} />
+                    </span>
+                    {event.event_type === "pull_request"
+                      ? "Pull request"
+                      : event.event_type === "push"
+                        ? "Commit"
+                        : event.event_type}
+                  </Badge>
+                  {event.action && (
+                    <Badge variant="outline" className="border-slate-700 bg-slate-900 text-slate-300">
+                      {event.action}
+                    </Badge>
+                  )}
+                  {event.pull_request_number && (
+                    <Badge variant="outline" className="border-purple-500/25 bg-purple-500/10 text-purple-200">
+                      PR #{event.pull_request_number}
+                    </Badge>
+                  )}
+                  {shortSha(event.commit_sha) && (
+                    <Badge variant="outline" className="border-blue-500/25 bg-blue-500/10 font-mono text-blue-200">
+                      {shortSha(event.commit_sha)}
+                    </Badge>
+                  )}
+                </div>
+                <p className="break-words font-semibold text-white">
+                  {event.summary || "GitHub activity linked to this task"}
+                </p>
+                <p className="mt-2 text-sm leading-6 text-slate-500">
+                  {event.repository || "Repository unknown"} · {event.sender_login || "unknown sender"} · {formatDate(event.created_at)}
+                </p>
+              </div>
+
+              {event.url && (
+                <Button
+                  asChild
+                  variant="outline"
+                  size="sm"
+                  className="shrink-0 border-slate-700 bg-slate-900 text-slate-200 hover:bg-slate-800"
+                >
+                  <a href={event.url} target="_blank" rel="noreferrer">
+                    <ExternalLink className="mr-2 h-4 w-4" />
+                    Open GitHub
+                  </a>
+                </Button>
+              )}
+            </div>
+          </div>
+        ))}
+
+        {githubEvents.length === 0 && (
+          <div className="rounded-2xl border border-dashed border-slate-800 bg-slate-950/60 p-8 text-center">
+            <Github className="mx-auto mb-3 h-8 w-8 text-slate-600" />
+            <p className="text-sm font-medium text-slate-400">
+              No linked GitHub activity yet
+            </p>
+            <p className="mt-1 text-xs leading-5 text-slate-600">
+              Include {task.key} in a commit message, PR title, PR body or branch name.
+            </p>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
 
   return (
     <div className="mx-auto w-full max-w-[1500px] space-y-7 px-4 py-5 text-slate-50 sm:px-5 md:p-7 xl:p-8">
@@ -1415,6 +1545,8 @@ export default function TaskDetailPage() {
               </div>
             </CardContent>
           </Card>
+
+          {developmentLinksCard}
 
           <Card className="border-slate-800 bg-slate-900/75 text-slate-50 shadow-xl shadow-slate-950/20">
             <CardHeader className="border-b border-slate-800/80">

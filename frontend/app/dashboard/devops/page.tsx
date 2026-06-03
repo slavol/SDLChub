@@ -365,55 +365,95 @@ export default function DevOpsPage() {
 
   return (
     <div className="mx-auto max-w-7xl p-6">
-      <div className="mb-6 flex flex-col justify-between gap-4 lg:flex-row lg:items-center">
-        <div>
-          <div className="mb-3 flex flex-wrap items-center gap-2">
-            <Badge className="border-slate-700 bg-slate-900 text-slate-300">DevOps</Badge>
-            <Badge className={connectionTone(integration?.setup_status)}>
-              {integration?.setup_status?.replaceAll("_", " ") || "NOT CONFIGURED"}
-            </Badge>
+      <section className="mb-6 overflow-hidden rounded-3xl border border-slate-800 bg-slate-900/80 shadow-2xl shadow-slate-950/30">
+        <div className="border-b border-slate-800 bg-slate-950/45 p-5">
+          <div className="flex flex-col justify-between gap-5 lg:flex-row lg:items-start">
+            <div className="min-w-0">
+              <div className="mb-3 flex flex-wrap items-center gap-2">
+                <Badge className="border-slate-700 bg-slate-900 text-slate-300">DevOps</Badge>
+                <Badge className={connectionTone(integration?.setup_status)}>
+                  {integration?.setup_status?.replaceAll("_", " ") || "NOT CONFIGURED"}
+                </Badge>
+                <Badge className={integration?.configured ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-200" : "border-amber-500/30 bg-amber-500/10 text-amber-200"}>
+                  {integration?.configured ? "Repository linked" : "Setup needed"}
+                </Badge>
+              </div>
+              <h1 className="break-words text-3xl font-bold tracking-tight text-white">
+                GitHub operations for {project.name}
+              </h1>
+              <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-400">
+                Monitor repository deliveries, linked commits, pull requests and task automation. Repository settings are managed from Project Settings.
+              </p>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              {projects.length > 1 && (
+                <select
+                  value={project.id}
+                  onChange={(event) => handleProjectChange(Number(event.target.value))}
+                  className="h-10 rounded-xl border border-slate-700 bg-slate-950 px-3 text-sm text-slate-200"
+                >
+                  {projects.map((item) => (
+                    <option key={item.id} value={item.id}>
+                      {item.name}
+                    </option>
+                  ))}
+                </select>
+              )}
+
+              <Button
+                variant="outline"
+                className="border-slate-700 bg-slate-950 text-slate-200 hover:bg-slate-900"
+                onClick={() => loadDevOps(false)}
+              >
+                <RefreshCw className="mr-2 h-4 w-4" />
+                Refresh
+              </Button>
+
+              <Button asChild variant="outline" className="border-slate-700 bg-slate-950 text-slate-200 hover:bg-slate-900">
+                <Link href="/dashboard/settings">
+                  <PlugZap className="mr-2 h-4 w-4" />
+                  Repository settings
+                </Link>
+              </Button>
+
+              <Button asChild className="bg-slate-100 text-slate-950 hover:bg-white">
+                <Link href="/dashboard/devops/pull-requests">
+                  <GitPullRequest className="mr-2 h-4 w-4" />
+                  Pull Requests
+                </Link>
+              </Button>
+            </div>
           </div>
-          <h1 className="text-3xl font-bold tracking-tight text-white">GitHub Repository Connection</h1>
-          <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-400">
-            Connect a GitHub repository to this SDLC Hub project, configure the webhook endpoint and then review commits,
-            pull requests and task automation events.
-          </p>
         </div>
 
-        <div className="flex flex-wrap gap-2">
-          {projects.length > 1 && (
-            <select
-              value={project.id}
-              onChange={(event) => handleProjectChange(Number(event.target.value))}
-              className="h-10 rounded-xl border border-slate-700 bg-slate-950 px-3 text-sm text-slate-200"
-            >
-              {projects.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.name}
-                </option>
-              ))}
-            </select>
-          )}
-
-          <Button
-            variant="outline"
-            className="border-slate-700 bg-slate-950 text-slate-200 hover:bg-slate-900"
-            onClick={() => loadDevOps(false)}
-          >
-            <RefreshCw className="mr-2 h-4 w-4" />
-            Refresh
-          </Button>
-
-          <Button asChild className="bg-slate-100 text-slate-950 hover:bg-white">
-            <Link href="/dashboard/devops/pull-requests">
-              <GitPullRequest className="mr-2 h-4 w-4" />
-              Pull Requests
-            </Link>
-          </Button>
+        <div className="grid gap-4 p-5 md:grid-cols-2 xl:grid-cols-4">
+          <div className="min-w-0 rounded-2xl border border-slate-800 bg-slate-950/75 p-4">
+            <Github className="mb-3 h-5 w-5 text-slate-300" />
+            <p className="text-sm text-slate-500">Repository</p>
+            <p className="mt-1 truncate font-semibold text-white">
+              {integration?.repository_full_name || "Not connected"}
+            </p>
+          </div>
+          <div className="rounded-2xl border border-slate-800 bg-slate-950/75 p-4">
+            <GitCommitHorizontal className="mb-3 h-5 w-5 text-blue-300" />
+            <p className="text-sm text-slate-500">Push events</p>
+            <p className="mt-1 text-2xl font-semibold text-white">{stats.push}</p>
+          </div>
+          <div className="rounded-2xl border border-slate-800 bg-slate-950/75 p-4">
+            <GitPullRequest className="mb-3 h-5 w-5 text-purple-300" />
+            <p className="text-sm text-slate-500">Pull requests</p>
+            <p className="mt-1 text-2xl font-semibold text-white">{stats.pullRequests}</p>
+          </div>
+          <div className="rounded-2xl border border-slate-800 bg-slate-950/75 p-4">
+            <GitBranch className="mb-3 h-5 w-5 text-emerald-300" />
+            <p className="text-sm text-slate-500">Linked tasks</p>
+            <p className="mt-1 text-2xl font-semibold text-white">{stats.linked}</p>
+          </div>
         </div>
-      </div>
+      </section>
 
-      {canManageIntegration ? (
+      {canManageIntegration && !isConfigured ? (
         <Card className="mb-6 border-slate-800 bg-slate-900/75">
           <CardContent className="p-5">
           <div className="mb-5 flex flex-col justify-between gap-4 xl:flex-row xl:items-start">
@@ -684,7 +724,7 @@ export default function DevOpsPage() {
           </div>
           </CardContent>
         </Card>
-      ) : (
+      ) : isConfigured ? (
         <Card className="mb-6 border-slate-800 bg-slate-900/75">
           <CardContent className="p-5">
             <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-start">
@@ -697,17 +737,40 @@ export default function DevOpsPage() {
                   {integration?.repository_full_name || "GitHub repository"}
                 </h2>
                 <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-400">
-                  This project already has a GitHub repository integration managed by the project owner.
-                  Team members can review events and pull requests, but only the owner can change the connection.
+                  {canManageIntegration
+                    ? "This project has already completed the repository setup. Manage day-to-day DevOps activity from this cockpit, and change the connection only when the repository really moves."
+                    : "This project already has a GitHub repository integration managed by the project owner. Team members can review events and pull requests, but only the owner can change the connection."}
                 </p>
               </div>
 
-              <Badge className={connectionTone(integration?.setup_status)}>
-                {integration?.setup_status?.replaceAll("_", " ") || "NOT CONFIGURED"}
-              </Badge>
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge className={connectionTone(integration?.setup_status)}>
+                  {integration?.setup_status?.replaceAll("_", " ") || "NOT CONFIGURED"}
+                </Badge>
+                <Button
+                  variant="outline"
+                  className="border-slate-700 bg-slate-950 text-slate-200 hover:bg-slate-900"
+                  disabled={testingIntegration}
+                  onClick={handleTestIntegration}
+                >
+                  {testingIntegration ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ShieldCheck className="mr-2 h-4 w-4" />}
+                  Check status
+                </Button>
+                {canManageIntegration && (
+                  <Button
+                    variant="outline"
+                    className="border-red-500/30 bg-red-500/10 text-red-200 hover:bg-red-500/20"
+                    disabled={disconnecting}
+                    onClick={handleDisconnect}
+                  >
+                    {disconnecting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Trash2 className="mr-2 h-4 w-4" />}
+                    Disconnect
+                  </Button>
+                )}
+              </div>
             </div>
 
-            <div className="mt-5 grid gap-4 md:grid-cols-3">
+            <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
               <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
                 <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Repository</p>
                 <p className="mt-2 truncate font-semibold text-white">
@@ -739,68 +802,67 @@ export default function DevOpsPage() {
                   {formatDate(integration?.last_delivery_at)}
                 </p>
               </div>
+
+              <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
+                <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Automation</p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <Badge className={integration?.auto_link_commits ? "border-blue-500/30 bg-blue-500/10 text-blue-200" : "border-slate-700 bg-slate-900 text-slate-400"}>
+                    Commits {integration?.auto_link_commits ? "on" : "off"}
+                  </Badge>
+                  <Badge className={integration?.auto_transition_prs ? "border-purple-500/30 bg-purple-500/10 text-purple-200" : "border-slate-700 bg-slate-900 text-slate-400"}>
+                    PRs {integration?.auto_transition_prs ? "on" : "off"}
+                  </Badge>
+                </div>
+              </div>
             </div>
 
-            <div className="mt-5 rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
-              <p className="text-sm font-semibold text-white">How this works</p>
-              <p className="mt-2 text-sm leading-6 text-slate-400">
-                Commits and pull requests that contain a valid task key, such as{" "}
-                <span className="font-mono text-slate-200">{project.key}-123</span>, are linked automatically
-                to matching SDLC Hub tasks. Pull request transitions can then be reviewed from the Pull Requests page.
-              </p>
+            <div className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
+              <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
+                <p className="text-sm font-semibold text-white">How this works</p>
+                <p className="mt-2 text-sm leading-6 text-slate-400">
+                  Commits and pull requests that contain a valid task key, such as{" "}
+                  <span className="font-mono text-slate-200">{project.key}-123</span>, are linked automatically
+                  to matching SDLC Hub tasks. Pull request transitions can then be reviewed from the Pull Requests page.
+                </p>
+              </div>
+
+              <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
+                <p className="text-sm font-semibold text-white">Webhook endpoint</p>
+                <div className="mt-3 flex gap-2">
+                  <code className="min-w-0 flex-1 truncate rounded-xl border border-slate-800 bg-black/40 px-3 py-2 text-xs text-slate-300">
+                    {integration?.webhook_url || `${integration?.webhook_endpoint_path || "/github/webhook"}`}
+                  </code>
+                  <Button
+                    size="icon"
+                    variant="outline"
+                    className="border-slate-700 bg-slate-900"
+                    disabled={!integration?.webhook_url}
+                    onClick={() => copyToClipboard(integration?.webhook_url || "", "Webhook URL")}
+                  >
+                    <Copy className="h-4 w-4" />
+                  </Button>
+                </div>
+                <p className="mt-2 text-xs leading-5 text-slate-500">
+                  Detailed connection values are also visible in Project Settings.
+                </p>
+              </div>
             </div>
+          </CardContent>
+        </Card>
+      ) : (
+        <Card className="mb-6 border-dashed border-slate-800 bg-slate-900/50">
+          <CardContent className="p-10 text-center">
+            <Github className="mx-auto mb-4 h-10 w-10 text-slate-600" />
+            <h2 className="text-lg font-semibold text-white">Repository not configured yet</h2>
+            <p className="mx-auto mt-2 max-w-2xl text-sm leading-6 text-slate-500">
+              The project owner has not configured the GitHub repository integration yet. After setup, team members will be able to view DevOps events and pull requests here.
+            </p>
           </CardContent>
         </Card>
       )}
 
-      {!isConfigured ? (
-        <Card className="border-dashed border-slate-800 bg-slate-900/50">
-          <CardContent className="p-10 text-center">
-            <Github className="mx-auto mb-4 h-10 w-10 text-slate-600" />
-            <h2 className="text-lg font-semibold text-white">
-              {canManageIntegration ? "Connect a repository first" : "Repository not configured yet"}
-            </h2>
-            <p className="mx-auto mt-2 max-w-2xl text-sm leading-6 text-slate-500">
-              {canManageIntegration
-                ? "Once the repository is configured and GitHub sends the first webhook delivery, this page will unlock event history, linked commits and pull request automation."
-                : "The project owner has not configured the GitHub repository integration yet. After setup, team members will be able to view DevOps events and pull requests here."}
-            </p>
-          </CardContent>
-        </Card>
-      ) : (
+      {isConfigured && (
         <>
-          <div className="mb-5 grid gap-4 md:grid-cols-3">
-            {[
-              {
-                label: "Push events",
-                value: stats.push,
-                icon: GitCommitHorizontal,
-              },
-              {
-                label: "Pull requests",
-                value: stats.pullRequests,
-                icon: GitPullRequest,
-              },
-              {
-                label: "Linked tasks",
-                value: stats.linked,
-                icon: GitBranch,
-              },
-            ].map((item) => {
-              const Icon = item.icon;
-
-              return (
-                <Card key={item.label} className="border-slate-800 bg-slate-900/70">
-                  <CardContent className="p-5">
-                    <Icon className="mb-3 h-5 w-5 text-blue-300" />
-                    <p className="text-sm text-slate-500">{item.label}</p>
-                    <p className="mt-1 text-2xl font-semibold text-white">{item.value}</p>
-                  </CardContent>
-                </Card>
-              );
-            })}
-          </div>
-
           <div className="mb-5 flex flex-wrap gap-2">
             {(["all", "push", "pull_request"] as EventFilter[]).map((item) => (
               <Button

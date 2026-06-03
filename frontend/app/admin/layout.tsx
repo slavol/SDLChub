@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Activity,
@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 
 import { BrandMark } from "@/components/brand-mark";
+import { ThemeModeToggle } from "@/components/theme-mode-toggle";
 import { Button } from "@/components/ui/button";
 import { UserAvatar, resolveMediaUrl } from "@/components/user-avatar";
 import {
@@ -87,6 +88,23 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const [overview, setOverview] = useState<AdminOverview | null>(null);
   const [activeArea, setActiveArea] = useState("command");
 
+  const updateActiveAreaFromScroll = useCallback(() => {
+    const activationLine = window.innerHeight * 0.28;
+    let nextActive = links[0].id;
+
+    for (const link of links) {
+      const section = document.getElementById(link.id);
+      if (!section) continue;
+
+      const sectionTop = section.getBoundingClientRect().top;
+      if (sectionTop <= activationLine) {
+        nextActive = link.id;
+      }
+    }
+
+    setActiveArea((current) => (current === nextActive ? current : nextActive));
+  }, []);
+
   useEffect(() => {
     const verifyAccess = async () => {
       try {
@@ -124,9 +142,6 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   useEffect(() => {
     const scrollRoot = document.getElementById("admin-scroll-root");
-    if (!scrollRoot) return;
-
-    const sectionIds = links.map((link) => link.id);
     let frame = 0;
 
     const updateActiveSection = () => {
@@ -134,35 +149,54 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
       frame = window.requestAnimationFrame(() => {
         frame = 0;
-        const rootTop = scrollRoot.getBoundingClientRect().top;
-        let nextActive = sectionIds[0];
-
-        for (const sectionId of sectionIds) {
-          const section = document.getElementById(sectionId);
-          if (!section) continue;
-
-          const sectionTop = section.getBoundingClientRect().top - rootTop;
-          if (sectionTop <= 170) {
-            nextActive = sectionId;
-          }
-        }
-
-        setActiveArea(nextActive);
+        updateActiveAreaFromScroll();
       });
     };
 
-    updateActiveSection();
-    scrollRoot.addEventListener("scroll", updateActiveSection, {
+    const initialTimers = [
+      window.setTimeout(updateActiveSection, 0),
+      window.setTimeout(updateActiveSection, 150),
+      window.setTimeout(updateActiveSection, 500),
+    ];
+
+    window.addEventListener("scroll", updateActiveSection, {
+      passive: true,
+    });
+    scrollRoot?.addEventListener("scroll", updateActiveSection, {
       passive: true,
     });
     window.addEventListener("resize", updateActiveSection);
 
     return () => {
       if (frame) window.cancelAnimationFrame(frame);
-      scrollRoot.removeEventListener("scroll", updateActiveSection);
+      initialTimers.forEach((timer) => window.clearTimeout(timer));
+      window.removeEventListener("scroll", updateActiveSection);
+      scrollRoot?.removeEventListener("scroll", updateActiveSection);
       window.removeEventListener("resize", updateActiveSection);
     };
-  }, []);
+  }, [updateActiveAreaFromScroll]);
+
+  const handleAreaNavigation = (
+    event: React.MouseEvent<HTMLAnchorElement>,
+    areaId: string
+  ) => {
+    event.preventDefault();
+    const scrollRoot = document.getElementById("admin-scroll-root");
+    const target = document.getElementById(areaId);
+
+    setActiveArea(areaId);
+    window.history.replaceState(null, "", areaId === "command" ? "/admin" : `/admin#${areaId}`);
+
+    if (scrollRoot && target && scrollRoot.scrollHeight > scrollRoot.clientHeight) {
+      scrollRoot.scrollTo({
+        top: Math.max(target.offsetTop - 18, 0),
+        behavior: "smooth",
+      });
+      return;
+    }
+
+    target?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
 
   const handleSignOut = () => {
     clearCurrentProject();
@@ -271,7 +305,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                   <Link
                     key={link.href}
                     href={link.href}
-                    onClick={() => setActiveArea(link.id)}
+                    onClick={(event) => handleAreaNavigation(event, link.id)}
                   >
                     <div
                       className={
@@ -332,6 +366,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
               </div>
             </div>
 
+            <ThemeModeToggle className="mb-2" />
+
             <Button
               variant="ghost"
               className="h-10 w-full justify-start rounded-xl text-slate-400 hover:bg-red-950/20 hover:text-red-400"
@@ -358,6 +394,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             </div>
           </div>
           <div className="flex shrink-0 items-center gap-2">
+            <ThemeModeToggle className="hidden h-9 w-36 sm:flex" />
             <Button
               size="sm"
               variant="outline"
@@ -379,6 +416,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         <div
           id="admin-scroll-root"
           className="min-h-0 flex-1 overflow-y-auto scroll-smooth"
+          onScroll={updateActiveAreaFromScroll}
         >
           {children}
         </div>

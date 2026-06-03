@@ -618,22 +618,82 @@ export default function WorkloadPage() {
             <RefreshCw className="mr-2 h-4 w-4" />
             Refresh
           </Button>
-
-          <Button
-            className="bg-blue-600 hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
-            onClick={handleGenerateSuggestions}
-            disabled={!canUseAi || suggestionsLoading}
-            title={!canUseAi ? "You do not have permission to use AI features." : undefined}
-          >
-            {suggestionsLoading ? (
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            ) : (
-              <Bot className="mr-2 h-4 w-4" />
-            )}
-            Generate suggestions
-          </Button>
         </div>
       </div>
+
+      <Card className="mb-6 overflow-hidden border-blue-500/20 bg-blue-500/[0.06] shadow-2xl shadow-blue-950/20">
+        <CardContent className="p-0">
+          <div className="grid gap-0 xl:grid-cols-[380px_minmax(0,1fr)]">
+            <div className="border-b border-blue-500/15 bg-slate-950/55 p-5 xl:border-b-0 xl:border-r">
+              <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-2xl border border-blue-400/25 bg-blue-500/10 text-blue-200">
+                <Bot className="h-5 w-5" />
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="text-xl font-semibold text-white">AI workload desk</h2>
+                {suggestionSource && (
+                  <Badge className="border-blue-500/20 bg-blue-500/10 text-blue-200">
+                    {suggestionSource.replaceAll("_", " ")}
+                  </Badge>
+                )}
+              </div>
+              <p className="mt-2 text-sm leading-6 text-slate-400">
+                Generate redistribution ideas from current assignees, overdue work, story points and review queues.
+              </p>
+              <Button
+                className="mt-5 w-full bg-blue-600 hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
+                onClick={handleGenerateSuggestions}
+                disabled={!canUseAi || suggestionsLoading}
+                title={!canUseAi ? "You do not have permission to use AI features." : undefined}
+              >
+                {suggestionsLoading ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <Sparkles className="mr-2 h-4 w-4" />
+                )}
+                Generate suggestions
+              </Button>
+            </div>
+
+            <div className="p-5">
+              {suggestionSummary ? (
+                <div className="mb-4 rounded-2xl border border-blue-500/20 bg-blue-500/10 p-4 text-sm leading-6 text-blue-100/85">
+                  {suggestionSummary}
+                </div>
+              ) : (
+                <div className="mb-4 rounded-2xl border border-slate-800 bg-slate-950/70 p-4 text-sm leading-6 text-slate-400">
+                  No generated plan yet. Run the balancer when you need a quick capacity review before moving tasks.
+                </div>
+              )}
+
+              {suggestions.length > 0 ? (
+                <div className="grid gap-4 lg:grid-cols-2">
+                  {suggestions.map((suggestion, index) => (
+                    <SuggestionCard
+                      key={`${suggestion.type}-${suggestion.task_id ?? index}-${index}`}
+                      suggestion={suggestion}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
+                    <p className="text-xs uppercase tracking-[0.18em] text-slate-600">Input</p>
+                    <p className="mt-2 text-sm font-semibold text-white">Assignments</p>
+                  </div>
+                  <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
+                    <p className="text-xs uppercase tracking-[0.18em] text-slate-600">Signals</p>
+                    <p className="mt-2 text-sm font-semibold text-white">Risk and due dates</p>
+                  </div>
+                  <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
+                    <p className="text-xs uppercase tracking-[0.18em] text-slate-600">Output</p>
+                    <p className="mt-2 text-sm font-semibold text-white">Actionable moves</p>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       <div className="mb-6 grid gap-4 md:grid-cols-2 xl:grid-cols-5">
         {summaryCards.map((item) => {
@@ -705,36 +765,6 @@ export default function WorkloadPage() {
         </div>
       </DndContext>
 
-      {suggestions.length > 0 && (
-        <div className="mt-8">
-          <div className="mb-4 flex items-center gap-2">
-            <Bot className="h-5 w-5 text-blue-300" />
-            <h2 className="text-xl font-semibold text-white">
-              Workload suggestions
-            </h2>
-            {suggestionSource && (
-              <Badge className="border-blue-500/20 bg-blue-500/10 text-blue-200">
-                {suggestionSource.replaceAll("_", " ")}
-              </Badge>
-            )}
-          </div>
-
-          {suggestionSummary && (
-            <div className="mb-4 rounded-2xl border border-blue-500/20 bg-blue-500/10 p-4 text-sm leading-6 text-blue-100/85">
-              {suggestionSummary}
-            </div>
-          )}
-
-          <div className="grid gap-4 lg:grid-cols-2">
-            {suggestions.map((suggestion, index) => (
-              <SuggestionCard
-                key={`${suggestion.type}-${suggestion.task_id ?? index}-${index}`}
-                suggestion={suggestion}
-              />
-            ))}
-          </div>
-        </div>
-      )}
     </div>
   );
 }

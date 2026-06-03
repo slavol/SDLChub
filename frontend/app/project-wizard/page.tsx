@@ -5,7 +5,8 @@ import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { 
   Loader2, Sparkles, ArrowRight, ArrowLeft, 
-  Plus, Trash2, Users, X, Image as ImageIcon, Settings, BrainCircuit, Rocket
+  Plus, Trash2, Users, X, Image as ImageIcon, Settings, BrainCircuit, Rocket,
+  Github, GitBranch, PlugZap
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -26,6 +27,7 @@ import {
     createProjectFull, 
     AIRecommendationResponse 
 } from "@/services/project";
+import { upsertProjectGitHubIntegration } from "@/services/github";
 
 // --- TIPURI ---
 interface RoleDefinition {
@@ -48,6 +50,22 @@ const initialAiAnswers = {
   experience: "",
   metrics: ""
 };
+
+function normalizeWebhookUrl(value: string) {
+  const trimmed = value.trim().replace(/\/+$/, "");
+  if (!trimmed) return "";
+  if (trimmed.endsWith("/github/webhook")) return trimmed;
+  return `${trimmed}/github/webhook`;
+}
+
+function repoUrlFromFullName(value: string) {
+  const repo = value
+    .trim()
+    .replace(/^https?:\/\/github\.com\//, "")
+    .replace(/\.git$/, "")
+    .replace(/^\/+|\/+$/g, "");
+  return repo.includes("/") ? `https://github.com/${repo}` : "";
+}
 
 export default function ProjectWizard() {
   const router = useRouter();
@@ -76,6 +94,15 @@ export default function ProjectWizard() {
   const [roles, setRoles] = useState<RoleDefinition[]>([]);
   const [inviteEmail, setInviteEmail] = useState("");
   const [selectedRoleIndex, setSelectedRoleIndex] = useState(0);
+  const [githubSetup, setGithubSetup] = useState({
+    enabled: false,
+    repositoryFullName: "",
+    repositoryUrl: "",
+    defaultBranch: "main",
+    publicBaseUrl: "",
+    autoLinkCommits: true,
+    autoTransitionPrs: true,
+  });
 
   // --- CONFIG ÎNTREBĂRI (Pasul 2) ---
   const questions: QuestionConfig[] = [
@@ -295,6 +322,27 @@ export default function ProjectWizard() {
         roles,
       });
 
+      if (githubSetup.enabled) {
+        const repositoryFullName = githubSetup.repositoryFullName.trim();
+        if (!repositoryFullName || !repositoryFullName.includes("/")) {
+          toast.warning("Project created. GitHub setup was skipped because repository format is incomplete.");
+        } else {
+          try {
+            await upsertProjectGitHubIntegration(project.id, {
+              repository_full_name: repositoryFullName,
+              repository_url: githubSetup.repositoryUrl.trim() || repoUrlFromFullName(repositoryFullName),
+              default_branch: githubSetup.defaultBranch.trim() || "main",
+              webhook_url: normalizeWebhookUrl(githubSetup.publicBaseUrl) || null,
+              auto_link_commits: githubSetup.autoLinkCommits,
+              auto_transition_prs: githubSetup.autoTransitionPrs,
+            });
+            toast.success("GitHub repository connected to the project.");
+          } catch {
+            toast.warning("Project created. GitHub setup can be completed later from DevOps.");
+          }
+        }
+      }
+
       setCurrentProject(project);
       
       toast.success("Project launched successfully! 🚀");
@@ -319,13 +367,14 @@ export default function ProjectWizard() {
       </div>
 
       <div className="w-full max-w-5xl mb-8">
-        <div className="flex justify-between text-sm text-slate-400 mb-2 font-medium tracking-wide">
+        <div className="mb-2 grid grid-cols-2 gap-2 text-xs font-medium tracking-wide text-slate-400 sm:grid-cols-5 sm:text-sm">
             <span className={step >= 1 ? "text-blue-400 transition-colors" : ""}>Identity</span>
             <span className={step >= 2 ? "text-blue-400 transition-colors" : ""}>AI Interview</span>
             <span className={step >= 3 ? "text-blue-400 transition-colors" : ""}>Decision</span>
             <span className={step >= 4 ? "text-blue-400 transition-colors" : ""}>Team & Roles</span>
+            <span className={step >= 5 ? "text-blue-400 transition-colors" : ""}>DevOps Setup</span>
         </div>
-        <Progress value={(step / 4) * 100} className="h-1 bg-slate-800" />
+        <Progress value={(step / 5) * 100} className="h-1 bg-slate-800" />
       </div>
 
       <Card className="w-full max-w-5xl bg-slate-900 border-slate-800 shadow-2xl overflow-hidden min-h-[600px] flex flex-col backdrop-blur-sm bg-slate-900/80">
@@ -384,8 +433,8 @@ export default function ProjectWizard() {
                   
                   {/* FORMULAR PROIECT */}
                   <div className="flex-1 space-y-8">
-                    <div className="grid grid-cols-3 gap-8">
-                        <div className="col-span-2 space-y-3">
+                    <div className="grid gap-8 md:grid-cols-3">
+                        <div className="space-y-3 md:col-span-2">
                             <Label className="text-base">Project Name</Label>
                             <Input 
                                 placeholder="e.g. SuperApp Rewrite"
@@ -686,13 +735,212 @@ export default function ProjectWizard() {
                     </div>
                 </div>
 
-                <div className="flex justify-between pt-8 border-t border-slate-800 mt-4">
+                <div className="flex flex-col justify-between gap-3 border-t border-slate-800 pt-8 sm:flex-row sm:items-center mt-4">
                     <Button variant="ghost" onClick={() => setStep(3)} size="lg" className="text-slate-400 hover:text-white"><ArrowLeft className="mr-2 w-5 h-5"/> Change Methodology</Button>
-                    <Button onClick={handleFinalSubmit} disabled={isLoading} className="bg-green-600 hover:bg-green-700 text-white w-1/3 py-6 text-xl font-bold shadow-[0_0_30px_rgba(22,163,74,0.4)] hover:shadow-[0_0_40px_rgba(22,163,74,0.6)] transition-all duration-500">
-                        {isLoading ? <Loader2 className="animate-spin mr-2"/> : <span className="flex items-center">Launch Project <Rocket className="ml-2 w-6 h-6 animate-pulse"/></span>}
+                    <Button onClick={() => setStep(5)} className="w-full bg-blue-600 py-6 text-xl font-bold text-white shadow-[0_0_30px_rgba(37,99,235,0.35)] transition-all duration-500 hover:bg-blue-700 hover:shadow-[0_0_40px_rgba(37,99,235,0.5)] sm:w-auto lg:w-1/3">
+                        <span className="flex items-center">Continue to DevOps <ArrowRight className="ml-2 w-6 h-6"/></span>
                     </Button>
                 </div>
 
+            </CardContent>
+          </>
+        )}
+
+        {/* --- STEP 5: OPTIONAL DEVOPS SETUP --- */}
+        {step === 5 && (
+          <>
+            <CardHeader className="border-b border-slate-800/50 px-8 pb-6 pt-8">
+              <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                <div>
+                  <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-blue-500/20 bg-blue-500/10 px-3 py-1 text-xs font-semibold text-blue-200">
+                    <Github className="h-3.5 w-3.5" />
+                    Optional repository connection
+                  </div>
+                  <CardTitle className="text-3xl">DevOps Setup</CardTitle>
+                  <CardDescription className="mt-2 max-w-2xl text-base">
+                    Connect GitHub now if you already know the repository. You can skip this and configure it once from the DevOps tab later.
+                  </CardDescription>
+                </div>
+                <Button
+                  type="button"
+                  variant={githubSetup.enabled ? "default" : "outline"}
+                  onClick={() =>
+                    setGithubSetup((current) => ({ ...current, enabled: !current.enabled }))
+                  }
+                  className={githubSetup.enabled ? "bg-blue-600 hover:bg-blue-700" : "border-slate-700 bg-slate-950 text-slate-200 hover:bg-slate-800"}
+                >
+                  <PlugZap className="mr-2 h-4 w-4" />
+                  {githubSetup.enabled ? "Repository setup on" : "Enable setup"}
+                </Button>
+              </div>
+            </CardHeader>
+
+            <CardContent className="flex flex-1 flex-col gap-6 p-8">
+              <div className="grid gap-4 md:grid-cols-3">
+                <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-5">
+                  <Github className="mb-4 h-6 w-6 text-slate-300" />
+                  <p className="font-semibold text-white">One-time setup</p>
+                  <p className="mt-2 text-sm leading-6 text-slate-500">
+                    After saving it here, the repository details are shown in Settings and managed from DevOps.
+                  </p>
+                </div>
+                <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-5">
+                  <GitBranch className="mb-4 h-6 w-6 text-blue-300" />
+                  <p className="font-semibold text-white">Task automation</p>
+                  <p className="mt-2 text-sm leading-6 text-slate-500">
+                    Commit messages and pull requests can link to keys like {basicInfo.projectKey || "APP"}-123.
+                  </p>
+                </div>
+                <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-5">
+                  <Settings className="mb-4 h-6 w-6 text-purple-300" />
+                  <p className="font-semibold text-white">Safe to skip</p>
+                  <p className="mt-2 text-sm leading-6 text-slate-500">
+                    The project launches normally even when the repository is not ready yet.
+                  </p>
+                </div>
+              </div>
+
+              {githubSetup.enabled ? (
+                <div className="rounded-3xl border border-blue-500/20 bg-blue-500/[0.06] p-6">
+                  <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_220px]">
+                    <div className="space-y-2">
+                      <Label className="text-sm text-slate-300">Repository</Label>
+                      <Input
+                        value={githubSetup.repositoryFullName}
+                        onChange={(event) => {
+                          const value = event.target.value;
+                          setGithubSetup((current) => ({
+                            ...current,
+                            repositoryFullName: value,
+                            repositoryUrl: current.repositoryUrl || repoUrlFromFullName(value),
+                          }));
+                        }}
+                        placeholder="owner/repository"
+                        className="h-12 border-slate-700 bg-slate-950 text-base"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-sm text-slate-300">Default branch</Label>
+                      <Input
+                        value={githubSetup.defaultBranch}
+                        onChange={(event) =>
+                          setGithubSetup((current) => ({
+                            ...current,
+                            defaultBranch: event.target.value,
+                          }))
+                        }
+                        placeholder="main"
+                        className="h-12 border-slate-700 bg-slate-950 text-base"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="mt-5 grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+                    <div className="space-y-2">
+                      <Label className="text-sm text-slate-300">Repository URL</Label>
+                      <Input
+                        value={githubSetup.repositoryUrl}
+                        onChange={(event) =>
+                          setGithubSetup((current) => ({
+                            ...current,
+                            repositoryUrl: event.target.value,
+                          }))
+                        }
+                        placeholder="https://github.com/owner/repository"
+                        className="h-12 border-slate-700 bg-slate-950 text-base"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-sm text-slate-300">Public backend / ngrok URL</Label>
+                      <Input
+                        value={githubSetup.publicBaseUrl}
+                        onChange={(event) =>
+                          setGithubSetup((current) => ({
+                            ...current,
+                            publicBaseUrl: event.target.value,
+                          }))
+                        }
+                        placeholder="https://abc123.ngrok-free.app"
+                        className="h-12 border-slate-700 bg-slate-950 text-base"
+                      />
+                      <p className="text-xs text-slate-500">
+                        If filled, SDLC Hub stores {normalizeWebhookUrl(githubSetup.publicBaseUrl) || "/github/webhook"} as the webhook payload URL.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="mt-5 grid gap-3 md:grid-cols-2">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setGithubSetup((current) => ({
+                          ...current,
+                          autoLinkCommits: !current.autoLinkCommits,
+                        }))
+                      }
+                      className={cn(
+                        "rounded-2xl border p-4 text-left transition",
+                        githubSetup.autoLinkCommits
+                          ? "border-blue-500/30 bg-blue-500/10"
+                          : "border-slate-800 bg-slate-950"
+                      )}
+                    >
+                      <p className="font-semibold text-white">Auto-link commits</p>
+                      <p className="mt-1 text-sm leading-6 text-slate-500">
+                        Link commits containing project task keys to their issues.
+                      </p>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setGithubSetup((current) => ({
+                          ...current,
+                          autoTransitionPrs: !current.autoTransitionPrs,
+                        }))
+                      }
+                      className={cn(
+                        "rounded-2xl border p-4 text-left transition",
+                        githubSetup.autoTransitionPrs
+                          ? "border-purple-500/30 bg-purple-500/10"
+                          : "border-slate-800 bg-slate-950"
+                      )}
+                    >
+                      <p className="font-semibold text-white">PR smart transitions</p>
+                      <p className="mt-1 text-sm leading-6 text-slate-500">
+                        Pull request activity can suggest moving tasks toward Review.
+                      </p>
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="rounded-3xl border border-dashed border-slate-800 bg-slate-950/50 p-8 text-center">
+                  <Github className="mx-auto mb-4 h-10 w-10 text-slate-600" />
+                  <p className="text-lg font-semibold text-white">Repository setup skipped for now</p>
+                  <p className="mx-auto mt-2 max-w-2xl text-sm leading-6 text-slate-500">
+                    DevOps remains available after launch. The owner can connect GitHub once from the DevOps tab and the saved details will appear in Settings.
+                  </p>
+                </div>
+              )}
+
+              <div className="mt-auto flex flex-col justify-between gap-3 border-t border-slate-800 pt-6 sm:flex-row sm:items-center">
+                <Button variant="ghost" onClick={() => setStep(4)} size="lg" className="text-slate-400 hover:text-white">
+                  <ArrowLeft className="mr-2 h-5 w-5" /> Back to Team
+                </Button>
+                <Button
+                  onClick={handleFinalSubmit}
+                  disabled={isLoading}
+                  className="bg-green-600 px-8 py-6 text-lg font-bold text-white shadow-[0_0_30px_rgba(22,163,74,0.35)] transition-all duration-500 hover:bg-green-700 hover:shadow-[0_0_40px_rgba(22,163,74,0.5)]"
+                >
+                  {isLoading ? (
+                    <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                  ) : (
+                    <span className="flex items-center">
+                      Launch Project <Rocket className="ml-2 h-5 w-5 animate-pulse" />
+                    </span>
+                  )}
+                </Button>
+              </div>
             </CardContent>
           </>
         )}

@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, ArrowRight, Bot, FileText, History, MessageSquareText } from "lucide-react";
+import { AlertTriangle, ArrowRight, Bot, FileText, Github, History, MessageSquareText } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { UserAvatar } from "@/components/user-avatar";
@@ -39,6 +39,8 @@ const actionLabels: Record<string, string> = {
   COMMENT_RISK_DETECTED: "AI risk detected",
   ESTIMATE_INVALIDATED: "Invalidated estimate",
   DOCUMENTATION_GENERATED: "Generated documentation",
+  GITHUB_COMMIT_LINKED: "Linked GitHub commit",
+  GITHUB_PR_LINKED: "Linked GitHub pull request",
   PROJECT_UPDATED: "Updated project",
   PROJECT_DELETED: "Deleted project",
   PROJECT_ARCHIVED: "Archived project",
@@ -79,6 +81,8 @@ const fieldLabels: Record<string, string> = {
   enabled: "Visibility",
   color: "Color",
   ai_provider: "AI provider",
+  "github.commit": "GitHub commit",
+  "github.pull_request": "GitHub pull request",
 };
 
 const statusLabels: Record<string, string> = {
@@ -199,6 +203,7 @@ function getRisk(event: AuditEventData): ParsedRisk | null {
 function renderAuditIcon(action: string) {
   if (action.includes("COMMENT")) return <MessageSquareText className="h-3.5 w-3.5" />;
   if (action.includes("RISK")) return <AlertTriangle className="h-3.5 w-3.5" />;
+  if (action.includes("GITHUB")) return <Github className="h-3.5 w-3.5" />;
   if (action.includes("DOCUMENTATION")) return <FileText className="h-3.5 w-3.5" />;
   if (action.includes("AI")) return <Bot className="h-3.5 w-3.5" />;
   return <History className="h-3.5 w-3.5" />;

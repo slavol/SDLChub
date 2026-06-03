@@ -101,6 +101,17 @@ export const getProjectGitHubEvents = async (
   return response.data;
 };
 
+export const getTaskGitHubEvents = async (
+  taskId: number,
+  limit = 80
+): Promise<GitHubEventItem[]> => {
+  const response = await api.get(`/github/events/task/${taskId}`, {
+    params: { limit },
+  });
+
+  return response.data;
+};
+
 export const getProjectPullRequests = async (
   projectId: number,
   limit = 120

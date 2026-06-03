@@ -12,6 +12,7 @@ from datetime import datetime
 from typing import Any
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, Query, status
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from backend.config import get_settings
@@ -493,7 +494,11 @@ def _handle_push(
     *,
     delivery_id: str | None,
     payload: dict[str, Any],
+    integration: GitHubProjectIntegration | None = None,
 ) -> int:
+    if integration and not integration.auto_link_commits:
+        return 0
+
     repository = (payload.get("repository") or {}).get("full_name")
     sender_login = (payload.get("sender") or {}).get("login")
     commits = payload.get("commits") or []
@@ -555,6 +560,7 @@ def _handle_pull_request(
     *,
     delivery_id: str | None,
     payload: dict[str, Any],
+    integration: GitHubProjectIntegration | None = None,
 ) -> int:
     action = payload.get("action")
     repository = (payload.get("repository") or {}).get("full_name")
@@ -571,17 +577,18 @@ def _handle_pull_request(
     keys = _extract_task_keys(title, body, branch)
     tasks = _find_tasks_by_keys(db, keys)
     processed = 0
+    allow_auto_transition = bool(integration.auto_transition_prs) if integration else True
 
     for task in tasks:
         mapped_user = _resolve_github_user(db, sender_login, task.project_id)
         old_status = _enum_value(task.status)
         new_status = None
 
-        if action in {"opened", "reopened", "ready_for_review"}:
+        if allow_auto_transition and action in {"opened", "reopened", "ready_for_review"}:
             if old_status != TaskStatus.REVIEW.value:
                 task.status = TaskStatus.REVIEW
                 new_status = TaskStatus.REVIEW.value
-        elif action == "closed" and merged:
+        elif allow_auto_transition and action == "closed" and merged:
             if old_status != TaskStatus.DONE.value:
                 task.status = TaskStatus.DONE
                 new_status = TaskStatus.DONE.value
@@ -614,6 +621,9 @@ def _handle_pull_request(
         if new_status:
             comment_lines.append("")
             comment_lines.append(f"Task moved from {old_status} to {new_status}.")
+        elif not allow_auto_transition:
+            comment_lines.append("")
+            comment_lines.append("PR smart transitions are disabled for this project; task status was left unchanged.")
 
             _add_audit_log(
                 db,
@@ -919,9 +929,19 @@ async def github_webhook(
         return {"processed": True, "event": "ping", "events_created": 1}
 
     if event_type == "push":
-        created = _handle_push(db, delivery_id=x_github_delivery, payload=payload)
+        created = _handle_push(
+            db,
+            delivery_id=x_github_delivery,
+            payload=payload,
+            integration=integration,
+        )
     elif event_type == "pull_request":
-        created = _handle_pull_request(db, delivery_id=x_github_delivery, payload=payload)
+        created = _handle_pull_request(
+            db,
+            delivery_id=x_github_delivery,
+            payload=payload,
+            integration=integration,
+        )
     else:
         _store_event(
             db,
@@ -1059,6 +1079,34 @@ def confirm_pull_request_transition(
         {"action": "github_pr_manual_confirm", "task_id": task.id, "task_key": task.key},
     )
     return _pull_request_payload(db, event)
+
+
+@router.get("/events/task/{task_id}", response_model=list[GitHubEventOut])
+def list_task_github_events(
+    task_id: int,
+    limit: int = Query(default=80, ge=1, le=200),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    task = db.query(Task).filter(Task.id == task_id).first()
+    if not task:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found.")
+
+    check_project_permission(db, current_user.id, task.project_id)
+
+    return (
+        db.query(GitHubEvent)
+        .filter(GitHubEvent.project_id == task.project_id)
+        .filter(
+            or_(
+                GitHubEvent.task_id == task_id,
+                GitHubEvent.task_key == task.key,
+            )
+        )
+        .order_by(GitHubEvent.created_at.desc(), GitHubEvent.id.desc())
+        .limit(limit)
+        .all()
+    )
 
 
 @router.get("/events/project/{project_id}", response_model=list[GitHubEventOut])

@@ -27,6 +27,7 @@ import {
 
 import { Button } from "@/components/ui/button";
 import { BrandMark } from "@/components/brand-mark";
+import { ThemeModeToggle } from "@/components/theme-mode-toggle";
 import { UserAvatar, resolveMediaUrl } from "@/components/user-avatar";
 import {
   DropdownMenu,
@@ -396,6 +397,8 @@ export function AppSidebar({ methodology, role, projectName }: SidebarProps) {
             Global Admin Console
           </Link>
         )}
+
+        <ThemeModeToggle className="mb-2.5" />
 
         <Button
           variant="ghost"

@@ -2755,6 +2755,420 @@ Urmatoarea prioritate recomandata dupa batch BC:
    - detalii extinse pentru Application Errors.
    - daca Users/Projects devin prea lungi, adaugare paginare sau virtualized list.
 
+Batch BD - Global Admin scroll-spy robust Codex 3 iunie 2026
+Context:
+- dupa batch BC, utilizatorul a confirmat ca sidebar-ul admin tot ramanea blocat pe Command Center la scroll.
+- cauza probabila: calculul manual dupa getBoundingClientRect nu era suficient de stabil pentru containerul intern de scroll si sectiunile lungi.
+
+Implementat:
+- frontend/app/admin/layout.tsx:
+  - scroll-spy refacut cu `IntersectionObserver` legat direct de `admin-scroll-root`.
+  - fallback suplimentar pe `scrollTop + clientHeight * 0.32`, ca active state-ul sa functioneze si cand intersectia nu livreaza intrari utile.
+  - clickurile din sidebar folosesc `scrollRoot.scrollTo(...)` catre `target.offsetTop`, nu se bazeaza doar pe comportamentul default al anchor-ului.
+  - URL-ul se actualizeaza cu `history.replaceState`, dar scroll-ul ramane controlat in containerul admin.
+
+Corectie suplimentara in acelasi batch:
+- IntersectionObserver a fost eliminat fiindca putea suprascrie fallback-ul cu sectiunea mare de sus.
+- active state-ul este calculat determinist din `getBoundingClientRect().top` pentru fiecare sectiune.
+- actualizarea este legata direct de `onScroll` React pe `admin-scroll-root`, plus listener fallback pe `window` si pe container.
+- clickurile din sidebar raman controlate manual prin `scrollRoot.scrollTo(...)`, cu fallback `scrollIntoView`.
+
+Verificari batch BD:
+- `npm run lint`: OK.
+- `npm run build`: OK, ramane doar warning-ul existent Next `--localstorage-file` fara path valid.
+
+Fisiere cheie batch BD:
+- frontend/app/admin/layout.tsx
+
+Urmatoarea prioritate recomandata dupa batch BD:
+1. Verificare manuala imediata /admin:
+   - scroll lent pana la Users, Projects, Support, AI Usage, System Health.
+   - active state-ul din sidebar trebuie sa se mute fara click.
+   - click pe fiecare link trebuie sa duca in sectiunea respectiva.
+2. Dupa confirmare, continuam cu restul de polish/bug-uri:
+   - confirmari delete ticket/comment.
+   - System Health cu detalii extinse.
+   - QA pe schimbare metodologie SCRUM/KANBAN/SCRUMBAN.
+   - QA pe archive project read-only.
+   - smoke test auth/mail/support/account/devops.
+
+Batch BE - Account grid, Workload AI desk si DevOps one-time setup Codex 3 iunie 2026
+Context:
+- utilizatorul a cerut polish final in zonele Account, Workload, DevOps, Settings si Project Wizard.
+- cerinta importanta: conectarea repository-ului GitHub trebuie sa fie un setup one-time; dupa configurare detaliile se vad in Settings, iar formularul complet nu trebuie repetat ca ecran principal.
+- in wizard-ul initial trebuie sa existe optiunea de GitHub, dar sa poata fi sarita si completata ulterior din tab-ul DevOps.
+
+Implementat:
+- frontend/app/dashboard/account/page.tsx:
+  - pagina Account a fost trecuta din layout main/aside rigid intr-un grid responsive `xl:grid-cols-12`.
+  - Profile, My Projects, Security, Notifications, Active Sessions/Security Log si Account Notes sunt distribuite ca panouri de grid.
+  - scop: aspect mai coerent pe desktop si mai natural pe mobile/tableta.
+- frontend/app/dashboard/workload/page.tsx:
+  - generarea de sugestii AI apare acum sus, intr-un panou "AI workload desk".
+  - butonul Generate suggestions a fost mutat din header in acest panou.
+  - rezultatele, sursa AI/determinista si sumarul apar imediat dupa generare in primul ecran.
+  - lista membrilor si drag & drop raman dedesubt pentru redistribuire efectiva.
+- frontend/app/dashboard/devops/page.tsx:
+  - formularul complet de repository setup apare doar daca integrarea nu este configurata.
+  - dupa configurare, pagina afiseaza un cockpit cu:
+    - repository.
+    - status conexiune.
+    - branch default.
+    - last delivery.
+    - automation badges pentru commits si PRs.
+    - webhook endpoint compact.
+    - actiuni Check status / Disconnect pentru owner.
+  - daca userul nu este owner si nu exista integrare, vede mesaj read-only de not configured.
+  - sectiunea de evenimente GitHub este randata doar cand repository-ul este configurat.
+- frontend/app/dashboard/settings/page.tsx:
+  - Settings incarca integrarea GitHub prin `getProjectGitHubIntegration`.
+  - a fost adaugat cardul "Repository integration" in zona de project settings.
+  - cardul afiseaza in grid:
+    - status setup.
+    - repository.
+    - default branch.
+    - webhook.
+    - automation commits/PRs.
+  - butonul duce catre `/dashboard/devops` pentru configurare sau inspectie.
+- frontend/app/project-wizard/page.tsx:
+  - wizard-ul a fost extins de la 4 la 5 pasi.
+  - pas nou: "DevOps Setup".
+  - bara de progres cu 5 pasi si actiunile finale au primit ajustari responsive pentru mobile/tableta.
+  - setup-ul GitHub este optional si porneste dezactivat.
+  - daca este activat, owner-ul poate completa:
+    - repository `owner/repository`.
+    - repository URL.
+    - default branch.
+    - public backend/ngrok URL.
+    - auto-link commits.
+    - PR smart transitions.
+  - dupa crearea proiectului, wizard-ul incearca `upsertProjectGitHubIntegration`.
+  - daca GitHub setup-ul esueaza sau repository-ul este incomplet, proiectul ramane creat si utilizatorul poate continua configurarea din DevOps.
+
+Verificari batch BE:
+- `npm run lint`: OK.
+- `npm run build`: OK, ramane doar warning-ul existent Next `--localstorage-file` fara path valid.
+
+Fisiere cheie batch BE:
+- frontend/app/dashboard/account/page.tsx
+- frontend/app/dashboard/workload/page.tsx
+- frontend/app/dashboard/devops/page.tsx
+- frontend/app/dashboard/settings/page.tsx
+- frontend/app/project-wizard/page.tsx
+- PLAN_CONTINUARE_LICENTA_SDLC_HUB.txt
+
+Verificari manuale recomandate dupa batch BE:
+1. Account:
+   - desktop: cardurile trebuie sa fie grid, nu sidebar rigid.
+   - mobile: toate cardurile trebuie sa cada pe o singura coloana fara overflow.
+2. Workload:
+   - buton Generate suggestions trebuie sa fie sus.
+   - dupa click trebuie sa apara sumarul si cardurile de sugestii in panoul de sus.
+   - drag & drop intre membri trebuie sa ramana functional.
+3. DevOps:
+   - fara integrare: owner vede formularul complet de setup.
+   - cu integrare: owner vede cockpit-ul, nu formularul mare.
+   - non-owner vede detalii read-only daca exista integrare.
+4. Settings:
+   - cardul Repository integration trebuie sa arate datele salvate.
+   - butonul Open DevOps/Configure repository trebuie sa duca in `/dashboard/devops`.
+5. Project Wizard:
+   - pasii trebuie sa fie Identity, AI Interview, Decision, Team & Roles, DevOps Setup.
+   - skip GitHub trebuie sa creeze proiectul normal.
+   - GitHub enabled cu `owner/repo` trebuie sa salveze integrarea dupa creare.
+
+Batch BF - GitHub Settings editabil, DevOps polish si task development links Codex 3 iunie 2026
+Context:
+- utilizatorul a cerut ca repository-ul GitHub sa poata fi modificat din Project Settings, nu doar vazut.
+- setarile pentru auto-link commit si PR smart transitions trebuie sa fie reale.
+- partea de ngrok trebuie sa existe si in Settings.
+- pagina DevOps trebuia sa arate mai mult ca un operation center.
+- pe fiecare task trebuie sa existe vizibilitate clara pentru commit/PR legate de task, nu doar audit log generic.
+
+Implementat:
+- frontend/app/dashboard/settings/page.tsx:
+  - cardul Repository integration este acum editabil pentru project owner/global admin.
+  - campuri editabile:
+    - repository `owner/repository`.
+    - repository URL.
+    - default branch.
+    - public backend/ngrok URL.
+  - toggle-uri functionale pentru:
+    - Auto-link commits.
+    - PR smart transitions.
+  - actiuni:
+    - Save repository settings.
+    - Check status.
+    - Disconnect repository.
+    - Copy webhook URL.
+    - Start/Stop ngrok tunnel.
+  - userii non-owner vad read-only si mesaj ca setarile sunt owner-only.
+- backend/routers/github.py:
+  - `auto_link_commits=False` opreste linkarea automata a commiturilor la task-uri.
+  - `auto_transition_prs=False` pastreaza linkarea PR-urilor, dar nu mai muta task-urile automat in Review/Done.
+  - adaugat endpoint nou:
+    - `GET /github/events/task/{task_id}` pentru evenimente GitHub legate de un singur task.
+- frontend/services/github.ts:
+  - adaugat `getTaskGitHubEvents(taskId)`.
+- frontend/app/dashboard/tasks/[taskId]/page.tsx:
+  - adaugata sectiune noua "Development links".
+  - afiseaza commits si pull requests legate de task prin GitHub webhook.
+  - include repository, sender, data, commit sha scurt, PR number, status/action si link extern GitHub.
+  - daca nu exista evenimente, arata instructiune sa se includa cheia taskului in commit/PR/branch.
+- frontend/components/dashboard/audit-log-event.tsx:
+  - audit log-ul are acum label/icon dedicat pentru:
+    - `GITHUB_COMMIT_LINKED`
+    - `GITHUB_PR_LINKED`
+    - campurile `github.commit` si `github.pull_request`.
+- frontend/app/dashboard/devops/page.tsx:
+  - header-ul a fost redesenat ca operation center.
+  - include status repository, repo curent, push events, pull requests, linked tasks.
+  - adaugat buton direct catre Repository settings.
+  - eliminate metricile dublate din zona de evenimente.
+
+Verificari batch BF:
+- `.venv/bin/python -m py_compile backend/routers/github.py`: OK.
+- `npm run lint`: OK.
+- `npm run build`: OK, ramane warning-ul existent Next `--localstorage-file` fara path valid.
+
+Fisiere cheie batch BF:
+- backend/routers/github.py
+- frontend/services/github.ts
+- frontend/app/dashboard/settings/page.tsx
+- frontend/app/dashboard/devops/page.tsx
+- frontend/app/dashboard/tasks/[taskId]/page.tsx
+- frontend/components/dashboard/audit-log-event.tsx
+- PLAN_CONTINUARE_LICENTA_SDLC_HUB.txt
+
+Verificari manuale recomandate dupa batch BF:
+1. Settings / Repository integration:
+   - schimba repository-ul si branch-ul, salveaza, refresh, verifica persistenta.
+   - porneste ngrok, verifica daca public URL se aplica in camp.
+   - copiaza webhook URL.
+   - opreste ngrok.
+   - dezactiveaza Auto-link commits si verifica webhook push cu task key: nu trebuie sa creeze link task.
+   - dezactiveaza PR smart transitions si verifica PR cu task key: trebuie sa apara link/comment/eveniment, dar statusul taskului nu trebuie mutat automat.
+2. DevOps:
+   - header-ul trebuie sa afiseze repo/status/metrici.
+   - butonul Repository settings trebuie sa duca la Project Settings.
+   - filtrele de evenimente trebuie sa ramana functionale.
+3. Task detail:
+   - commit message cu task key trebuie sa apara in Development links si Audit Log.
+   - PR title/body/branch cu task key trebuie sa apara in Development links si Audit Log.
+   - linkul Open GitHub trebuie sa deschida URL-ul evenimentului.
+
+Batch BG - Task development links sub comentarii si confirmari stergere support Codex 3 iunie 2026
+Context:
+- utilizatorul a cerut ca "Development links" din pagina taskului sa fie sub comentarii.
+- stergerea ticketelor si comentariilor de support trebuie sa fie mai sigura, cu confirmare explicita, atat pentru user cat si pentru Global Admin.
+
+Implementat:
+- frontend/app/dashboard/tasks/[taskId]/page.tsx:
+  - sectiunea "Development links" este randata dupa cardul "Comments" si inainte de "Audit Log".
+  - logica de fetch/afisare a evenimentelor GitHub ramane aceeasi, doar ordinea UI a fost corectata.
+- frontend/app/dashboard/support/page.tsx:
+  - stergerea unui support ticket deschide confirm dialog, nu mai sterge direct.
+  - stergerea unui comentariu de support deschide confirm dialog, nu mai sterge direct.
+  - dialogurile au loading state pentru actiunea in curs.
+- frontend/app/admin/page.tsx:
+  - Global Admin are confirm dialog pentru stergere support ticket.
+  - Global Admin are confirm dialog pentru stergere comment din ticket.
+  - butoanele de stergere din Support Desk seteaza intentia de stergere si asteapta confirmare.
+
+Verificari batch BG:
+- `npm run lint`: OK.
+- `npm run build`: OK, ramane warning-ul existent Next `--localstorage-file` fara path valid.
+
+Fisiere cheie batch BG:
+- frontend/app/dashboard/tasks/[taskId]/page.tsx
+- frontend/app/dashboard/support/page.tsx
+- frontend/app/admin/page.tsx
+- PLAN_CONTINUARE_LICENTA_SDLC_HUB.txt
+
+Verificari manuale recomandate dupa batch BG:
+1. Task detail:
+   - Comments trebuie sa fie deasupra Development links.
+   - Development links trebuie sa fie deasupra Audit Log.
+2. Dashboard Support:
+   - Delete ticket trebuie sa ceara confirmare.
+   - Delete comment trebuie sa ceara confirmare.
+   - Cancel nu trebuie sa stearga nimic.
+3. Global Admin / Support Desk:
+   - Delete ticket trebuie sa ceara confirmare.
+   - Delete comment trebuie sa ceara confirmare.
+   - dupa confirmare lista trebuie sa se actualizeze fara reload manual.
+
+Batch BH - Global Admin System Health inspectie erori Codex 3 iunie 2026
+Context:
+- dupa confirmari support, urmatorul polish util din plan era System Health cu detalii extinse.
+- lista de erori din Global Admin arata doar status/metoda/path/user/date, fara context de diagnostic.
+
+Implementat:
+- backend/main.py:
+  - middleware-ul HTTP error logging foloseste acum coloana existenta `detail`.
+  - pentru raspunsuri 4xx/5xx se salveaza context JSON minimal:
+    - path.
+    - query_keys, fara valorile query ca sa nu fie salvate tokenuri/parole.
+    - client_host.
+    - user_agent.
+    - referer.
+    - content_type.
+  - pentru exceptii nehandled se logheaza status 500 cu exception class si mesaj limitat, apoi exceptia este ridicata mai departe.
+  - nu a fost nevoie de migrare Alembic.
+- frontend/app/admin/page.tsx:
+  - Application Errors are acum buton Inspect pe fiecare eroare.
+  - dialogul de inspectare afiseaza request, actor, timestamp, severitate si contextul extins parsat din JSON.
+  - erorile vechi fara detail arata mesaj explicit ca au fost capturate inainte de contextul extins.
+  - search-ul din admin cauta acum si in user/detail pentru erori.
+  - exista actiune Copy summary pentru triere rapida.
+
+Verificari batch BH:
+- `.venv/bin/python -m py_compile backend/main.py`: OK.
+- `npm run lint`: OK.
+- `npm run build`: OK, ramane warning-ul existent Next `--localstorage-file` fara path valid.
+
+Fisiere cheie batch BH:
+- backend/main.py
+- frontend/app/admin/page.tsx
+- PLAN_CONTINUARE_LICENTA_SDLC_HUB.txt
+
+Verificari manuale recomandate dupa batch BH:
+1. Global Admin / System Health:
+   - genereaza o eroare 404/401/500 in aplicatie.
+   - intra in /admin, sectiunea System Health.
+   - foloseste Inspect pe eroare si verifica dialogul cu context.
+   - cauta dupa path/user si verifica filtrarea.
+2. Confidentialitate:
+   - query_keys trebuie sa contina doar numele cheilor query, nu valorile.
+   - Authorization/Cookie nu trebuie sa apara in detail.
+
+Batch BI - Fix Task GitHub links si Theme Light/Dark/System Codex 3 iunie 2026
+Context:
+- utilizatorul a observat in Global Admin/System Health multe 404 pentru `GET /github/events/task/{id}`.
+- task-ul GFW-1 trebuia sa afiseze in Task detail aceleasi date GitHub vizibile in DevOps.
+- utilizatorul a cerut light/dark toggle, cu default in functie de sistemul fiecaruia.
+
+Implementat:
+- frontend/app/dashboard/tasks/[taskId]/page.tsx:
+  - pagina Task detail nu mai cheama endpointul `/github/events/task/{id}` direct.
+  - incarca evenimentele GitHub din proiect prin endpointul stabil `/github/events/project/{project_id}`.
+  - filtreaza local dupa:
+    - `task_id`;
+    - `task_key`;
+    - aparitia cheii taskului in summary.
+  - astfel Development links afiseaza evenimentele din DevOps chiar si daca evenimentele vechi au doar task_key sau endpointul de task era stale.
+- backend/routers/github.py:
+  - endpointul `/github/events/task/{task_id}` a fost imbunatatit.
+  - cauta evenimente atat dupa `task_id`, cat si dupa `task_key`, in acelasi proiect.
+  - importat `or_` din SQLAlchemy.
+- frontend/components/theme-provider.tsx:
+  - provider global next-themes cu `defaultTheme="system"` si `enableSystem`.
+- frontend/components/theme-mode-toggle.tsx:
+  - componenta noua pentru alegere tema: System, Light, Dark.
+- frontend/app/layout.tsx:
+  - ThemeProvider montat global.
+  - eliminat `className="dark"` hardcodat de pe html.
+  - adaugat `suppressHydrationWarning`.
+- frontend/components/dashboard/app-sidebar.tsx:
+  - adaugat buton Theme in zona de jos a sidebarului.
+- frontend/app/admin/layout.tsx:
+  - adaugat acelasi Theme toggle si in Global Admin Console.
+  - pe desktop apare jos langa profil; pe mobile/tableta apare in headerul admin.
+- frontend/app/globals.css:
+  - adaugat layer light mode pentru clasele dark dominante folosite deja in aplicatie.
+  - scop: tema Light sa fie vizibila si utilizabila chiar daca multe pagini au clase Tailwind dark hardcodate.
+
+Verificari batch BI:
+- `.venv/bin/python -m py_compile backend/routers/github.py backend/main.py`: OK.
+- `npm run lint`: OK.
+- `npm run build`: OK, ramane warning-ul existent Next `--localstorage-file` fara path valid.
+- `./start.sh`: backend/frontend restartate.
+- `curl http://127.0.0.1:8000/health`: 200 OK.
+- `curl -i http://127.0.0.1:8000/github/events/task/1`: 401 Not authenticated, deci ruta exista si nu mai este 404.
+- `curl -I http://127.0.0.1:3000/dashboard/tasks/1`: 200 OK.
+
+Fisiere cheie batch BI:
+- backend/routers/github.py
+- frontend/app/dashboard/tasks/[taskId]/page.tsx
+- frontend/app/layout.tsx
+- frontend/app/globals.css
+- frontend/app/admin/layout.tsx
+- frontend/components/dashboard/app-sidebar.tsx
+- frontend/components/theme-provider.tsx
+- frontend/components/theme-mode-toggle.tsx
+- PLAN_CONTINUARE_LICENTA_SDLC_HUB.txt
+
+Verificari manuale recomandate dupa batch BI:
+1. Task detail / Development links:
+   - deschide GFW-1.
+   - verifica daca apar commiturile/PR-urile care apar in DevOps.
+   - verifica System Health dupa refresh: nu trebuie sa mai apara 404 noi pentru `/github/events/task/...` din pagina taskului.
+2. Theme:
+   - in sidebar jos, deschide Theme.
+   - verifica System, Light si Dark.
+   - pe System, schimba tema sistemului de operare/browser si verifica daca UI-ul urmeaza preferinta.
+   - verifica rapid Dashboard, Tasks, Task detail, DevOps si Global Admin pe Light, deoarece multe clase au fost convertite prin override global si pot exista zone care mai cer polish punctual.
+
+Batch BJ - Light mode polish real si fix contrast Codex 3 iunie 2026
+Context:
+- utilizatorul a trimis screenshots cu Light mode unde se vedeau probleme clare:
+  - meniurile din sidebar deveneau toate fundal alb/pill din cauza selectorilor prea largi.
+  - Global Admin combina sidebar dark cu continut light si avea texte palide pe carduri deschise.
+  - Workload/Reports aveau texte accent foarte deschise pe fundaluri light.
+  - unele badge-uri/butoane cu `text-blue-100`, `text-amber-100`, `text-emerald-100` etc. ramaneau aproape invizibile in Light.
+
+Implementat:
+- frontend/app/globals.css:
+  - inlocuit selectorii broad `[class*="..."]` cu token exact `[class~="..."]`.
+  - motiv: `[class*="bg-slate-900"]` prindea si clase ca `hover:bg-slate-900`, ceea ce forta fundaluri albe pe elemente care nu trebuiau sa aiba fundal in starea normala.
+  - adaugata conversie light pentru background-uri dark exacte:
+    - `bg-slate-950`, `bg-slate-950/70`, `bg-slate-900/80`, etc.
+    - background-uri arbitrare admin/landing: `bg-[#030712]`, `bg-[#050712]`, `bg-[#080d1a]`, `bg-[#080d1a]/95`, `bg-[#0A0F1C]`.
+  - adaugate texte light accesibile pentru:
+    - slate/white.
+    - blue/cyan.
+    - emerald.
+    - amber/orange.
+    - red/rose.
+    - purple/violet.
+  - accentele pastel nu mai sunt transformate toate in alb; au background-uri tintuite:
+    - blue -> albastru pastel.
+    - cyan -> cyan pastel.
+    - emerald -> verde pastel.
+    - amber -> galben pastel.
+    - red/rose -> rosu pastel.
+    - purple/violet -> mov pastel.
+  - butoanele solide (`bg-blue-600`, `bg-red-600`, etc.) pastreaza text alb in Light.
+  - dropdown/select poppers au fundal alb in Light.
+  - umbrele slate dark sunt convertite in umbre subtile potrivite pentru Light.
+
+Verificari batch BJ:
+- `npm run lint`: OK.
+- `npm run build`: OK, ramane warning-ul existent Next `--localstorage-file` fara path valid.
+- s-a incercat verificare cu Playwright CLI folosind storage temporar autentificat, dar browserul local Playwright lipseste:
+  - eroare: `Executable doesn't exist ... Please run npx playwright install`.
+  - nu s-a instalat browserul ca sa nu schimbam mediul acum.
+  - storage-ul temporar `/tmp/sdlc-light-storage.json` a fost sters.
+
+Fisiere cheie batch BJ:
+- frontend/app/globals.css
+- PLAN_CONTINUARE_LICENTA_SDLC_HUB.txt
+
+Verificari manuale recomandate dupa batch BJ:
+1. Light mode:
+   - Dashboard: meniul lateral nu trebuie sa mai arate ca toate elementele sunt active/pill.
+   - Workload: AI workload desk trebuie sa aiba text lizibil.
+   - Reports: Bottleneck signal si textele amber/blue trebuie sa fie lizibile.
+   - Account: cardurile si form inputs trebuie sa aiba contrast bun.
+   - Global Admin: shell-ul nu trebuie sa mai ramana dark cand tema este Light; cardurile de Incident Focus trebuie sa aiba text lizibil.
+2. Dark mode:
+   - comuta inapoi pe Dark si verifica rapid ca nu s-a degradat tema originala.
+3. System:
+   - comuta pe System si verifica daca preferinta sistemului este urmarita.
+4. Daca vrem verificare automata vizuala mai tarziu:
+   - ruleaza `npm exec -- playwright install chromium` doar cand acceptam sa instalam browserul Playwright local.
+   - apoi se pot face screenshots autentificate cu `--load-storage`.
+
 
 7. OBSERVATII IMPORTANTE
 
