@@ -25,7 +25,7 @@ def load_environment() -> None:
 
 class Settings(BaseSettings):
     # App
-    app_name: str = "SDLC AI Hub API"
+    app_name: str = "SDLC Hub API"
     app_version: str = "2.0"
     environment: str = "development"
     frontend_url: str = "http://127.0.0.1:3000"

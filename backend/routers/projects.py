@@ -281,6 +281,7 @@ def create_project_full(
             key=project_key,
             description=data.description,
             methodology=data.methodology,
+            workflow_config=json.dumps(_workflow_config_for_methodology(data.methodology)),
             owner_id=current_user.id,
         )
         db.add(new_project)
@@ -537,6 +538,58 @@ DEFAULT_WORKFLOW_CONFIG = {
 }
 
 
+METHODOLOGY_WORKFLOW_PRESETS = {
+    "SCRUM": {
+        "wip_limits": {
+            "TODO": None,
+            "IN_PROGRESS": None,
+            "REVIEW": None,
+            "DONE": None,
+        },
+        "columns": [
+            {"key": "TODO", "label": "Sprint To Do", "enabled": True, "order": 0, "color": "bg-slate-500"},
+            {"key": "IN_PROGRESS", "label": "In Progress", "enabled": True, "order": 1, "color": "bg-blue-500"},
+            {"key": "REVIEW", "label": "Sprint Review", "enabled": True, "order": 2, "color": "bg-purple-500"},
+            {"key": "DONE", "label": "Done", "enabled": True, "order": 3, "color": "bg-green-500"},
+        ],
+    },
+    "KANBAN": {
+        "wip_limits": {
+            "TODO": None,
+            "IN_PROGRESS": 5,
+            "REVIEW": 3,
+            "DONE": None,
+        },
+        "columns": [
+            {"key": "TODO", "label": "Intake", "enabled": True, "order": 0, "color": "bg-slate-500"},
+            {"key": "IN_PROGRESS", "label": "In Progress", "enabled": True, "order": 1, "color": "bg-blue-500"},
+            {"key": "REVIEW", "label": "Review", "enabled": True, "order": 2, "color": "bg-purple-500"},
+            {"key": "DONE", "label": "Done", "enabled": True, "order": 3, "color": "bg-green-500"},
+        ],
+    },
+    "SCRUMBAN": {
+        "wip_limits": {
+            "TODO": None,
+            "IN_PROGRESS": 4,
+            "REVIEW": 2,
+            "DONE": None,
+        },
+        "columns": [
+            {"key": "TODO", "label": "Ready", "enabled": True, "order": 0, "color": "bg-slate-500"},
+            {"key": "IN_PROGRESS", "label": "In Progress", "enabled": True, "order": 1, "color": "bg-blue-500"},
+            {"key": "REVIEW", "label": "Code Review", "enabled": True, "order": 2, "color": "bg-purple-500"},
+            {"key": "DONE", "label": "Done", "enabled": True, "order": 3, "color": "bg-green-500"},
+        ],
+    },
+}
+
+
+def _workflow_config_for_methodology(methodology: str) -> dict:
+    normalized_methodology = methodology.upper()
+    preset = METHODOLOGY_WORKFLOW_PRESETS.get(normalized_methodology, DEFAULT_WORKFLOW_CONFIG)
+    return json.loads(json.dumps(preset))
+
+
 def _parse_workflow_config(raw_config: str | None) -> dict:
     config = json.loads(json.dumps(DEFAULT_WORKFLOW_CONFIG))
     if not raw_config:
@@ -597,6 +650,12 @@ def _parse_workflow_config(raw_config: str | None) -> dict:
     return config
 
 
+def _project_workflow_config(project: Project) -> dict:
+    if project.workflow_config:
+        return _parse_workflow_config(project.workflow_config)
+    return _workflow_config_for_methodology(project.methodology)
+
+
 def _serialize_project(project: Project) -> dict:
     return {
         "id": project.id,
@@ -604,7 +663,7 @@ def _serialize_project(project: Project) -> dict:
         "key": project.key,
         "description": project.description,
         "methodology": project.methodology,
-        "workflow_config": _parse_workflow_config(project.workflow_config),
+        "workflow_config": _project_workflow_config(project),
         "is_archived": project.is_archived,
         "ai_config": {
             "mode": project.ai_provider_mode or "PLATFORM",
@@ -859,6 +918,8 @@ def apply_methodology_transition(
             moved_to_flow_count += 1
 
     project.methodology = target_methodology
+    old_workflow_config = project.workflow_config
+    project.workflow_config = json.dumps(_workflow_config_for_methodology(target_methodology))
 
     audit_metadata = {
         "strategy": data.strategy,
@@ -868,6 +929,7 @@ def apply_methodology_transition(
         "affected_counts": preview["affected_counts"],
         "warnings": preview["warnings"],
         "actions": preview["actions"],
+        "workflow_reset": True,
     }
 
     db.add(
@@ -879,6 +941,20 @@ def apply_methodology_transition(
             old_value=old_methodology,
             new_value=target_methodology,
             metadata_json=json.dumps(audit_metadata),
+        )
+    )
+    db.add(
+        ProjectAuditLog(
+            project_id=project.id,
+            actor_id=current_user.id,
+            action="PROJECT_WORKFLOW_UPDATED",
+            field="workflow_config",
+            old_value=old_workflow_config,
+            new_value=project.workflow_config,
+            metadata_json=json.dumps({
+                "reason": "methodology_transition",
+                "target_methodology": target_methodology,
+            }),
         )
     )
 

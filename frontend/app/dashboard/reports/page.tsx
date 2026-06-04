@@ -6,14 +6,11 @@ import {
   AlertTriangle,
   BarChart3,
   CalendarClock,
-  BookOpen,
-  Copy,
   Download,
   CheckCircle2,
   Gauge,
   Loader2,
   RefreshCw,
-  Sparkles,
   Timer,
 } from "lucide-react";
 import {
@@ -39,7 +36,6 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { getApiErrorMessage } from "@/lib/api-error";
-import { formatAiSource } from "@/lib/ai-source";
 import { cn } from "@/lib/utils";
 import {
   getMyProjects,
@@ -49,8 +45,6 @@ import {
   ProjectReportsOverview,
   ReportDistributionPoint,
 } from "@/services/project";
-import { generateSprintReleaseNotes, SprintReleaseNotes } from "@/services/sprint";
-import { createDocumentationPage } from "@/services/documentation";
 import { useProjectStore } from "@/store/use-project-store";
 
 const CHART_COLORS = [
@@ -171,10 +165,6 @@ export default function ReportsPage() {
   const [report, setReport] = useState<ProjectReportsOverview | null>(null);
   const [loading, setLoading] = useState(true);
   const [exportingPdf, setExportingPdf] = useState(false);
-  const [generatingNotes, setGeneratingNotes] = useState(false);
-  const [releaseNotes, setReleaseNotes] = useState<SprintReleaseNotes | null>(null);
-  const [releaseNotesSprintName, setReleaseNotesSprintName] = useState("");
-  const [publishingNotes, setPublishingNotes] = useState(false);
 
   const loadReports = useCallback(async () => {
     setLoading(true);
@@ -235,68 +225,6 @@ export default function ReportsPage() {
       toast.error(getApiErrorMessage(error, "Could not export PDF report."));
     } finally {
       setExportingPdf(false);
-    }
-  };
-
-  const handleGenerateReleaseNotes = async () => {
-    const latestSprint = report?.velocity?.[report.velocity.length - 1];
-    if (!latestSprint) return;
-
-    setGeneratingNotes(true);
-    try {
-      const notes = await generateSprintReleaseNotes(latestSprint.sprint_id);
-      setReleaseNotes(notes);
-      setReleaseNotesSprintName(latestSprint.name);
-      toast.success("Release notes generated.");
-    } catch (error) {
-      toast.error(getApiErrorMessage(error, "Could not generate release notes."));
-    } finally {
-      setGeneratingNotes(false);
-    }
-  };
-
-  const releaseNotesFileName = `${releaseNotesSprintName || "sprint"}-release-notes`
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/(^-|-$)/g, "");
-
-  const handleCopyReleaseNotes = async () => {
-    if (!releaseNotes?.markdown) return;
-
-    await navigator.clipboard.writeText(releaseNotes.markdown);
-    toast.success("Release notes copied.");
-  };
-
-  const handleDownloadReleaseNotes = () => {
-    if (!releaseNotes?.markdown) return;
-
-    const blob = new Blob([releaseNotes.markdown], {
-      type: "text/markdown;charset=utf-8",
-    });
-    const url = window.URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `${releaseNotesFileName || "release-notes"}.md`;
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    window.URL.revokeObjectURL(url);
-  };
-
-  const handlePublishReleaseNotes = async () => {
-    if (!project || !releaseNotes?.markdown) return;
-
-    setPublishingNotes(true);
-    try {
-      await createDocumentationPage(project.id, {
-        title: `Release Notes - ${releaseNotesSprintName || "Sprint"}`,
-        content: releaseNotes.markdown,
-      });
-      toast.success("Release notes published to Documentation.");
-    } catch (error) {
-      toast.error(getApiErrorMessage(error, "Could not publish release notes."));
-    } finally {
-      setPublishingNotes(false);
     }
   };
 
@@ -401,80 +329,8 @@ export default function ReportsPage() {
             )}
             Export PDF
           </Button>
-
-          <Button
-            variant="outline"
-            className="w-full border-slate-700 bg-slate-900 text-slate-200 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
-            onClick={handleGenerateReleaseNotes}
-            disabled={generatingNotes || !report.velocity.length}
-          >
-            {generatingNotes ? (
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            ) : (
-              <Sparkles className="mr-2 h-4 w-4" />
-            )}
-            Release Notes
-          </Button>
         </div>
       </div>
-
-      {releaseNotes && (
-        <Card className="mb-6 border-blue-500/20 bg-blue-500/10">
-          <CardContent className="p-5">
-            <div className="mb-4 flex flex-col justify-between gap-3 md:flex-row md:items-start">
-              <div>
-                <div className="mb-2 flex items-center gap-2">
-                  <Sparkles className="h-5 w-5 text-blue-300" />
-                  <h2 className="text-lg font-semibold text-white">Generated release notes</h2>
-                </div>
-                <p className="text-sm leading-6 text-blue-100/80">{releaseNotes.summary}</p>
-              </div>
-              <Badge className="w-fit border-blue-500/30 bg-blue-500/10 text-blue-200">
-                {formatAiSource(releaseNotes.source)}
-              </Badge>
-            </div>
-            <div className="mb-4 flex flex-wrap gap-2">
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                onClick={handleCopyReleaseNotes}
-                className="border-blue-500/25 bg-slate-950/70 text-blue-100 hover:bg-slate-900"
-              >
-                <Copy className="mr-2 h-4 w-4" />
-                Copy markdown
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                onClick={handleDownloadReleaseNotes}
-                className="border-blue-500/25 bg-slate-950/70 text-blue-100 hover:bg-slate-900"
-              >
-                <Download className="mr-2 h-4 w-4" />
-                Export .md
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                onClick={handlePublishReleaseNotes}
-                disabled={publishingNotes}
-                className="bg-blue-600 text-white hover:bg-blue-500"
-              >
-                {publishingNotes ? (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                ) : (
-                  <BookOpen className="mr-2 h-4 w-4" />
-                )}
-                Publish to docs
-              </Button>
-            </div>
-            <pre className="max-h-80 overflow-auto whitespace-pre-wrap rounded-2xl border border-slate-800 bg-slate-950/80 p-4 text-sm leading-6 text-slate-200">
-              {releaseNotes.markdown}
-            </pre>
-          </CardContent>
-        </Card>
-      )}
 
       <div className="mb-6 grid min-w-0 gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
         <MetricCard

@@ -500,7 +500,7 @@ export default function SupportPage() {
                       </h3>
                     </div>
 
-                    <div className="max-h-[520px] space-y-3 overflow-y-auto pr-1">
+                    <div className="space-y-3">
                       {selectedComments.map((item) => (
                         <div
                           key={item.id}

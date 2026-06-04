@@ -27,6 +27,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useDebouncedRealtimeEvent } from "@/hooks/use-realtime-event";
 import { getApiErrorMessage } from "@/lib/api-error";
 import { cn } from "@/lib/utils";
 import {
@@ -192,6 +193,20 @@ export default function DevOpsPage() {
   useEffect(() => {
     loadDevOps();
   }, [loadDevOps]);
+
+  useDebouncedRealtimeEvent(
+    () => {
+      loadDevOps(false);
+    },
+    [loadDevOps, project?.id],
+    450,
+    (message) =>
+      Boolean(
+        project?.id &&
+          message.project_id === project.id &&
+          ["github.changed", "task.changed", "project.changed"].includes(message.type)
+      )
+  );
 
   const handleProjectChange = (projectId: number) => {
     const selected = projects.find((item) => item.id === projectId) ?? null;

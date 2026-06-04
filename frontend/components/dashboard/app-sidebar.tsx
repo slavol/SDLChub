@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import {
   Activity,
@@ -80,15 +80,21 @@ export function AppSidebar({ methodology, role, projectName }: SidebarProps) {
   const router = useRouter();
 
   const { logout, user } = useAuthStore();
-  const { currentProject, setCurrentProject, clearCurrentProject } =
+  const { currentProject, hasHydrated, setCurrentProject, clearCurrentProject } =
     useProjectStore();
 
   const [projects, setProjects] = useState<Project[]>([]);
   const [loadingProjects, setLoadingProjects] = useState(true);
   const [unreadNotifications, setUnreadNotifications] = useState(0);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [mobileDrawerMounted, setMobileDrawerMounted] = useState(false);
+  const mobileCloseTimeoutRef = useRef<number | null>(null);
 
   useEffect(() => {
+    if (!hasHydrated) {
+      return;
+    }
+
     const loadProjects = async () => {
       setLoadingProjects(true);
 
@@ -116,7 +122,7 @@ export function AppSidebar({ methodology, role, projectName }: SidebarProps) {
     };
 
     loadProjects();
-  }, [clearCurrentProject, currentProject, setCurrentProject]);
+  }, [clearCurrentProject, currentProject, hasHydrated, setCurrentProject]);
 
   useEffect(() => {
     const loadUnreadNotifications = async () => {
@@ -149,9 +155,48 @@ export function AppSidebar({ methodology, role, projectName }: SidebarProps) {
     }
   }, []);
 
-  useEffect(() => {
+  const openMobileDrawer = useCallback(() => {
+    if (mobileCloseTimeoutRef.current !== null) {
+      window.clearTimeout(mobileCloseTimeoutRef.current);
+      mobileCloseTimeoutRef.current = null;
+    }
+    setMobileDrawerMounted(true);
+    window.requestAnimationFrame(() => setMobileOpen(true));
+  }, []);
+
+  const closeMobileDrawer = useCallback(() => {
     setMobileOpen(false);
-  }, [pathname]);
+    if (mobileCloseTimeoutRef.current !== null) {
+      window.clearTimeout(mobileCloseTimeoutRef.current);
+    }
+    mobileCloseTimeoutRef.current = window.setTimeout(() => {
+      setMobileDrawerMounted(false);
+      mobileCloseTimeoutRef.current = null;
+    }, 220);
+  }, []);
+
+  useEffect(() => {
+    closeMobileDrawer();
+  }, [pathname, closeMobileDrawer]);
+
+  useEffect(() => {
+    if (!mobileDrawerMounted) return;
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [mobileDrawerMounted]);
+
+  useEffect(() => {
+    return () => {
+      if (mobileCloseTimeoutRef.current !== null) {
+        window.clearTimeout(mobileCloseTimeoutRef.current);
+      }
+    };
+  }, []);
 
   const activeProject = useMemo(() => {
     if (!currentProject) return null;
@@ -427,7 +472,7 @@ export function AppSidebar({ methodology, role, projectName }: SidebarProps) {
           variant="outline"
           size="icon"
           className="h-10 w-10 shrink-0 rounded-xl border-slate-800 bg-slate-900/70 text-slate-200 hover:bg-slate-900"
-          onClick={() => setMobileOpen(true)}
+          onClick={openMobileDrawer}
           aria-label="Open navigation"
         >
           <Menu className="h-5 w-5" />
@@ -457,21 +502,34 @@ export function AppSidebar({ methodology, role, projectName }: SidebarProps) {
         </Link>
       </header>
 
-      {mobileOpen && (
-        <div className="fixed inset-0 z-50 md:hidden">
+      {mobileDrawerMounted && (
+        <div
+          className={cn(
+            "fixed inset-0 z-50 md:hidden",
+            mobileOpen ? "pointer-events-auto" : "pointer-events-none"
+          )}
+        >
           <button
             type="button"
             aria-label="Close navigation"
-            className="absolute inset-0 bg-slate-950/65 backdrop-blur-sm"
-            onClick={() => setMobileOpen(false)}
+            className={cn(
+              "absolute inset-0 bg-slate-950/65 backdrop-blur-sm transition-opacity duration-200 ease-out",
+              mobileOpen ? "opacity-100" : "opacity-0"
+            )}
+            onClick={closeMobileDrawer}
           />
-          <aside className="relative flex h-dvh w-[min(21rem,calc(100vw-2rem))] flex-col border-r border-slate-800 bg-slate-950 text-slate-200 shadow-2xl shadow-slate-950/60">
+          <aside
+            className={cn(
+              "relative flex h-dvh w-[min(21rem,calc(100vw-2rem))] flex-col border-r border-slate-800 bg-slate-950 text-slate-200 shadow-2xl shadow-slate-950/60 transition-transform duration-200 ease-out will-change-transform",
+              mobileOpen ? "translate-x-0" : "-translate-x-full"
+            )}
+          >
             <Button
               type="button"
               variant="outline"
               size="icon"
               className="absolute right-3 top-3 z-10 h-9 w-9 rounded-xl border-slate-800 bg-slate-900/80 text-slate-300 hover:bg-slate-900"
-              onClick={() => setMobileOpen(false)}
+              onClick={closeMobileDrawer}
               aria-label="Close navigation"
             >
               <X className="h-4 w-4" />

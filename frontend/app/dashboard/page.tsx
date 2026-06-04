@@ -28,7 +28,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AuditChangeSummary, formatAuditActionLabel } from "@/components/dashboard/audit-log-event";
-import { useRealtimeEvent } from "@/hooks/use-realtime-event";
+import { useDebouncedRealtimeEvent } from "@/hooks/use-realtime-event";
 import {
   getMyProjects,
   getProjectDashboard,
@@ -411,18 +411,20 @@ export default function DashboardPage() {
     loadDashboard();
   }, [loadDashboard]);
 
-  useRealtimeEvent((message) => {
-    if (!project?.id || (message.project_id && message.project_id !== project.id)) return;
-
-    if (
-      message.type === "task.changed" ||
-      message.type === "sprint.changed" ||
-      message.type === "calendar.changed" ||
-      message.type === "user.updated"
-    ) {
-      loadDashboard(false);
+  useDebouncedRealtimeEvent(
+    () => loadDashboard(false),
+    [project?.id, loadDashboard],
+    350,
+    (message) => {
+      if (!project?.id || (message.project_id && message.project_id !== project.id)) return false;
+      return (
+        message.type === "task.changed" ||
+        message.type === "sprint.changed" ||
+        message.type === "calendar.changed" ||
+        message.type === "user.updated"
+      );
     }
-  }, [project?.id, loadDashboard]);
+  );
 
   const metrics = useMemo(
     () =>

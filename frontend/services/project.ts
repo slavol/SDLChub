@@ -2,6 +2,62 @@ import api from "@/lib/axios";
 
 export type Methodology = "SCRUM" | "KANBAN" | "SCRUMBAN";
 
+type CachedRequest<T> = {
+  expiresAt: number;
+  promise?: Promise<T>;
+  value?: T;
+};
+
+const REQUEST_CACHE_TTL_MS = 1500;
+const requestCache = new Map<string, CachedRequest<unknown>>();
+
+function cachedGet<T>(key: string, factory: () => Promise<T>, ttlMs = REQUEST_CACHE_TTL_MS): Promise<T> {
+  const now = Date.now();
+  const cached = requestCache.get(key) as CachedRequest<T> | undefined;
+
+  if (cached?.promise) {
+    return cached.promise;
+  }
+
+  if (cached?.value !== undefined && cached.expiresAt > now) {
+    return Promise.resolve(cached.value);
+  }
+
+  const promise = factory()
+    .then((value) => {
+      requestCache.set(key, {
+        value,
+        expiresAt: Date.now() + ttlMs,
+      });
+      return value;
+    })
+    .catch((error) => {
+      requestCache.delete(key);
+      throw error;
+    });
+
+  requestCache.set(key, {
+    promise,
+    expiresAt: now + ttlMs,
+  });
+
+  return promise;
+}
+
+function invalidateProjectCache(projectId?: number) {
+  requestCache.delete("projects:mine");
+
+  if (!projectId) {
+    return;
+  }
+
+  for (const key of requestCache.keys()) {
+    if (key.includes(`:${projectId}`)) {
+      requestCache.delete(key);
+    }
+  }
+}
+
 export interface Project {
   id: number;
   name: string;
@@ -154,8 +210,10 @@ export interface JoinProjectResponse {
 }
 
 export const getMyProjects = async (): Promise<Project[]> => {
-  const response = await api.get("/projects/mine");
-  return response.data;
+  return cachedGet("projects:mine", async () => {
+    const response = await api.get("/projects/mine");
+    return response.data;
+  });
 };
 
 export const getOnboardingStatus = async (): Promise<OnboardingStatus> => {
@@ -170,6 +228,7 @@ export const getPendingInvitations = async (): Promise<PendingInvitation[]> => {
 
 export const joinProject = async (code: string): Promise<JoinProjectResponse> => {
   const response = await api.post("/projects/join", { code });
+  invalidateProjectCache(response.data?.project?.id);
   return response.data;
 };
 
@@ -191,21 +250,26 @@ export const createProjectFull = async (
   data: CreateProjectRequest
 ): Promise<Project> => {
   const response = await api.post("/projects/create_full", data);
+  invalidateProjectCache(response.data?.id);
   return response.data;
 };
 
 export const getProjectMembers = async (
   projectId: number
 ): Promise<ProjectMember[]> => {
-  const response = await api.get(`/projects/${projectId}/members`);
-  return response.data;
+  return cachedGet(`project:${projectId}:members`, async () => {
+    const response = await api.get(`/projects/${projectId}/members`);
+    return response.data;
+  });
 };
 
 export const getMyProjectPermissions = async (
   projectId: number
 ): Promise<MyProjectPermissions> => {
-  const response = await api.get(`/projects/${projectId}/my-permissions`);
-  return response.data;
+  return cachedGet(`project:${projectId}:my-permissions`, async () => {
+    const response = await api.get(`/projects/${projectId}/my-permissions`);
+    return response.data;
+  });
 };
 
 
@@ -279,6 +343,7 @@ export const updateProjectSettings = async (
   data: ProjectUpdateRequest
 ): Promise<Project> => {
   const response = await api.put(`/projects/${projectId}`, data);
+  invalidateProjectCache(projectId);
   return response.data;
 };
 
@@ -287,6 +352,7 @@ export const updateProjectWorkflow = async (
   data: ProjectWorkflowConfig
 ): Promise<Project> => {
   const response = await api.put(`/projects/${projectId}/workflow`, data);
+  invalidateProjectCache(projectId);
   return response.data;
 };
 
@@ -302,6 +368,7 @@ export const updateProjectAiSettings = async (
   data: ProjectAiSettingsUpdate
 ): Promise<ProjectAiConfig> => {
   const response = await api.put(`/projects/${projectId}/ai-settings`, data);
+  invalidateProjectCache(projectId);
   return response.data;
 };
 
@@ -331,6 +398,7 @@ export const applyMethodologyTransition = async (
     target_methodology: targetMethodology,
     strategy,
   });
+  invalidateProjectCache(projectId);
   return response.data;
 };
 
@@ -357,8 +425,10 @@ export const deleteProject = async (
 export const getProjectRoles = async (
   projectId: number
 ): Promise<ProjectRoleWithPermissions[]> => {
-  const response = await api.get(`/projects/${projectId}/roles`);
-  return response.data;
+  return cachedGet(`project:${projectId}:roles`, async () => {
+    const response = await api.get(`/projects/${projectId}/roles`);
+    return response.data;
+  });
 };
 
 export const updateRolePermissions = async (
@@ -369,6 +439,7 @@ export const updateRolePermissions = async (
   const response = await api.put(`/projects/${projectId}/roles/${roleId}/permissions`, {
     permissions,
   });
+  invalidateProjectCache(projectId);
   return response.data;
 };
 
@@ -384,6 +455,7 @@ export const inviteProjectMember = async (
   data: InviteProjectMemberRequest
 ): Promise<PendingInvitation> => {
   const response = await api.post(`/projects/${projectId}/invitations`, data);
+  invalidateProjectCache(projectId);
   return response.data;
 };
 
@@ -400,6 +472,7 @@ export const cancelProjectInvitation = async (
   invitationId: number
 ): Promise<{ message: string }> => {
   const response = await api.delete(`/projects/${projectId}/invitations/${invitationId}`);
+  invalidateProjectCache(projectId);
   return response.data;
 };
 
@@ -411,6 +484,7 @@ export const updateProjectMemberRole = async (
   const response = await api.put(`/projects/${projectId}/members/${membershipId}/role`, {
     role_id: roleId,
   });
+  invalidateProjectCache(projectId);
   return response.data;
 };
 
@@ -419,6 +493,7 @@ export const removeProjectMember = async (
   membershipId: number
 ): Promise<{ message: string }> => {
   const response = await api.delete(`/projects/${projectId}/members/${membershipId}`);
+  invalidateProjectCache(projectId);
   return response.data;
 };
 
@@ -431,8 +506,10 @@ export interface ProjectTeamPayload {
 export const getProjectTeams = async (
   projectId: number
 ): Promise<ProjectTeam[]> => {
-  const response = await api.get(`/teams/project/${projectId}`);
-  return response.data;
+  return cachedGet(`project:${projectId}:teams`, async () => {
+    const response = await api.get(`/teams/project/${projectId}`);
+    return response.data;
+  });
 };
 
 export const createProjectTeam = async (
@@ -440,6 +517,7 @@ export const createProjectTeam = async (
   data: ProjectTeamPayload
 ): Promise<ProjectTeam> => {
   const response = await api.post(`/teams/project/${projectId}`, data);
+  invalidateProjectCache(projectId);
   return response.data;
 };
 
@@ -448,11 +526,13 @@ export const updateProjectTeam = async (
   data: Partial<ProjectTeamPayload>
 ): Promise<ProjectTeam> => {
   const response = await api.put(`/teams/${teamId}`, data);
+  invalidateProjectCache(response.data?.project_id);
   return response.data;
 };
 
 export const deleteProjectTeam = async (teamId: number): Promise<{ message: string }> => {
   const response = await api.delete(`/teams/${teamId}`);
+  invalidateProjectCache();
   return response.data;
 };
 
@@ -464,6 +544,7 @@ export const updateProjectMemberTeam = async (
   const response = await api.put(`/teams/project/${projectId}/members/${membershipId}`, {
     team_id: teamId || null,
   });
+  invalidateProjectCache(projectId);
   return response.data;
 };
 
@@ -488,6 +569,7 @@ export const createProjectRole = async (
   data: CreateProjectRoleRequest
 ): Promise<ProjectRoleWithPermissions> => {
   const response = await api.post(`/projects/${projectId}/roles`, data);
+  invalidateProjectCache(projectId);
   return response.data;
 };
 
@@ -497,6 +579,7 @@ export const updateProjectRole = async (
   data: UpdateProjectRoleRequest
 ): Promise<ProjectRoleWithPermissions> => {
   const response = await api.put(`/projects/${projectId}/roles/${roleId}`, data);
+  invalidateProjectCache(projectId);
   return response.data;
 };
 
@@ -505,6 +588,7 @@ export const deleteProjectRole = async (
   roleId: number
 ): Promise<{ message: string }> => {
   const response = await api.delete(`/projects/${projectId}/roles/${roleId}`);
+  invalidateProjectCache(projectId);
   return response.data;
 };
 

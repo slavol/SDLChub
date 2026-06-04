@@ -289,7 +289,7 @@ async def websocket_endpoint(websocket: WebSocket):
 @app.get("/")
 def read_root():
     return {
-        "message": "SDLC AI Hub API is running 🚀",
+        "message": "SDLC Hub API is running",
         "environment": settings.environment,
         "version": settings.app_version,
     }

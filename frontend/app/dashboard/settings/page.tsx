@@ -1869,7 +1869,7 @@ export default function SettingsPage() {
           }
         }}
       >
-        <DialogContent className="max-h-[92vh] overflow-y-auto border-slate-800 bg-slate-950 text-slate-50 sm:max-w-3xl">
+        <DialogContent className="border-slate-800 bg-slate-950 text-slate-50 sm:max-w-3xl">
           <DialogHeader>
             <div className="mb-2 flex h-11 w-11 items-center justify-center rounded-2xl border border-blue-500/20 bg-blue-500/10 text-blue-300">
               <GitBranch className="h-5 w-5" />

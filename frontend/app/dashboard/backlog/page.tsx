@@ -15,7 +15,7 @@ import { CreateTaskDialog } from "@/components/dashboard/create-task-dialog";
 import { WorkspaceLoadingSkeleton } from "@/components/dashboard/workspace-loading-skeleton";
 import { UserAvatar } from "@/components/user-avatar";
 import { useProjectPermissions } from "@/hooks/use-project-permissions";
-import { useRealtimeEvent } from "@/hooks/use-realtime-event";
+import { useDebouncedRealtimeEvent } from "@/hooks/use-realtime-event";
 import { formatAiSource } from "@/lib/ai-source";
 import {
     Loader2,
@@ -270,13 +270,15 @@ export default function BacklogPage() {
         loadBacklog();
     }, [loadBacklog]);
 
-    useRealtimeEvent((message) => {
-        if (!projectId || (message.project_id && message.project_id !== projectId)) return;
-
-        if (message.type === "task.changed" || message.type === "sprint.changed") {
-            loadBacklog(false);
+    useDebouncedRealtimeEvent(
+        () => loadBacklog(false),
+        [projectId, loadBacklog],
+        350,
+        (message) => {
+            if (!projectId || (message.project_id && message.project_id !== projectId)) return false;
+            return message.type === "task.changed" || message.type === "sprint.changed";
         }
-    }, [projectId, loadBacklog]);
+    );
 
     const handleCreateSprint = async () => {
         if (!canCreateSprint) return;
@@ -647,7 +649,7 @@ export default function BacklogPage() {
             </section>
 
             <Dialog open={releaseNotesOpen} onOpenChange={setReleaseNotesOpen}>
-                <DialogContent className="max-w-3xl border-slate-800 bg-slate-950 text-white">
+                <DialogContent className="border-slate-800 bg-slate-950 text-white sm:max-w-3xl">
                     <DialogHeader>
                         <DialogTitle className="flex items-center gap-2">
                             <FileText className="h-5 w-5 text-violet-300" />

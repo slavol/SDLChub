@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useDeferredValue, useEffect, useMemo, useState } from "react";
 import {
   Activity,
   ArrowLeft,
@@ -70,6 +70,9 @@ const actionStyles: Record<string, string> = {
   COMMENT_UPDATED: "border-orange-500/20 bg-orange-500/10 text-orange-300",
   COMMENT_DELETED: "border-rose-500/20 bg-rose-500/10 text-rose-300",
 };
+
+const INITIAL_VISIBLE_ACTIVITIES = 60;
+const ACTIVITY_PAGE_SIZE = 60;
 
 const scopeOptions: Array<{
   value: ScopeFilter;
@@ -341,6 +344,8 @@ export default function ActivityPage() {
   const [sortFilter, setSortFilter] = useState<SortFilter>("newest");
   const [scopeFilter, setScopeFilter] = useState<ScopeFilter>("all");
   const [searchTerm, setSearchTerm] = useState("");
+  const [visibleActivityCount, setVisibleActivityCount] = useState(INITIAL_VISIBLE_ACTIVITIES);
+  const deferredSearchTerm = useDeferredValue(searchTerm);
 
   useEffect(() => {
     const loadActivity = async () => {
@@ -417,7 +422,7 @@ export default function ActivityPage() {
           return false;
         }
 
-        return includesSearch(item, searchTerm);
+        return includesSearch(item, deferredSearchTerm);
       })
       .sort((first, second) => {
         const firstTime = new Date(first.created_at).getTime();
@@ -431,11 +436,30 @@ export default function ActivityPage() {
     activities,
     actionFilter,
     actorFilter,
+    deferredSearchTerm,
     fieldFilter,
     scopeFilter,
-    searchTerm,
     sortFilter,
   ]);
+
+  useEffect(() => {
+    setVisibleActivityCount(INITIAL_VISIBLE_ACTIVITIES);
+  }, [
+    actionFilter,
+    actorFilter,
+    deferredSearchTerm,
+    fieldFilter,
+    scopeFilter,
+    sortFilter,
+    timeFilter,
+  ]);
+
+  const visibleActivities = useMemo(
+    () => filteredActivities.slice(0, visibleActivityCount),
+    [filteredActivities, visibleActivityCount]
+  );
+
+  const hasMoreActivities = visibleActivities.length < filteredActivities.length;
 
   const uniqueActors = useMemo(
     () =>
@@ -786,7 +810,7 @@ export default function ActivityPage() {
                   Timeline
                 </CardTitle>
                 <p className="mt-1 text-sm text-slate-500">
-                  Showing {filteredActivities.length} of {activities.length} loaded events.
+                  Showing {visibleActivities.length} of {filteredActivities.length} matching events.
                 </p>
               </div>
 
@@ -821,14 +845,29 @@ export default function ActivityPage() {
 
           <CardContent className="p-4 sm:p-5">
             <div className="min-w-0 space-y-5">
-              {filteredActivities.map((item, index) => (
+              {visibleActivities.map((item, index) => (
                 <ActivityItem
                   key={`${item.id}-${item.task_id}-${item.created_at}`}
                   item={item}
-                  isLast={index === filteredActivities.length - 1}
+                  isLast={index === visibleActivities.length - 1 && !hasMoreActivities}
                 />
               ))}
             </div>
+
+            {hasMoreActivities && (
+              <div className="mt-5 flex justify-center">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="border-slate-700 bg-slate-950/70 text-slate-200 hover:bg-slate-900"
+                  onClick={() =>
+                    setVisibleActivityCount((current) => current + ACTIVITY_PAGE_SIZE)
+                  }
+                >
+                  Show more events
+                </Button>
+              </div>
+            )}
 
             {filteredActivities.length === 0 && (
               <div className="rounded-2xl border border-dashed border-slate-800 bg-slate-950/70 p-12 text-center">

@@ -1,4 +1,5 @@
 import api from "@/lib/axios";
+import { dedupeRequest } from "@/lib/request-dedupe";
 
 export interface Sprint {
     id: number;
@@ -26,8 +27,10 @@ export interface SprintReleaseNotes {
 }
 
 export const getProjectSprints = async (projectId: number): Promise<Sprint[]> => {
-    const response = await api.get(`/sprints/project/${projectId}`);
-    return response.data;
+    return dedupeRequest(`sprints:project:${projectId}`, async () => {
+        const response = await api.get(`/sprints/project/${projectId}`);
+        return response.data;
+    });
 };
 
 export const createSprint = async (projectId: number, data: string | CreateSprintDto): Promise<Sprint> => {

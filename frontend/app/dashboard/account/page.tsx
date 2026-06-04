@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
+  ArrowRight,
   AtSign,
   BellRing,
   BrainCircuit,
@@ -18,6 +20,7 @@ import {
   Mail,
   Save,
   UserRound,
+  UserPlus,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -32,6 +35,11 @@ import { AccountSecurityPanel } from "@/components/dashboard/account-security-pa
 import { UserAvatar, resolveMediaUrl } from "@/components/user-avatar";
 import { getApiErrorMessage } from "@/lib/api-error";
 import {
+  getPendingInvitations,
+  joinProject,
+  PendingInvitation,
+} from "@/services/project";
+import {
   AccountSummary,
   getAccountSummary,
   updateNotificationPreferences,
@@ -40,6 +48,7 @@ import {
   uploadCurrentUserAvatar,
 } from "@/services/auth";
 import { useAuthStore } from "@/store/use-auth-store";
+import { useProjectStore } from "@/store/use-project-store";
 
 function formatDate(value?: string | null) {
   if (!value) return "-";
@@ -159,18 +168,24 @@ function AccountPageSkeleton() {
 }
 
 export default function AccountPage() {
+  const router = useRouter();
   const { user, setUser } = useAuthStore();
+  const setCurrentProject = useProjectStore((state) => state.setCurrentProject);
 
   const [summary, setSummary] = useState<AccountSummary | null>(null);
+  const [pendingInvitations, setPendingInvitations] = useState<PendingInvitation[]>([]);
   const [loading, setLoading] = useState(true);
   const [savingProfile, setSavingProfile] = useState(false);
   const [savingPassword, setSavingPassword] = useState(false);
   const [savingNotifications, setSavingNotifications] = useState(false);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const [joiningProject, setJoiningProject] = useState(false);
+  const [acceptingInvitationId, setAcceptingInvitationId] = useState<number | null>(null);
 
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [avatarUrl, setAvatarUrl] = useState("");
+  const [invitationCode, setInvitationCode] = useState("");
   const [notificationPreferences, setNotificationPreferences] = useState<NotificationPreferences>({
     ...DEFAULT_NOTIFICATION_PREFERENCES,
   });
@@ -189,8 +204,12 @@ export default function AccountPage() {
   const loadAccount = async () => {
     setLoading(true);
     try {
-      const data = await getAccountSummary();
+      const [data, invitations] = await Promise.all([
+        getAccountSummary(),
+        getPendingInvitations().catch(() => [] as PendingInvitation[]),
+      ]);
       setSummary(data);
+      setPendingInvitations(invitations);
       setFullName(data.user.full_name || "");
       setEmail(data.user.email);
       setAvatarUrl(data.user.avatar_url || "");
@@ -207,6 +226,50 @@ export default function AccountPage() {
     loadAccount();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const handleJoinProject = async (code?: string, invitationId?: number) => {
+    const nextCode = (code || invitationCode).trim().toUpperCase();
+
+    if (!nextCode) {
+      toast.error("Enter a valid invitation code.");
+      return;
+    }
+
+    if (invitationId) {
+      setAcceptingInvitationId(invitationId);
+    } else {
+      setJoiningProject(true);
+    }
+
+    try {
+      const response = await joinProject(nextCode);
+
+      if (response.project) {
+        setCurrentProject(response.project);
+      }
+
+      setInvitationCode("");
+      setPendingInvitations((current) =>
+        current.filter((invitation) => invitation.id !== invitationId && invitation.code !== nextCode)
+      );
+
+      const data = await getAccountSummary();
+      setSummary(data);
+      setFullName(data.user.full_name || "");
+      setEmail(data.user.email);
+      setAvatarUrl(data.user.avatar_url || "");
+      setNotificationPreferences(preferencesFromUser(data.user));
+      setUser(data.user);
+
+      toast.success(response.message || "Project joined.");
+      router.push("/dashboard");
+    } catch (error: unknown) {
+      toast.error(getApiErrorMessage(error, "Could not join this project."));
+    } finally {
+      setJoiningProject(false);
+      setAcceptingInvitationId(null);
+    }
+  };
 
   const handleSaveProfile = async () => {
     setSavingProfile(true);
@@ -511,6 +574,114 @@ export default function AccountPage() {
                   You are not part of any project yet.
                 </div>
               )}
+            </CardContent>
+          </Card>
+
+          <Card className="border-slate-800 bg-slate-900/80 text-slate-50 shadow-xl shadow-slate-950/20 xl:col-span-12">
+            <CardHeader className="border-b border-slate-800/80">
+              <CardTitle className="flex items-center gap-2">
+                <UserPlus className="h-5 w-5 text-cyan-300" />
+                Project access
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="grid gap-5 p-5 xl:grid-cols-[minmax(0,1.2fr)_minmax(22rem,0.8fr)]">
+              <div className="space-y-3">
+                <div>
+                  <p className="text-sm font-semibold text-white">Pending invitations</p>
+                  <p className="mt-1 text-sm leading-6 text-slate-500">
+                    Accept invitations sent to your account email and append another workspace to this profile.
+                  </p>
+                </div>
+
+                {pendingInvitations.length > 0 ? (
+                  <div className="grid gap-3 md:grid-cols-2">
+                    {pendingInvitations.map((invitation) => (
+                      <div
+                        key={invitation.id}
+                        className="flex flex-col gap-4 rounded-2xl border border-slate-800 bg-slate-950/75 p-4 lg:flex-row lg:items-center lg:justify-between"
+                      >
+                        <div className="min-w-0">
+                          <div className="mb-2 flex flex-wrap items-center gap-2">
+                            <Badge className="bg-cyan-500/10 text-cyan-300 hover:bg-cyan-500/10">
+                              {invitation.project_name}
+                            </Badge>
+                            <Badge variant="outline" className="border-slate-700 bg-slate-900 text-slate-300">
+                              {invitation.role_name}
+                            </Badge>
+                          </div>
+                          <p className="truncate text-sm font-semibold text-white">
+                            Invitation for {invitation.email}
+                          </p>
+                          <p className="mt-1 text-xs text-slate-500">
+                            Sent {formatDate(invitation.created_at)}
+                          </p>
+                        </div>
+
+                        <Button
+                          onClick={() => handleJoinProject(invitation.code, invitation.id)}
+                          disabled={acceptingInvitationId === invitation.id || joiningProject}
+                          className="w-full bg-cyan-600 hover:bg-cyan-700 lg:w-auto"
+                        >
+                          {acceptingInvitationId === invitation.id ? (
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          ) : (
+                            <ArrowRight className="mr-2 h-4 w-4" />
+                          )}
+                          Accept
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="rounded-2xl border border-dashed border-slate-800 bg-slate-950/55 p-5 text-sm leading-6 text-slate-500">
+                    No pending invitations for this email. If a Project Admin invited you,
+                    the invitation will appear here after it is sent.
+                  </div>
+                )}
+              </div>
+
+              <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
+                <div className="mb-4 flex items-start gap-3">
+                  <div className="rounded-xl border border-slate-800 bg-slate-900 p-2 text-blue-300">
+                    <KeyRound className="h-4 w-4" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold text-white">Join with code</p>
+                    <p className="mt-1 text-xs leading-5 text-slate-500">
+                      Use a one-time project code received from a Project Admin.
+                    </p>
+                  </div>
+                </div>
+
+                <Label htmlFor="account-invitation-code">Invitation code</Label>
+                <div className="mt-2 flex flex-col gap-3 sm:flex-row">
+                  <Input
+                    id="account-invitation-code"
+                    value={invitationCode}
+                    onChange={(event) => setInvitationCode(event.target.value.toUpperCase())}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") {
+                        event.preventDefault();
+                        handleJoinProject();
+                      }
+                    }}
+                    placeholder="GFW-AB12CD34"
+                    className="h-11 border-slate-700 bg-slate-950 font-mono uppercase tracking-wide"
+                  />
+                  <Button
+                    onClick={() => handleJoinProject()}
+                    disabled={joiningProject || !invitationCode.trim()}
+                    className="h-11 shrink-0 bg-blue-600 hover:bg-blue-700"
+                  >
+                    {joiningProject ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <ArrowRight className="mr-2 h-4 w-4" />
+                    )}
+                    Join
+                  </Button>
+                </div>
+              </div>
             </CardContent>
           </Card>
 

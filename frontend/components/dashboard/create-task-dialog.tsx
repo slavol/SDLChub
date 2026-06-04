@@ -266,7 +266,7 @@ export function CreateTaskDialog({ projectId, sprintId, methodology, onTaskCreat
             <Plus className="mr-2 h-4 w-4" /> Create Issue
         </Button>
       </DialogTrigger>
-      <DialogContent className="sm:max-w-[550px] bg-slate-950 border-slate-800 text-slate-50">
+      <DialogContent className="border-slate-800 bg-slate-950 text-slate-50 sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>Create New Issue</DialogTitle>
           <DialogDescription className="text-slate-400">
@@ -275,9 +275,8 @@ export function CreateTaskDialog({ projectId, sprintId, methodology, onTaskCreat
         </DialogHeader>
 
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-5 py-4">
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-5 py-2">
             
-            {/* ROW 1: Title */}
             <FormField
               control={form.control}
               name="title"
@@ -292,8 +291,12 @@ export function CreateTaskDialog({ projectId, sprintId, methodology, onTaskCreat
               )}
             />
 
-            {/* ROW 2: Priority, Estimation & Assignee */}
-            <div className={supportsStoryPoints ? "grid grid-cols-1 gap-4 md:grid-cols-3" : "grid grid-cols-1 gap-4 md:grid-cols-2"}>
+            <div className="rounded-2xl border border-slate-800 bg-slate-900/45 p-3 sm:p-4">
+              <div className="mb-4 flex items-center justify-between gap-3">
+                <p className="text-sm font-semibold text-slate-100">Planning</p>
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-2">
                 <FormField
                   control={form.control}
                   name="priority"
@@ -302,7 +305,7 @@ export function CreateTaskDialog({ projectId, sprintId, methodology, onTaskCreat
                       <FormLabel>Priority</FormLabel>
                       <Select onValueChange={field.onChange} defaultValue={field.value}>
                         <FormControl>
-                          <SelectTrigger className="bg-slate-900 border-slate-700 h-11">
+                          <SelectTrigger className="h-11 w-full border-slate-700 bg-slate-950">
                             <SelectValue placeholder="Select priority" />
                           </SelectTrigger>
                         </FormControl>
@@ -324,7 +327,22 @@ export function CreateTaskDialog({ projectId, sprintId, methodology, onTaskCreat
                     name="story_points"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Story Points</FormLabel>
+                        <div className="flex items-center justify-between gap-3">
+                          <FormLabel>Story Points</FormLabel>
+                          <button
+                            type="button"
+                            onClick={handleEstimateStoryPoints}
+                            disabled={isEstimateLoading || isLoading}
+                            className="inline-flex items-center text-xs text-blue-400 transition hover:text-blue-300 disabled:opacity-50"
+                          >
+                            {isEstimateLoading ? (
+                              <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                            ) : (
+                              <BadgeCheck className="mr-1 h-3 w-3" />
+                            )}
+                            Estimate
+                          </button>
+                        </div>
                         <FormControl>
                           <div className="relative">
                             <Gauge className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
@@ -334,23 +352,10 @@ export function CreateTaskDialog({ projectId, sprintId, methodology, onTaskCreat
                               max="100"
                               placeholder="0"
                               {...field}
-                              className="h-11 border-slate-700 bg-slate-900 pl-9"
+                              className="h-11 border-slate-700 bg-slate-950 pl-9"
                             />
                           </div>
                         </FormControl>
-                        <button
-                          type="button"
-                          onClick={handleEstimateStoryPoints}
-                          disabled={isEstimateLoading || isLoading}
-                          className="mt-2 inline-flex items-center text-xs text-blue-400 transition hover:text-blue-300 disabled:opacity-50"
-                        >
-                          {isEstimateLoading ? (
-                            <Loader2 className="mr-1 h-3 w-3 animate-spin" />
-                          ) : (
-                            <BadgeCheck className="mr-1 h-3 w-3" />
-                          )}
-                          Estimate
-                        </button>
                         <FormMessage />
                       </FormItem>
                     )}
@@ -365,9 +370,9 @@ export function CreateTaskDialog({ projectId, sprintId, methodology, onTaskCreat
                       <FormLabel>Assignee</FormLabel>
                       <Select onValueChange={field.onChange} defaultValue={field.value}>
                         <FormControl>
-                          <SelectTrigger className="bg-slate-900 border-slate-700 h-11">
-                             <div className="flex items-center gap-2">
-                                <Users className="w-4 h-4 text-slate-400"/>
+                          <SelectTrigger className="h-11 w-full border-slate-700 bg-slate-950">
+                             <div className="flex min-w-0 items-center gap-2">
+                                <Users className="h-4 w-4 shrink-0 text-slate-400"/>
                                 <SelectValue placeholder={loadingMembers ? "Loading..." : "Unassigned"} />
                              </div>
                           </SelectTrigger>
@@ -394,61 +399,61 @@ export function CreateTaskDialog({ projectId, sprintId, methodology, onTaskCreat
                     </FormItem>
                   )}
                 />
+
+                <FormField
+                  control={form.control}
+                  name="team_id"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Delivery Team</FormLabel>
+                      <Select onValueChange={field.onChange} defaultValue={field.value}>
+                        <FormControl>
+                          <SelectTrigger className="h-11 w-full border-slate-700 bg-slate-950">
+                            <SelectValue placeholder="No team" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent className="border-slate-800 bg-slate-900 text-slate-200">
+                          <SelectItem value="none">No team</SelectItem>
+                          {teams.map((team) => (
+                            <SelectItem key={team.id} value={String(team.id)}>
+                              {team.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                    )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="due_date"
+                  render={({ field }) => (
+                    <FormItem className="sm:col-span-2">
+                      <FormLabel>Target Date</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="date"
+                          {...field}
+                          className="h-11 w-full border-slate-700 bg-slate-950"
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
             </div>
 
-            <FormField
-              control={form.control}
-              name="team_id"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Delivery Team</FormLabel>
-                  <Select onValueChange={field.onChange} defaultValue={field.value}>
-                    <FormControl>
-                      <SelectTrigger className="h-11 border-slate-700 bg-slate-900">
-                        <SelectValue placeholder="No team" />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent className="border-slate-800 bg-slate-900 text-slate-200">
-                      <SelectItem value="none">No team</SelectItem>
-                      {teams.map((team) => (
-                        <SelectItem key={team.id} value={String(team.id)}>
-                          {team.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
-              name="due_date"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Target Date</FormLabel>
-                  <FormControl>
-                    <Input
-                      type="date"
-                      {...field}
-                      className="h-11 border-slate-700 bg-slate-900"
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            {/* ROW 3: Description cu buton AI funcțional */}
             <FormField
               control={form.control}
               name="description"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel className="flex justify-between items-center">
+                  <FormLabel className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                       Description
-                      <div className="flex items-center gap-3">
+                      <div className="flex flex-wrap items-center gap-3">
                         <button
                           type="button"
                           onClick={handleGenerateAI}
@@ -559,9 +564,9 @@ export function CreateTaskDialog({ projectId, sprintId, methodology, onTaskCreat
               </div>
             ) : null}
 
-            <DialogFooter className="pt-2">
-               <Button type="button" variant="ghost" onClick={() => setOpen(false)} className="text-slate-400 hover:text-white">Cancel</Button>
-               <Button type="submit" className="bg-blue-600 hover:bg-blue-700 min-w-[120px]" disabled={isLoading}>
+            <DialogFooter className="gap-2 pt-1 sm:gap-3">
+               <Button type="button" variant="ghost" onClick={() => setOpen(false)} className="w-full text-slate-400 hover:text-white sm:w-auto">Cancel</Button>
+               <Button type="submit" className="min-w-[120px] w-full bg-blue-600 hover:bg-blue-700 sm:w-auto" disabled={isLoading}>
                  {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : "Create Issue"}
                </Button>
             </DialogFooter>

@@ -7,15 +7,19 @@ import { ThemeProvider } from "@/components/theme-provider";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "SDLC AI Hub",
-  description: "Project Management powered by Gemini",
+  title: {
+    default: "SDLC Hub",
+    template: "%s | SDLC Hub",
+  },
+  description: "Adaptive project management for Scrum, Kanban and Scrumban teams.",
   applicationName: "SDLC Hub",
   icons: {
     icon: [
-      { url: "/icon.svg", type: "image/svg+xml" },
-      { url: "/favicon.ico", sizes: "any" },
+      { url: "/favicon.ico?v=sdlc-hub-2", sizes: "32x32", type: "image/x-icon" },
+      { url: "/icon.svg?v=sdlc-hub-2", type: "image/svg+xml" },
     ],
-    apple: "/apple-icon.svg",
+    shortcut: "/favicon.ico?v=sdlc-hub-2",
+    apple: "/apple-icon.svg?v=sdlc-hub-2",
   },
   manifest: "/manifest.webmanifest",
 };

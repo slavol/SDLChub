@@ -19,7 +19,12 @@ from backend.schemas.calendar import (
     CalendarEventOut,
     CalendarEventUpdate,
 )
-from backend.utils.permissions import check_project_permission, member_has_permission, require_project_permission
+from backend.utils.permissions import (
+    check_project_permission,
+    ensure_project_not_archived,
+    member_has_permission,
+    require_project_permission,
+)
 from backend.utils.notifications import notify_calendar_attendees
 
 
@@ -239,6 +244,7 @@ def create_project_calendar_availability(
     current_user: User = Depends(get_current_user),
 ):
     member = check_project_permission(db, current_user.id, project_id)
+    ensure_project_not_archived(member.project)
 
     target_user_id = data.user_id or current_user.id
     _ensure_user_is_project_member(db, project_id, target_user_id)
@@ -293,6 +299,7 @@ def update_project_calendar_availability(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Availability block not found.")
 
     member = check_project_permission(db, current_user.id, block.project_id)
+    ensure_project_not_archived(member.project)
 
     if not _can_manage_availability(member, current_user, block):
         raise HTTPException(
@@ -357,6 +364,7 @@ def delete_project_calendar_availability(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Availability block not found.")
 
     member = check_project_permission(db, current_user.id, block.project_id)
+    ensure_project_not_archived(member.project)
 
     if not _can_manage_availability(member, current_user, block):
         raise HTTPException(
@@ -471,6 +479,7 @@ def update_calendar_event(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Calendar event not found")
 
     member = check_project_permission(db, current_user.id, event.project_id)
+    ensure_project_not_archived(member.project)
     if not _can_manage_event(member, current_user, event, "CALENDAR_UPDATE"):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Missing project permission: CALENDAR_UPDATE.")
 
@@ -522,6 +531,7 @@ def delete_calendar_event(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Calendar event not found")
 
     member = check_project_permission(db, current_user.id, event.project_id)
+    ensure_project_not_archived(member.project)
     if not _can_manage_event(member, current_user, event, "CALENDAR_DELETE"):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Missing project permission: CALENDAR_DELETE.")
 
@@ -548,6 +558,7 @@ def delete_calendar_event_series(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Calendar event not found")
 
     member = check_project_permission(db, current_user.id, event.project_id)
+    ensure_project_not_archived(member.project)
     if not _can_manage_event(member, current_user, event, "CALENDAR_DELETE"):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Missing project permission: CALENDAR_DELETE.")
 

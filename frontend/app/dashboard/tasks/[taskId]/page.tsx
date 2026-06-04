@@ -95,7 +95,7 @@ import {
   updateTask,
   updateTaskComment,
 } from "@/services/task";
-import { getProjectGitHubEvents, GitHubEventItem } from "@/services/github";
+import { getTaskGitHubEvents, GitHubEventItem } from "@/services/github";
 import { useAuthStore } from "@/store/use-auth-store";
 import { useProjectStore } from "@/store/use-project-store";
 
@@ -325,18 +325,18 @@ export default function TaskDetailPage() {
       const data = await getTaskDetail(taskId);
       setTask(data);
 
-      const [projectMembers, projectTeams, detailProject, projectGithubEvents] = await Promise.all([
+      const [projectMembers, projectTeams, detailProject, taskGithubEvents] = await Promise.all([
         getProjectMembers(data.project_id).catch(() => []),
         getProjectTeams(data.project_id).catch(() => []),
         currentProject?.id === data.project_id
           ? Promise.resolve(currentProject)
           : getProjectDetail(data.project_id).catch(() => null),
-        getProjectGitHubEvents(data.project_id, null, 200).catch(() => []),
+        getTaskGitHubEvents(data.id, 120).catch(() => []),
       ]);
 
       setMembers(projectMembers);
       setTeams(projectTeams);
-      setGithubEvents(filterTaskGitHubEvents(projectGithubEvents, data));
+      setGithubEvents(filterTaskGitHubEvents(taskGithubEvents, data));
 
       if (detailProject) {
         setProject(detailProject);

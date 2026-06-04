@@ -183,7 +183,7 @@ async def send_verification_email(email: EmailStr, token: str):
     """
 
     message = MessageSchema(
-        subject="Activate your SDLC AI Hub Account",
+        subject="Activate your SDLC Hub Account",
         recipients=[email],
         body=html,
         subtype=MessageType.html

@@ -47,7 +47,7 @@ import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { UserAvatar } from "@/components/user-avatar";
 import { useProjectPermissions } from "@/hooks/use-project-permissions";
-import { useRealtimeEvent } from "@/hooks/use-realtime-event";
+import { useDebouncedRealtimeEvent } from "@/hooks/use-realtime-event";
 import { cn } from "@/lib/utils";
 
 // 4. Services, Store & Types
@@ -417,17 +417,19 @@ export default function BoardPage() {
     loadBoard();
   }, [loadBoard]);
 
-  useRealtimeEvent((message) => {
-    if (!projectId || (message.project_id && message.project_id !== projectId)) return;
-
-    if (
-      message.type === "task.changed" ||
-      message.type === "sprint.changed" ||
-      message.type === "project.changed"
-    ) {
-      loadBoard(false);
+  useDebouncedRealtimeEvent(
+    () => loadBoard(false),
+    [projectId, loadBoard],
+    350,
+    (message) => {
+      if (!projectId || (message.project_id && message.project_id !== projectId)) return false;
+      return (
+        message.type === "task.changed" ||
+        message.type === "sprint.changed" ||
+        message.type === "project.changed"
+      );
     }
-  }, [projectId, loadBoard]);
+  );
 
   // Handler: Complete Sprint
   const handleCompleteSprint = async () => {

@@ -1,4 +1,5 @@
 import api from "@/lib/axios";
+import { dedupeRequest } from "@/lib/request-dedupe";
 
 export interface NgrokTunnelStatus {
   running: boolean;
@@ -91,36 +92,42 @@ export const getProjectGitHubEvents = async (
   eventType?: string | null,
   limit = 100
 ): Promise<GitHubEventItem[]> => {
-  const response = await api.get(`/github/events/project/${projectId}`, {
-    params: {
-      event_type: eventType || undefined,
-      limit,
-    },
-  });
+  return dedupeRequest(`github:events:project:${projectId}:${eventType || "all"}:${limit}`, async () => {
+    const response = await api.get(`/github/events/project/${projectId}`, {
+      params: {
+        event_type: eventType || undefined,
+        limit,
+      },
+    });
 
-  return response.data;
+    return response.data;
+  });
 };
 
 export const getTaskGitHubEvents = async (
   taskId: number,
   limit = 80
 ): Promise<GitHubEventItem[]> => {
-  const response = await api.get(`/github/events/task/${taskId}`, {
-    params: { limit },
-  });
+  return dedupeRequest(`github:events:task:${taskId}:${limit}`, async () => {
+    const response = await api.get(`/github/events/task/${taskId}`, {
+      params: { limit },
+    });
 
-  return response.data;
+    return response.data;
+  });
 };
 
 export const getProjectPullRequests = async (
   projectId: number,
   limit = 120
 ): Promise<GitHubPullRequestItem[]> => {
-  const response = await api.get(`/github/pull-requests/project/${projectId}`, {
-    params: { limit },
-  });
+  return dedupeRequest(`github:pull-requests:${projectId}:${limit}`, async () => {
+    const response = await api.get(`/github/pull-requests/project/${projectId}`, {
+      params: { limit },
+    });
 
-  return response.data;
+    return response.data;
+  });
 };
 
 export const confirmPullRequestTransition = async (
@@ -140,8 +147,10 @@ export const confirmPullRequestTransition = async (
 export const getProjectGitHubIntegration = async (
   projectId: number
 ): Promise<GitHubIntegration> => {
-  const response = await api.get(`/github/integration/project/${projectId}`);
-  return response.data;
+  return dedupeRequest(`github:integration:${projectId}`, async () => {
+    const response = await api.get(`/github/integration/project/${projectId}`);
+    return response.data;
+  });
 };
 
 export const upsertProjectGitHubIntegration = async (
@@ -168,8 +177,10 @@ export const deleteProjectGitHubIntegration = async (
 
 
 export const getNgrokTunnelStatus = async (): Promise<NgrokTunnelStatus> => {
-  const response = await api.get("/github/ngrok/status");
-  return response.data;
+  return dedupeRequest("github:ngrok:status", async () => {
+    const response = await api.get("/github/ngrok/status");
+    return response.data;
+  });
 };
 
 export const startNgrokTunnel = async (

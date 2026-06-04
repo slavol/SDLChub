@@ -1,4 +1,5 @@
 import api from "@/lib/axios";
+import { dedupeRequest } from "@/lib/request-dedupe";
 
 // Tipuri care se potrivesc cu Backend-ul (Pydantic schemas)
 export enum TaskStatus {
@@ -129,10 +130,12 @@ export interface StoryPointEstimate {
 // --- API CALLS ---
 
 export const getProjectTasks = async (projectId: number, view: "board" | "backlog" = "board"): Promise<Task[]> => {
-    const response = await api.get(`/tasks/project/${projectId}`, {
-        params: { view },
+    return dedupeRequest(`tasks:project:${projectId}:${view}`, async () => {
+        const response = await api.get(`/tasks/project/${projectId}`, {
+            params: { view },
+        });
+        return response.data;
     });
-    return response.data;
 };
 
 export const createTask = async (data: CreateTaskDto): Promise<Task> => {
@@ -141,8 +144,10 @@ export const createTask = async (data: CreateTaskDto): Promise<Task> => {
 };
 
 export const getTaskDetail = async (taskId: number): Promise<TaskDetail> => {
-    const response = await api.get(`/tasks/${taskId}`);
-    return response.data;
+    return dedupeRequest(`tasks:detail:${taskId}`, async () => {
+        const response = await api.get(`/tasks/${taskId}`);
+        return response.data;
+    });
 };
 
 export const updateTask = async (taskId: number, updates: Partial<Task>): Promise<Task> => {
@@ -241,8 +246,12 @@ export const getProjectActivity = async (
     projectId: number,
     filters: ProjectActivityFilters = {}
 ): Promise<ProjectActivity[]> => {
-    const response = await api.get(`/tasks/project/${projectId}/activity`, {
-        params: filters,
+    const paramsKey = JSON.stringify(filters);
+
+    return dedupeRequest(`tasks:activity:${projectId}:${paramsKey}`, async () => {
+        const response = await api.get(`/tasks/project/${projectId}/activity`, {
+            params: filters,
+        });
+        return response.data;
     });
-    return response.data;
 };

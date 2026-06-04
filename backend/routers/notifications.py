@@ -16,7 +16,7 @@ from backend.utils.notifications import (
     generate_calendar_event_reminders as generate_calendar_event_reminders_for_scope,
     generate_due_task_reminders as generate_due_task_reminders_for_scope,
 )
-from backend.utils.permissions import check_project_permission, require_project_permission
+from backend.utils.permissions import check_project_permission, ensure_project_not_archived, require_project_permission
 
 
 router = APIRouter(prefix="/notifications", tags=["Notifications"])
@@ -178,7 +178,8 @@ def generate_ai_risk_notifications(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    require_project_permission(db, current_user.id, project_id, "REPORT_VIEW")
+    membership = require_project_permission(db, current_user.id, project_id, "REPORT_VIEW")
+    ensure_project_not_archived(membership.project)
 
     now = datetime.utcnow()
     members = db.query(ProjectMember).filter(ProjectMember.project_id == project_id).all()

@@ -55,7 +55,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { WorkspaceLoadingSkeleton } from "@/components/dashboard/workspace-loading-skeleton";
 import { UserAvatar } from "@/components/user-avatar";
 import { useProjectPermissions } from "@/hooks/use-project-permissions";
-import { useRealtimeEvent } from "@/hooks/use-realtime-event";
+import { useDebouncedRealtimeEvent } from "@/hooks/use-realtime-event";
 import { getApiErrorMessage } from "@/lib/api-error";
 import { cn } from "@/lib/utils";
 import {
@@ -681,17 +681,19 @@ export default function CalendarPage() {
     loadCalendar();
   }, [loadCalendar]);
 
-  useRealtimeEvent((message) => {
-    if (!project?.id || (message.project_id && message.project_id !== project.id)) return;
-
-    if (
-      message.type === "calendar.changed" ||
-      message.type === "task.changed" ||
-      message.type === "sprint.changed"
-    ) {
-      loadCalendar(false);
+  useDebouncedRealtimeEvent(
+    () => loadCalendar(false),
+    [project?.id, loadCalendar],
+    350,
+    (message) => {
+      if (!project?.id || (message.project_id && message.project_id !== project.id)) return false;
+      return (
+        message.type === "calendar.changed" ||
+        message.type === "task.changed" ||
+        message.type === "sprint.changed"
+      );
     }
-  }, [project?.id, loadCalendar]);
+  );
 
   useEffect(() => {
     if (eventDialogOpen && !editingEvent) {
@@ -1246,7 +1248,7 @@ export default function CalendarPage() {
                   <UserRound className="mr-2 h-4 w-4" />
                   New Time Off
                 </Button>
-                <DialogContent className="max-h-[92vh] overflow-y-auto border-slate-800 bg-slate-950 text-slate-50 sm:max-w-2xl">
+                <DialogContent className="border-slate-800 bg-slate-950 text-slate-50 sm:max-w-2xl">
                   <DialogHeader>
                     <DialogTitle>
                       {editingAvailability ? "Edit availability" : "Add time off / availability"}
@@ -1429,7 +1431,7 @@ export default function CalendarPage() {
                   <CalendarPlus className="mr-2 h-4 w-4" />
                   New Event
                 </Button>
-                <DialogContent className="max-h-[92vh] overflow-y-auto border-slate-800 bg-slate-950 text-slate-50 sm:max-w-2xl">
+                <DialogContent className="border-slate-800 bg-slate-950 text-slate-50 sm:max-w-2xl">
                   <DialogHeader>
                     <DialogTitle>
                       {editingEvent ? "Edit calendar event" : "Create calendar event"}
@@ -1443,7 +1445,7 @@ export default function CalendarPage() {
 
                   <div className="grid gap-5 py-2">
                     <div className="space-y-2">
-                      <div className="flex items-center justify-between gap-3">
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                         <Label>Title</Label>
                         {!editingEvent && (
                           <Button
@@ -1466,39 +1468,42 @@ export default function CalendarPage() {
                       />
                     </div>
 
-                    <div className="grid gap-4 md:grid-cols-[200px_1fr_1fr]">
-                      <div className="space-y-2">
-                        <Label>Type</Label>
-                        <Select value={eventType} onValueChange={(value) => setEventType(value as CalendarEventType)}>
-                          <SelectTrigger className="h-11 border-slate-700 bg-slate-900">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent className="border-slate-800 bg-slate-950 text-slate-200">
-                            {eventTypes.map((type) => (
-                              <SelectItem key={type.value} value={type.value}>
-                                {type.label}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                    <div className="rounded-2xl border border-slate-800 bg-slate-900/45 p-3 sm:p-4">
+                      <div className="grid gap-4 md:grid-cols-[minmax(9rem,0.65fr)_minmax(14rem,1fr)]">
+                        <div className="space-y-2">
+                          <Label>Type</Label>
+                          <Select value={eventType} onValueChange={(value) => setEventType(value as CalendarEventType)}>
+                            <SelectTrigger className="h-11 border-slate-700 bg-slate-950">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent className="border-slate-800 bg-slate-950 text-slate-200">
+                              {eventTypes.map((type) => (
+                                <SelectItem key={type.value} value={type.value}>
+                                  {type.label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Date</Label>
+                          <Input
+                            type="date"
+                            value={eventDate}
+                            onChange={(event) => setEventDate(event.target.value)}
+                            className="h-11 border-slate-700 bg-slate-950"
+                          />
+                        </div>
                       </div>
-                      <div className="space-y-2">
-                        <Label>Date</Label>
-                        <Input
-                          type="date"
-                          value={eventDate}
-                          onChange={(event) => setEventDate(event.target.value)}
-                          className="h-11 border-slate-700 bg-slate-900"
-                        />
-                      </div>
-                      <div className="grid grid-cols-2 gap-3">
+
+                      <div className="mt-4 grid gap-4 sm:grid-cols-2">
                         <div className="space-y-2">
                           <Label>Start</Label>
                           <Input
                             type="time"
                             value={startTime}
                             onChange={(event) => setStartTime(event.target.value)}
-                            className="h-11 border-slate-700 bg-slate-900"
+                            className="h-11 min-w-0 border-slate-700 bg-slate-950"
                           />
                         </div>
                         <div className="space-y-2">
@@ -1507,7 +1512,7 @@ export default function CalendarPage() {
                             type="time"
                             value={endTime}
                             onChange={(event) => setEndTime(event.target.value)}
-                            className="h-11 border-slate-700 bg-slate-900"
+                            className="h-11 min-w-0 border-slate-700 bg-slate-950"
                           />
                         </div>
                       </div>
@@ -1562,7 +1567,7 @@ export default function CalendarPage() {
                           </div>
                         </div>
 
-                        <div className="grid gap-4 md:grid-cols-[1fr_180px]">
+                        <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(12rem,0.72fr)]">
                           <Select
                             value={recurrenceMode}
                             onValueChange={(value) => setRecurrenceMode(value as RecurrenceMode)}
@@ -1671,12 +1676,12 @@ export default function CalendarPage() {
                     )}
                   </div>
 
-                  <DialogFooter>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        className="text-slate-400 hover:text-white"
-                        onClick={() => setEventDialogOpen(false)}
+                  <DialogFooter className="gap-2 sm:gap-3">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      className="w-full text-slate-400 hover:text-white sm:w-auto"
+                      onClick={() => setEventDialogOpen(false)}
                     >
                       Cancel
                     </Button>
@@ -1689,7 +1694,7 @@ export default function CalendarPage() {
                           ? !(canUpdateCalendarEvent || editingEvent.created_by_id === currentUser?.id)
                           : !canCreateCalendarEvent)
                       }
-                      className="bg-blue-600 hover:bg-blue-700"
+                      className="w-full bg-blue-600 hover:bg-blue-700 sm:w-auto"
                       onClick={handleSaveEvent}
                     >
                       {creatingEvent ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Plus className="mr-2 h-4 w-4" />}

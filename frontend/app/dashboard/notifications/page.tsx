@@ -19,7 +19,7 @@ import { WorkspaceLoadingSkeleton } from "@/components/dashboard/workspace-loadi
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { useRealtimeEvent } from "@/hooks/use-realtime-event";
+import { useDebouncedRealtimeEvent } from "@/hooks/use-realtime-event";
 import { getApiErrorMessage } from "@/lib/api-error";
 import {
   getNotifications,
@@ -84,15 +84,15 @@ export default function NotificationsPage() {
     loadNotifications();
   }, [loadNotifications]);
 
-  useRealtimeEvent((message) => {
-    if (
+  useDebouncedRealtimeEvent(
+    () => loadNotifications(false),
+    [loadNotifications],
+    350,
+    (message) =>
       message.type === "notification.created" ||
       message.type === "notification.read" ||
       message.type === "notification.read_all"
-    ) {
-      loadNotifications(false);
-    }
-  }, [loadNotifications]);
+  );
 
   const handleOpen = async (item: NotificationItem) => {
     if (!item.read_at) {

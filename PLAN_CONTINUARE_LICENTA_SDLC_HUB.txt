@@ -1,4 +1,4 @@
-PLAN CONTINUARE LICENTA - SDLC AI HUB
+PLAN CONTINUARE LICENTA - SDLC HUB
 Document unificat din PLAN_CONTINUARE_LICENTA_SDLC_HUB.txt si PLAN_CONTINUARE_LICENTA_SDLC_HUB_1.txt.
 Generat pentru stadiul curent al aplicatiei: 18 mai 2026
 Actualizat/contopit: 29 mai 2026
@@ -3685,6 +3685,858 @@ Ce ramane imediat dupa batch BO:
    - `--localstorage-file was provided without a valid path`.
 5. UI/UX bug hunting:
    - continuat cu screenshots manuale + scriptul Playwright.
+
+
+6.20. BATCH BP - Mobile drawer animation si primul performance pass
+
+Context cerere:
+- Continuare dupa skeleton loaders.
+- Urmatorul pas logic din plan:
+  - animatie pentru mobile drawer.
+  - performanta mai buna la cautari/listari.
+  - curatare warning-uri de lint aparute in Reports.
+
+Implementat:
+- frontend/components/dashboard/app-sidebar.tsx:
+  - drawer-ul mobile nu mai este montat/demontat brusc doar cu `mobileOpen &&`.
+  - adaugat `mobileDrawerMounted` pentru animatie de iesire.
+  - adaugat `mobileCloseTimeoutRef` pentru a evita race condition la open/close rapid.
+  - adaugate tranzitii:
+    - overlay fade `opacity`.
+    - drawer slide `translate-x`.
+  - adaugat body scroll lock cat drawer-ul este montat.
+  - inchiderea la schimbare ruta ramane functionala.
+- frontend/app/dashboard/tasks/page.tsx:
+  - cautarea foloseste `useDeferredValue(query)`.
+  - input-ul ramane instant, filtrarea listei se decaleaza usor pentru a evita blocarea tastarii.
+- frontend/app/dashboard/activity/page.tsx:
+  - cautarea timeline-ului foloseste `useDeferredValue(searchTerm)`.
+  - util pentru audit streams mari.
+- frontend/app/dashboard/team/page.tsx:
+  - cautarea membrilor foloseste `useDeferredValue(search)`.
+  - reduce blocajele cand lista de membri/roluri creste.
+- frontend/app/dashboard/reports/page.tsx:
+  - eliminat cod mort pentru Release Notes din Reports.
+  - butonul era comentat, dar state-uri/handlere/importuri ramasesera active.
+  - curatate warning-urile ESLint:
+    - `generatingNotes` nefolosit.
+    - `handleGenerateReleaseNotes` nefolosit.
+
+Verificari batch BP:
+- `npm run lint`: OK, fara warning-uri.
+- `npm run build`: OK.
+- ramane warning-ul existent Next:
+  - `--localstorage-file was provided without a valid path`.
+  - nu blocheaza build-ul.
+- Playwright visual audit:
+  - comanda:
+    - `NODE_PATH=frontend/node_modules SDLC_BASE_URL=http://127.0.0.1:3000 node scripts/visual_audit_playwright.js`
+  - rezultat:
+    - `findings: []`
+  - raport:
+    - `/tmp/sdlc-visual-audit/report.json`
+
+Fisiere cheie batch BP:
+- frontend/components/dashboard/app-sidebar.tsx
+- frontend/app/dashboard/tasks/page.tsx
+- frontend/app/dashboard/activity/page.tsx
+- frontend/app/dashboard/team/page.tsx
+- frontend/app/dashboard/reports/page.tsx
+- PLAN_CONTINUARE_LICENTA_SDLC_HUB.txt
+
+Ce ramane imediat dupa batch BP:
+1. Performance pass continuare:
+   - verificare request-uri duplicate in paginile mari.
+   - eventual virtualizare pentru Tasks/Activity daca seed-ul creste mult.
+2. Investigare warning build:
+   - `--localstorage-file was provided without a valid path`.
+3. UI/UX bug hunting manual:
+   - continuat pe screenshot-uri punctuale.
+
+
+6.21. BATCH BQ - Admin loading polish si Admin deferred search
+
+Context:
+- Dupa mobile drawer si deferred search pe paginile principale, a ramas Admin console loading polish.
+
+Implementat:
+- frontend/app/admin/page.tsx:
+  - adaugat `AdminConsoleSkeleton`.
+  - skeleton-ul se afiseaza doar la prima incarcare, cand nu exista date locale:
+    - `loading === true`
+    - `overview === null`
+    - users/projects/tickets/errors/aiUsage sunt goale.
+  - la refresh dupa ce exista date, consola ramane vizibila si nu face flicker.
+  - adaugat `useDeferredValue(query)` pentru cautarea globala din Admin.
+  - `normalizedQuery` foloseste `deferredQuery`, reducand blocajele cand filtreaza simultan users/projects/tickets/errors/AI logs.
+
+Verificari batch BQ:
+- `npm run lint`: OK.
+- `npm run build`: OK.
+- ramane warning-ul existent Next:
+  - `--localstorage-file was provided without a valid path`.
+- Playwright visual audit:
+  - comanda:
+    - `NODE_PATH=frontend/node_modules SDLC_BASE_URL=http://127.0.0.1:3000 node scripts/visual_audit_playwright.js`
+  - rezultat:
+    - `findings: []`
+  - raport:
+    - `/tmp/sdlc-visual-audit/report.json`
+
+Fisiere cheie batch BQ:
+- frontend/app/admin/page.tsx
+- PLAN_CONTINUARE_LICENTA_SDLC_HUB.txt
+
+Ce ramane imediat dupa batch BQ:
+1. Performance pass continuare:
+   - verificare request-uri duplicate in paginile mari.
+   - eventual virtualizare pentru Tasks/Activity daca seed-ul creste mult.
+2. Investigare warning build:
+   - `--localstorage-file was provided without a valid path`.
+3. UI/UX bug hunting manual:
+   - continuat pe screenshot-uri punctuale.
+
+
+6.22. BATCH BR - Project persistence, multi-project access si dialog responsive
+
+Context cerere:
+- Inainte de continuarea planului initial au aparut 3 bug-uri/prioritati:
+  1. La refresh dintr-un proiect secundar, aplicatia revenea la primul proiect din lista.
+  2. Un utilizator deja inregistrat si membru intr-un proiect nu avea o cale clara sa intre si in alt proiect.
+  3. Modalurile/dialogurile aratau inconsistent si se rupeau pe mobile.
+
+Implementat:
+- frontend/store/use-project-store.ts:
+  - adaugat `hasHydrated` in store-ul de proiect.
+  - persist-ul seteaza explicit `hasHydrated` dupa rehidratarea din localStorage.
+  - scop: layout-ul si sidebar-ul nu mai aleg primul proiect pana cand proiectul salvat nu este incarcat.
+- frontend/app/dashboard/layout.tsx:
+  - efectul de incarcare a contextului de proiect asteapta `hasHydrated`.
+  - previne suprascrierea proiectului curent la refresh.
+- frontend/components/dashboard/app-sidebar.tsx:
+  - lista de workspace-uri asteapta `hasHydrated`.
+  - schimbarea manuala a proiectului ramane neschimbata, dar refresh-ul nu mai forteaza primul proiect.
+- frontend/app/dashboard/account/page.tsx:
+  - adaugata sectiunea `Project access`.
+  - utilizatorul vede invitatiile pending pentru email-ul lui si le poate accepta direct.
+  - adaugat camp manual `Join with code` pentru coduri primite de la Project Admin.
+  - dupa accept/join, proiectul nou este setat ca workspace curent si utilizatorul este dus in dashboard.
+  - aceasta rezolva fluxul de "append to another project" pentru userii deja existenti.
+- frontend/components/ui/dialog.tsx:
+  - baza globala pentru modaluri este acum responsive:
+    - desktop: dialog centrat.
+    - mobile: dialog cu margini, `max-height`, scroll intern si animatie mai naturala.
+  - overlay-ul are blur si contrast mai bun.
+  - butonul de inchidere are hit area mai buna pe mobile.
+
+Verificari batch BR:
+- `npm run lint`: OK.
+- `npm run build`: OK.
+- ramane warning-ul existent Next:
+  - `--localstorage-file was provided without a valid path`.
+  - nu blocheaza build-ul.
+- Playwright visual audit:
+  - comanda:
+    - `NODE_PATH=frontend/node_modules SDLC_BASE_URL=http://127.0.0.1:3000 node scripts/visual_audit_playwright.js`
+  - rezultat:
+    - `findings: []`
+  - raport:
+    - `/tmp/sdlc-visual-audit/report.json`
+
+Fisiere cheie batch BR:
+- frontend/store/use-project-store.ts
+- frontend/app/dashboard/layout.tsx
+- frontend/components/dashboard/app-sidebar.tsx
+- frontend/app/dashboard/account/page.tsx
+- frontend/components/ui/dialog.tsx
+- PLAN_CONTINUARE_LICENTA_SDLC_HUB.txt
+
+Ce ramane imediat dupa batch BR:
+1. Verificare manuala multi-project:
+   - selecteaza proiectul 2, refresh pe `/dashboard/*`, trebuie sa ramana proiectul 2.
+   - accepta o invitatie din Account, proiectul acceptat trebuie sa devina curent.
+2. Audit complet modaluri:
+   - Create Issue.
+   - Create Sprint / Complete Sprint.
+   - Invite teammate.
+   - Delete/Archive/Restore confirmations.
+   - Support ticket/comment dialogs.
+3. Dupa stabilizarea acestor bug-uri, revenire la planul initial:
+   - performance pass.
+   - bug-uri logice.
+   - functionalitati ramase din lista licentei.
+
+
+6.23. BATCH BS - Modal layout polish pentru Calendar si Create Issue
+
+Context cerere:
+- Modalul de calendar avea campurile de timp inghesuite.
+- Modalul `Create New Issue` nu era aranjat profesional si trebuia verificat si pe mobile.
+- Cerere generala: pass peste modaluri inainte de revenirea la planul initial.
+
+Implementat:
+- frontend/app/dashboard/calendar/page.tsx:
+  - modalul de event nu mai foloseste override local `max-h-[92vh] overflow-y-auto`; se bazeaza pe componenta globala responsive `DialogContent`.
+  - `Type` si `Date` sunt intr-un rand separat.
+  - `Start` si `End` sunt intr-un rand separat, cu latime suficienta pentru afisari locale cu AM/PM.
+  - blocul de timp este incadrat vizual intr-un panel discret.
+  - `Repeat` foloseste un grid mai flexibil.
+  - footer-ul are butoane full-width pe mobile si compacte pe desktop.
+- frontend/components/dashboard/create-task-dialog.tsx:
+  - modalul a fost largit la `sm:max-w-2xl`.
+  - metadatele taskului sunt grupate intr-un panel:
+    - Priority.
+    - Story Points.
+    - Assignee.
+    - Delivery Team.
+    - Target Date.
+  - `Delivery Team` si `Target Date` sunt puse pe rand separat pentru un layout mai echilibrat.
+  - actiunile AI din Description folosesc wrapping natural pe mobile.
+  - footer-ul foloseste butoane full-width pe mobile si compacte pe desktop.
+- frontend/app/dashboard/settings/page.tsx:
+  - eliminat override-ul local de scroll/max-height pe dialogul de schimbare metodologie.
+- frontend/app/dashboard/backlog/page.tsx:
+  - dialogul mare de Release Notes foloseste `sm:max-w-3xl`, nu `max-w-3xl` global pe toate viewporturile.
+
+Verificari batch BS:
+- `npm run lint`: OK.
+- `npm run build`: OK.
+- ramane warning-ul existent Next:
+  - `--localstorage-file was provided without a valid path`.
+  - nu blocheaza build-ul.
+- Playwright screenshots generate pentru:
+  - `/tmp/sdlc-modal-issue-desktop.png`
+  - `/tmp/sdlc-modal-issue-mobile.png`
+  - `/tmp/sdlc-modal-calendar-desktop.png`
+  - `/tmp/sdlc-modal-calendar-mobile.png`
+- Capturile confirma:
+  - Create Issue nu mai are randul principal inghesuit pe desktop.
+  - Create Issue se stivuieste corect pe mobile.
+  - Calendar event are Start/End suficient de late pe desktop.
+  - Calendar event se stivuieste coerent pe mobile.
+
+Fisiere cheie batch BS:
+- frontend/app/dashboard/calendar/page.tsx
+- frontend/components/dashboard/create-task-dialog.tsx
+- frontend/app/dashboard/settings/page.tsx
+- frontend/app/dashboard/backlog/page.tsx
+- PLAN_CONTINUARE_LICENTA_SDLC_HUB.txt
+
+Ce ramane imediat dupa batch BS:
+1. Continuare plan initial:
+   - performance pass.
+   - bug-uri logice.
+   - functionalitati ramase din lista licentei.
+2. UI/UX manual pe modaluri speciale:
+   - support ticket inspect/reply.
+   - admin inspect dialogs.
+   - task estimate invalidation / delete confirmations.
+
+
+6.24. BATCH BT - Tasks metrics click surface si Create Issue final alignment
+
+Context cerere:
+- Cardul `Overdue` din pagina Tasks avea doua contururi/carduri suprapuse.
+- Selectarea/apasarea trebuia sa functioneze pe toata suprafata cardului.
+- Modalul `Create New Issue` inca parea dezorganizat dupa primul pass.
+
+Implementat:
+- frontend/app/dashboard/tasks/page.tsx:
+  - `Overdue` nu mai este un `Card` cu `button` inauntru.
+  - `Overdue` este acum un button-card direct, cu un singur contur.
+  - click-ul functioneaza pe toata suprafata cardului.
+  - `Done` si `Unassigned` au primit acelasi comportament full-surface pentru filtrele lor.
+  - `Active` ramane metric informativ, pentru ca nu exista inca filtru dedicat `not done` in dropdown.
+- frontend/components/dashboard/create-task-dialog.tsx:
+  - grid-ul de planning a fost simplificat la doua coloane egale pe desktop si o coloana pe mobile.
+  - toate Select/Input controls din planning au `w-full`.
+  - `Estimate` este aliniat in header-ul campului Story Points.
+  - `Target Date` ocupa rand complet pentru a elimina golul vizual din dreapta.
+
+Verificari batch BT:
+- `npm run lint`: OK.
+- `npm run build`: OK inainte de ultimul micro-fix; dupa micro-fix s-a rerulat `npm run lint`: OK.
+- Playwright screenshots:
+  - `/tmp/sdlc-tasks-metrics-dark.png`
+  - `/tmp/sdlc-modal-issue-desktop-final.png`
+
+Fisiere cheie batch BT:
+- frontend/app/dashboard/tasks/page.tsx
+- frontend/components/dashboard/create-task-dialog.tsx
+- PLAN_CONTINUARE_LICENTA_SDLC_HUB.txt
+
+Ce ramane imediat dupa batch BT:
+1. Revenire la planul initial.
+2. Continuare cu performance pass si bug-uri logice.
+
+
+6.25. BATCH BU - Performance pass: request dedupe si Activity render window
+
+Context:
+- Revenire la planul initial dupa polish-ul modalurilor si cardurilor Tasks.
+- Urmatorul pas ramas era performance pass:
+  - verificare request-uri duplicate in paginile mari.
+  - reducerea costului de randare pentru liste mari.
+  - investigarea warning-ului build `--localstorage-file`.
+
+Implementat:
+- frontend/services/project.ts:
+  - adaugat helper intern `cachedGet` cu TTL foarte scurt, 1500ms.
+  - scopul nu este cache agresiv, ci dedupe pentru request-uri simultane identice la mount/navigare.
+  - endpointuri deduplicate:
+    - `getMyProjects`;
+    - `getProjectMembers`;
+    - `getMyProjectPermissions`;
+    - `getProjectRoles`;
+    - `getProjectTeams`.
+  - adaugata invalidare dupa mutatii relevante:
+    - join project;
+    - create project;
+    - update settings/workflow/AI settings;
+    - methodology transition;
+    - roles create/update/delete/permissions;
+    - invite/cancel invitation;
+    - update/remove member;
+    - teams create/update/delete;
+    - update member team.
+  - efect asteptat:
+    - layout/sidebar/paginile nu mai lovesc simultan aceleasi endpointuri cand se monteaza.
+    - datele raman proaspete dupa actiuni, pentru ca mutatiile invalideaza cache-ul.
+- frontend/app/dashboard/activity/page.tsx:
+  - adaugat render window pentru timeline:
+    - initial 60 evenimente vizibile.
+    - `Show more events` adauga cate 60.
+  - filtrele continua sa se aplice pe toate evenimentele incarcate, dar DOM-ul initial este mai mic.
+  - la schimbarea filtrelor/search/sort/time se reseteaza vizibilitatea la primele 60.
+
+Investigatie warning build:
+- Warning-ul Next:
+  - `--localstorage-file was provided without a valid path`.
+- In mediul curent exista `ELECTRON_RUN_AS_NODE=1`.
+- Test cu `env -u ELECTRON_RUN_AS_NODE npm run build`:
+  - warning-ul nu a mai aparut;
+  - build-ul a picat insa din cauza fetch-ului catre Google Fonts, blocat de network/sandbox:
+    - `Failed to fetch Inter from Google Fonts`.
+- Concluzie:
+  - warning-ul pare de mediu/runtime Electron, nu bug in codul aplicatiei.
+  - nu am schimbat scripturile npm, pentru ca build-ul actual trece stabil in mediul curent.
+
+Verificari batch BU:
+- `npm run lint`: OK.
+- `npm run build`: OK.
+- warning-ul `--localstorage-file` ramane, dar build-ul trece.
+
+Fisiere cheie batch BU:
+- frontend/services/project.ts
+- frontend/app/dashboard/activity/page.tsx
+- PLAN_CONTINUARE_LICENTA_SDLC_HUB.txt
+
+Ce ramane imediat dupa batch BU:
+1. Continuare bug-uri logice:
+   - arhivare proiect / readonly.
+   - support tickets comments/delete flows.
+   - realtime unde inca se simte ca reload.
+2. Performance pass suplimentar posibil:
+   - request dedupe similar pe task/sprint/calendar services daca apar duplicate masive.
+   - virtualizare reala daca Activity/Tasks depasesc cateva sute/mii de randuri.
+
+
+6.26. BATCH BV - Stabilizare tranzitii metodologie si workflow board
+
+Context:
+- Revenire la planul initial dupa batch-ul de performance.
+- Bug vizat:
+  - dupa treceri repetate SCRUMBAN -> SCRUM -> KANBAN -> SCRUMBAN, board-ul putea ramane cu configuratii/coloane vechi si se simtea ca se reincarca in bucla.
+- Cauza principala gasita:
+  - endpoint-ul de methodology transition schimba metodologia si task-urile/sprinturile, dar nu reseta explicit `workflow_config`.
+  - proiectele vechi fara `workflow_config` primeau default generic, nu presetul metodologiei active.
+
+Implementat:
+- backend/routers/projects.py:
+  - adaugate preseturi server-side pentru workflow:
+    - SCRUM:
+      - Sprint To Do / In Progress / Sprint Review / Done.
+      - fara WIP limits active implicit.
+    - KANBAN:
+      - Intake / In Progress / Review / Done.
+      - WIP limits implicite pentru In Progress si Review.
+    - SCRUMBAN:
+      - Ready / In Progress / Code Review / Done.
+      - WIP limits implicite pentru flow control.
+  - adaugat helper `_workflow_config_for_methodology`.
+  - la creare proiect se salveaza direct workflow-ul potrivit metodologiei alese.
+  - la methodology transition:
+    - se schimba metodologia;
+    - se reseteaza `workflow_config` la presetul metodologiei tinta;
+    - se pastreaza audit pentru schimbarea metodologiei;
+    - se adauga audit separat `PROJECT_WORKFLOW_UPDATED` cu motiv `methodology_transition`;
+    - broadcast-ul realtime trimite proiectul serializat cu workflow-ul nou.
+  - adaugat helper `_project_workflow_config`:
+    - daca proiectul are config salvat, il normalizeaza;
+    - daca nu are config, intoarce presetul metodologiei lui.
+
+Impact asteptat:
+- Board-ul, Settings si Reports primesc acelasi workflow dupa refresh/realtime.
+- Tranzitiile repetate intre metodologii nu mai cara accidental coloane/limite vechi.
+- Proiectele create inainte de `workflow_config` raman coerente cu metodologia curenta.
+
+Verificari batch BV:
+- `.venv/bin/python -m py_compile backend/routers/projects.py`: OK.
+- `npm run lint`: OK.
+- `npm run build`: OK.
+- Warning-ul `--localstorage-file` ramane acelasi warning de mediu identificat in batch BU, dar build-ul trece.
+
+Fisiere cheie batch BV:
+- backend/routers/projects.py
+- PLAN_CONTINUARE_LICENTA_SDLC_HUB.txt
+
+Ce ramane imediat dupa batch BV:
+1. Continuare bug-uri logice:
+   - support tickets comments/delete flows.
+   - realtime unde inca se simte ca reload.
+2. Functionalitati/polish ramase din planul initial:
+   - skeleton loaders pe paginile mari.
+   - animatie drawer mobile la inchidere/deschidere.
+   - performance suplimentar pe task/sprint/calendar services daca se observa duplicate.
+
+
+6.27. BATCH BW - Arhivare read-only backend si browser branding
+
+Context:
+- Continuare plan initial.
+- Prioritate logica ramasa:
+  - proiect arhivat trebuie sa ramana accesibil pentru citire, dar actiunile trebuie dezactivate real, inclusiv la nivel API.
+- Cerere adaugata in timpul batch-ului:
+  - in browser sa apara `SDLC Hub` si logo-ul aplicatiei, nu `SDLC AI Hub` / favicon Next.js.
+
+Implementat arhivare:
+- backend/utils/permissions.py:
+  - adaugat `ensure_project_not_archived(project)`.
+  - `require_project_permission` blocheaza proiectele arhivate pentru toate permisiunile mutative.
+  - exceptie pastrata pentru `REPORT_VIEW`, ca proiectul arhivat sa poata fi auditat/citit.
+  - raspuns API:
+    - HTTP 423 Locked.
+    - mesaj: `Project is archived. Restore it before making changes.`
+- backend/routers/calendar.py:
+  - acoperite explicit endpointurile care scriau folosind doar `check_project_permission`:
+    - create/update/delete availability.
+    - update/delete calendar event.
+    - delete recurring event series.
+  - proiectul arhivat nu mai permite nici autorului evenimentului sa modifice.
+- backend/routers/github.py:
+  - owner actions pentru GitHub integration/ngrok pe proiect sunt blocate daca proiectul este arhivat.
+  - webhook processing ignora taskurile din proiecte arhivate, ca sa nu creeze comentarii/audit/status transitions automat.
+  - confirmarea manuala PR era deja acoperita prin `require_project_permission`.
+- backend/routers/notifications.py:
+  - `generate-risk` este blocat pe proiect arhivat, desi foloseste `REPORT_VIEW`, pentru ca endpointul creeaza notificari.
+
+Impact arhivare:
+- Board, Tasks, Backlog, Team, Settings, Calendar, DevOps, Documentation si AI actions sunt protejate server-side.
+- Support ramane functional, pentru ca flow-ul lui este in zona admin/support tickets si nu depinde de mutatiile proiectului.
+- UI-ul existent cu banner + read-only overlay ramane un strat vizual; backend-ul este acum sursa de siguranta.
+
+Implementat browser branding:
+- frontend/app/layout.tsx:
+  - titlul global schimbat din `SDLC AI Hub` in:
+    - default: `SDLC Hub`.
+    - template: `%s | SDLC Hub`.
+  - descriere actualizata:
+    - `Adaptive project management for Scrum, Kanban and Scrumban teams.`
+  - metadata icons nu mai declara fallback catre `/favicon.ico`.
+- frontend/app/favicon.ico:
+  - inlocuit favicon-ul binar ramas din scaffold cu un favicon SDLC Hub 32x32.
+  - iconita foloseste aceeasi directie vizuala ca `icon.svg`: fundal inchis, hexagon/noduri cyan-blue-green.
+- frontend/app/icon.svg si manifestul raman sursele principale pentru icon/PWA.
+
+Verificari batch BW:
+- `.venv/bin/python -m py_compile backend/utils/permissions.py backend/routers/calendar.py backend/routers/github.py backend/routers/notifications.py backend/routers/projects.py`: OK.
+- `npm run lint`: OK.
+- `npm run build`: OK.
+- Warning-ul `--localstorage-file` ramane acelasi warning de mediu identificat in batch BU, dar build-ul trece.
+- Cautare frontend:
+  - nu mai exista `SDLC AI Hub`.
+  - nu mai exista referinta metadata la `favicon.ico`.
+- Verificare favicon:
+  - `frontend/app/favicon.ico`: ICO valid, 32x32, 32-bit.
+
+Fisiere cheie batch BW:
+- backend/utils/permissions.py
+- backend/routers/calendar.py
+- backend/routers/github.py
+- backend/routers/notifications.py
+- frontend/app/layout.tsx
+- frontend/app/favicon.ico
+- PLAN_CONTINUARE_LICENTA_SDLC_HUB.txt
+
+Ce ramane imediat dupa batch BW:
+1. Realtime fin:
+   - verificat unde inca pare refresh complet.
+   - comentarii/task updates fara refetch greu unde se poate.
+2. Functionalitati ramase pentru finalizare:
+   - eventuale goluri din DevOps PR mapping.
+   - polish UI/UX final cu Playwright screenshots.
+   - cleanup final document plan si instructiuni de continuare.
+
+
+6.28. BATCH BX - Support tickets hardening si conversatii complete
+
+Context:
+- Continuare dupa arhivare/branding.
+- Prioritate ramasa:
+  - Support tickets user/admin trebuie sa fie complet functionale.
+  - Comentariile multe nu trebuie sa para ascunse sau taiate.
+  - Stergere ticket/comentariu trebuie sa fie robusta.
+
+Implementat backend:
+- backend/routers/admin.py:
+  - adaugate constante de validare:
+    - prioritati permise: LOW, MEDIUM, HIGH, CRITICAL.
+    - statusuri permise: OPEN, IN_PROGRESS, RESOLVED, CLOSED.
+  - adaugate helpers:
+    - `normalize_support_priority`.
+    - `normalize_support_status`.
+    - `normalize_support_body`.
+  - create ticket:
+    - valideaza titlul dupa `strip`, nu doar prin Pydantic inainte de trim.
+    - normalizeaza prioritatea.
+  - update ticket:
+    - normalizeaza si valideaza status/prioritate.
+  - create comment:
+    - refuza comentarii goale dupa `strip`.
+  - stergerea ticket/comment era deja functionala:
+    - Global Admin poate sterge orice.
+    - userul poate sterge propriul ticket.
+    - userul poate sterge doar propriile comentarii.
+
+Implementat frontend:
+- frontend/app/dashboard/support/page.tsx:
+  - conversatia ticketului nu mai este intr-o cutie cu `max-height`.
+  - toate comentariile se afiseaza natural in pagina; scroll-ul este al paginii.
+- frontend/app/admin/page.tsx:
+  - conversatia din Support Desk admin nu mai este limitata la `max-height`.
+  - adminul vede toate comentariile in flux, fara sa para ca se opreste dupa cateva mesaje.
+
+Verificari batch BX:
+- `.venv/bin/python -m py_compile backend/routers/admin.py backend/utils/permissions.py backend/routers/calendar.py backend/routers/github.py backend/routers/notifications.py`: OK.
+- `npm run lint`: OK.
+- `npm run build`: OK.
+- Warning-ul `--localstorage-file` ramane acelasi warning de mediu identificat in batch BU, dar build-ul trece.
+
+Fisiere cheie batch BX:
+- backend/routers/admin.py
+- frontend/app/dashboard/support/page.tsx
+- frontend/app/admin/page.tsx
+- PLAN_CONTINUARE_LICENTA_SDLC_HUB.txt
+
+Ce ramane imediat dupa batch BX:
+1. Functionalitati ramase pentru finalizare:
+   - eventuale goluri din DevOps PR mapping.
+   - polish UI/UX final cu Playwright screenshots.
+   - cleanup final document plan si instructiuni de continuare.
+
+
+6.29. BATCH BY - Realtime debounce si fix Tasks event name
+
+Context:
+- Dupa support hardening, urmatorul punct ramas era realtime fin.
+- Problema:
+  - multe pagini agregate faceau refetch imediat pentru fiecare eveniment WebSocket.
+  - cand o actiune genera mai multe evenimente apropiate, UI-ul se simtea ca un reload.
+  - pagina Tasks asculta `task.created/task.updated/task.deleted`, dar backend-ul emite `task.changed`.
+
+Implementat:
+- frontend/hooks/use-realtime-event.ts:
+  - adaugat `useDebouncedRealtimeEvent`.
+  - debounce implicit: 350ms.
+  - accepta `shouldQueue(message)` ca filtru inainte de debounce.
+  - motiv:
+    - evenimente irelevante, precum presence, nu pot anula un refresh relevant.
+    - mai multe evenimente relevante apropiate devin un singur refetch.
+- frontend/app/dashboard/page.tsx:
+  - Dashboard foloseste debounce pentru:
+    - task.changed;
+    - sprint.changed;
+    - calendar.changed;
+    - user.updated.
+- frontend/app/dashboard/board/page.tsx:
+  - Board foloseste debounce pentru:
+    - task.changed;
+    - sprint.changed;
+    - project.changed.
+- frontend/app/dashboard/tasks/page.tsx:
+  - fix event name:
+    - inainte asculta task.created/task.updated/task.deleted.
+    - acum asculta `task.changed`, conform backendului.
+  - refetch debounced pentru task/project/sprint changes.
+- frontend/app/dashboard/backlog/page.tsx:
+  - refetch debounced pentru task/sprint changes.
+- frontend/app/dashboard/calendar/page.tsx:
+  - refetch debounced pentru calendar/task/sprint changes.
+- frontend/app/dashboard/documentation/page.tsx:
+  - refetch debounced pentru documentation/task changes.
+- frontend/app/dashboard/team/page.tsx:
+  - refetch debounced pentru user/project changes.
+- frontend/app/dashboard/notifications/page.tsx:
+  - refetch debounced pentru notification created/read/read_all.
+
+Lasat intentionat neschimbat:
+- frontend/app/dashboard/tasks/[taskId]/page.tsx:
+  - deja aplica local comentarii create/update/delete din payload realtime.
+  - ignora `task.changed` cand actiunea vine din comentarii.
+  - pastreaza refetch doar pentru schimbari reale ale taskului sau user updates.
+- frontend/components/dashboard/app-sidebar.tsx:
+  - badge-ul de notificari ramane imediat pentru feedback rapid.
+
+Impact asteptat:
+- Mai putine refetch-uri duplicate.
+- Tasks se actualizeaza corect in realtime.
+- Board/Dashboard/Calendar/Backlog nu mai par ca se reincarca de mai multe ori pentru aceeasi actiune.
+
+Verificari batch BY:
+- `npm run lint`: OK.
+- `npm run build`: OK.
+- Warning-ul `--localstorage-file` ramane acelasi warning de mediu identificat in batch BU, dar build-ul trece.
+
+Fisiere cheie batch BY:
+- frontend/hooks/use-realtime-event.ts
+- frontend/app/dashboard/page.tsx
+- frontend/app/dashboard/board/page.tsx
+- frontend/app/dashboard/tasks/page.tsx
+- frontend/app/dashboard/backlog/page.tsx
+- frontend/app/dashboard/calendar/page.tsx
+- frontend/app/dashboard/documentation/page.tsx
+- frontend/app/dashboard/team/page.tsx
+- frontend/app/dashboard/notifications/page.tsx
+- PLAN_CONTINUARE_LICENTA_SDLC_HUB.txt
+
+Ce ramane imediat dupa batch BY:
+1. Functionalitati ramase pentru finalizare:
+   - verificare DevOps PR mapping/manual confirm.
+   - polish UI/UX final cu Playwright screenshots.
+   - cleanup final document plan si instructiuni de continuare.
+
+
+6.30. BATCH BZ - Browser branding final si DevOps PR realtime
+
+Context:
+- In browser inca se vedea uneori titlul vechi / favicon din scaffold.
+- DevOps avea fluxuri functionale, dar:
+  - pagina Pull Requests era hardcoded pe dark UI.
+  - webhook-urile GitHub nu emiteau un eveniment realtime dedicat pentru DevOps.
+  - confirmarile manuale PR actualizau taskul, dar nu anuntau explicit pagina DevOps/PR.
+  - auditul de schimbare status din webhook PR era in ramura gresita.
+
+Implementat branding browser:
+- frontend/app/layout.tsx:
+  - metadata title ramane `SDLC Hub`.
+  - iconurile declarate explicit:
+    - `/favicon.ico?v=sdlc-hub-2`
+    - `/icon.svg?v=sdlc-hub-2`
+    - `/apple-icon.svg?v=sdlc-hub-2`
+  - motiv:
+    - cache-bust pentru browserele care pastreaza faviconul Next.js sau titlul vechi.
+- frontend/app/favicon.ico:
+  - ramane favicon SDLC Hub valid 32x32.
+
+Implementat backend DevOps:
+- backend/routers/github.py:
+  - `_handle_push` si `_handle_pull_request` intorc acum si taskurile afectate.
+  - dupa `db.commit()`, webhook-ul emite:
+    - `task.changed` pentru taskurile legate de commit/PR.
+    - `github.changed` pentru proiectele afectate.
+  - ping-ul GitHub emite `github.changed`.
+  - confirmarea manuala PR emite atat:
+    - `task.changed`;
+    - `github.changed`.
+  - detectarea de duplicate GitHub delivery prinde si delivery ID-urile salvate cu sufix pentru taskuri.
+  - auditul `TASK_UPDATED/status` este scris cand PR-ul schimba efectiv statusul taskului.
+
+Implementat frontend DevOps:
+- frontend/app/dashboard/devops/page.tsx:
+  - asculta realtime debounced pentru:
+    - `github.changed`;
+    - `task.changed`;
+    - `project.changed`.
+  - refetch fara loader complet pentru a evita senzatia de reload.
+- frontend/app/dashboard/devops/pull-requests/page.tsx:
+  - refacut UI-ul sa fie theme-aware light/dark.
+  - adaugat `WorkspaceLoadingSkeleton`.
+  - adaugat realtime debounced pentru PR/webhook/task changes.
+  - butoanele de confirmare sunt dezactivate daca proiectul este arhivat.
+  - modalul de confirmare este mai responsive si foloseste culori compatibile cu light/dark.
+
+Verificari batch BZ:
+- `.venv/bin/python -m py_compile backend/routers/github.py backend/utils/permissions.py backend/routers/calendar.py backend/routers/notifications.py`: OK.
+- `npm run lint`: OK.
+- `npm run build`: OK.
+- Warning-ul `--localstorage-file` ramane warning-ul de mediu identificat anterior, dar build-ul trece.
+
+Fisiere cheie batch BZ:
+- backend/routers/github.py
+- frontend/app/layout.tsx
+- frontend/app/dashboard/devops/page.tsx
+- frontend/app/dashboard/devops/pull-requests/page.tsx
+- PLAN_CONTINUARE_LICENTA_SDLC_HUB.txt
+
+Ce ramane imediat dupa batch BZ:
+1. Functionalitati ramase pentru finalizare:
+   - verificare finala DevOps pe task detail: events GitHub sub comentarii si audit corect.
+   - polish UI/UX final cu Playwright screenshots.
+   - cleanup final document plan si instructiuni de continuare.
+
+
+6.31. BATCH BZ2 - Task detail GitHub events pe endpoint corect
+
+Context:
+- In task detail exista sectiunea `Development links` sub comentarii.
+- Problema:
+  - pagina incarca evenimentele GitHub la nivel de proiect si le filtra local.
+  - pentru proiecte cu multe evenimente, taskul putea sa nu primeasca exact evenimentele lui.
+  - in debugging au aparut 404-uri / date lipsa legate de evenimentele GitHub pe task.
+
+Implementat:
+- frontend/app/dashboard/tasks/[taskId]/page.tsx:
+  - inlocuit `getProjectGitHubEvents(...)` cu `getTaskGitHubEvents(task.id, 120)`.
+  - sectiunea `Development links` ramane sub comentarii, asa cum s-a cerut.
+  - filtrarea client-side ramane defensiva, dar datele vin acum din endpointul dedicat taskului.
+
+Verificari batch BZ2:
+- `npm run lint`: OK.
+- `npm run build`: OK.
+- Warning-ul `--localstorage-file` ramane warning-ul de mediu identificat anterior, dar build-ul trece.
+
+Fisiere cheie batch BZ2:
+- frontend/app/dashboard/tasks/[taskId]/page.tsx
+- frontend/services/github.ts
+- backend/routers/github.py
+- PLAN_CONTINUARE_LICENTA_SDLC_HUB.txt
+
+Ce ramane imediat dupa batch BZ2:
+1. Functionalitati ramase pentru finalizare:
+   - polish UI/UX final cu Playwright screenshots.
+   - verificare performanta pe pagini cu liste mari.
+   - cleanup final document plan si instructiuni de continuare.
+
+
+6.32. BATCH BZ3 - Request dedupe pentru performanta pe servicii
+
+Context:
+- Dupa realtime, skeletons si optimizari pe Activity, mai ramasese un pass de performanta pe servicii.
+- Problema vizata:
+  - unele pagini mari declanseaza GET-uri similare aproape simultan din layout, pagina curenta, realtime si componente copil.
+  - asta poate crea senzatia de input lag sau navigare greoaie.
+
+Implementat:
+- frontend/lib/request-dedupe.ts:
+  - helper nou `dedupeRequest(key, factory)`.
+  - deduplicate doar request-uri GET simultane aflate in flight.
+  - nu pastreaza cache dupa finalizarea requestului, deci urmatorul refresh ia date proaspete.
+- frontend/services/task.ts:
+  - dedupe pentru:
+    - getProjectTasks;
+    - getTaskDetail;
+    - getProjectActivity.
+- frontend/services/sprint.ts:
+  - dedupe pentru getProjectSprints.
+- frontend/services/calendar.ts:
+  - dedupe pentru:
+    - getProjectCalendarEvents;
+    - getProjectCalendarAvailability.
+- frontend/services/github.ts:
+  - dedupe pentru:
+    - getProjectGitHubEvents;
+    - getTaskGitHubEvents;
+    - getProjectPullRequests;
+    - getProjectGitHubIntegration;
+    - getNgrokTunnelStatus.
+
+Impact asteptat:
+- Mai putine request-uri duplicate la montarea paginilor mari.
+- Mai putin zgomot cand vin evenimente realtime apropiate.
+- Fara stale cache persistent, pentru ca dedupe-ul dispare cand request-ul s-a terminat.
+
+Verificari batch BZ3:
+- `npm run lint`: OK.
+- `npm run build`: OK.
+- Warning-ul `--localstorage-file` ramane warning-ul de mediu identificat anterior, dar build-ul trece.
+
+Fisiere cheie batch BZ3:
+- frontend/lib/request-dedupe.ts
+- frontend/services/task.ts
+- frontend/services/sprint.ts
+- frontend/services/calendar.ts
+- frontend/services/github.ts
+- PLAN_CONTINUARE_LICENTA_SDLC_HUB.txt
+
+Ce ramane imediat dupa batch BZ3:
+1. QA final:
+   - polish UI/UX final cu Playwright screenshots.
+   - verificare manuala pe fluxuri critice:
+     - metodologia ramane corecta dupa refresh;
+     - proiect arhivat este read-only;
+     - invitatiile pending pot fi acceptate din Account;
+     - GitHub events apar in DevOps si Task Detail;
+     - light/dark/mobile nu au overflow evident.
+2. Cleanup final document plan si instructiuni de continuare.
+
+
+6.33. BATCH BZ4 - Branding cleanup si audit vizual partial
+
+Context:
+- Utilizatorul a observat ca in browser inca putea aparea numele vechi / iconita scaffold.
+- Dupa cache-bust pe metadata, am curatat si textele active ramase in backend.
+
+Implementat:
+- backend/config.py:
+  - `app_name` schimbat in `SDLC Hub API`.
+- backend/main.py:
+  - mesajul root API schimbat in `SDLC Hub API is running`.
+- backend/utils/email.py:
+  - subiectul mailului de activare schimbat in `Activate your SDLC Hub Account`.
+- frontend/app/layout.tsx:
+  - iconurile raman versionate cu `?v=sdlc-hub-2`.
+
+Verificari branding:
+- Cautare in cod activ:
+  - `rg "SDLC AI Hub|SDLC AI HUB" backend frontend/app frontend/components frontend/services --glob "!*.bak*"`: fara rezultate.
+- `.venv/bin/python -m py_compile backend/main.py backend/config.py backend/utils/email.py backend/routers/github.py`: OK.
+- `npm run lint`: OK.
+- `npm run build`: OK.
+
+Audit vizual Playwright:
+- Rulat `scripts/visual_audit_playwright.js` pe light/dark + mobile/desktop.
+- Raport generat:
+  - `/tmp/sdlc-visual-audit/report.json`.
+- Observatie importanta:
+  - auditul a rulat cu storage state generat manual, dar backend-ul activ pe portul 8000 a refuzat tokenul cu 401.
+  - cauza probabila: proces backend vechi sau pornit cu alt `SECRET_KEY` fata de mediul curent.
+  - din acest motiv raportul este util doar pentru overflow/contrast de layout, nu pentru QA functionala autentificata.
+- Rezultat layout din audit:
+  - `docOverflow: 0` pe rutele verificate.
+  - `outOfBounds: 0` pe rutele verificate.
+  - `darkInLight: 0` pe rutele verificate.
+  - 401-urile trebuie ignorate pana cand backend-ul este repornit cu env-ul curent si storage-ul Playwright este regenerat prin login real.
+
+Fisiere cheie batch BZ4:
+- backend/config.py
+- backend/main.py
+- backend/utils/email.py
+- frontend/app/layout.tsx
+- PLAN_CONTINUARE_LICENTA_SDLC_HUB.txt
+
+Ce ramane imediat dupa batch BZ4:
+1. QA final autentificat dupa restart backend/frontend cu env curent:
+   - login real;
+   - regenerare storage state Playwright;
+   - rerulare audit vizual.
+2. Test manual final pe fluxuri critice:
+   - auth/mail;
+   - methodology transition;
+   - task CRUD/subtask/comment/audit;
+   - calendar availability/events;
+   - DevOps setup/events/PR confirm;
+   - support tickets user/admin;
+   - account settings/avatar/sessions.
 
 
 7. OBSERVATII IMPORTANTE

@@ -6,6 +6,9 @@ from sqlalchemy.orm import Session
 from backend.models.project import Project, ProjectMember
 
 
+ARCHIVED_PROJECT_READ_PERMISSIONS = {"REPORT_VIEW"}
+
+
 def parse_role_permissions(raw_permissions: str | None) -> dict[str, bool]:
     if not raw_permissions:
         return {}
@@ -37,6 +40,14 @@ def member_has_permission(
 
     permissions = parse_role_permissions(membership.role.permissions if membership.role else None)
     return bool(permissions.get(permission_key))
+
+
+def ensure_project_not_archived(project: Project) -> None:
+    if project.is_archived:
+        raise HTTPException(
+            status_code=status.HTTP_423_LOCKED,
+            detail="Project is archived. Restore it before making changes.",
+        )
 
 
 def check_project_permission(
@@ -112,9 +123,14 @@ def require_project_permission(
     project_id: int,
     permission_key: str,
 ) -> ProjectMember:
-    return check_project_permission(
+    membership = check_project_permission(
         db,
         user_id,
         project_id,
         required_permission=permission_key,
     )
+
+    if permission_key not in ARCHIVED_PROJECT_READ_PERMISSIONS:
+        ensure_project_not_archived(membership.project)
+
+    return membership

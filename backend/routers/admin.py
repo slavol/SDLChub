@@ -171,6 +171,40 @@ def require_ticket_access(ticket: SupportTicket, current_user: User) -> None:
     )
 
 
+SUPPORT_TICKET_PRIORITIES = {"LOW", "MEDIUM", "HIGH", "CRITICAL"}
+SUPPORT_TICKET_STATUSES = {"OPEN", "IN_PROGRESS", "RESOLVED", "CLOSED"}
+
+
+def normalize_support_priority(value: str | None) -> str:
+    priority = (value or "MEDIUM").strip().upper()
+    if priority not in SUPPORT_TICKET_PRIORITIES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid support ticket priority.",
+        )
+    return priority
+
+
+def normalize_support_status(value: str | None) -> str:
+    ticket_status = (value or "OPEN").strip().upper()
+    if ticket_status not in SUPPORT_TICKET_STATUSES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid support ticket status.",
+        )
+    return ticket_status
+
+
+def normalize_support_body(value: str | None) -> str:
+    body = (value or "").strip()
+    if not body:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Support comment cannot be empty.",
+        )
+    return body
+
+
 @router.get("/overview", response_model=AdminOverview)
 def read_admin_overview(
     _: User = Depends(require_global_admin),
@@ -816,12 +850,19 @@ def create_support_ticket(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    title = data.title.strip()
+    if len(title) < 3:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Support ticket title must be at least 3 characters.",
+        )
+
     ticket = SupportTicket(
         reporter_id=current_user.id,
         reporter_email=current_user.email,
-        title=data.title.strip(),
+        title=title,
         description=data.description.strip() if data.description else None,
-        priority=data.priority.upper(),
+        priority=normalize_support_priority(data.priority),
         status="OPEN",
     )
     db.add(ticket)
@@ -842,9 +883,9 @@ def update_support_ticket(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Ticket not found.")
 
     if data.status is not None:
-        ticket.status = data.status.upper()
+        ticket.status = normalize_support_status(data.status)
     if data.priority is not None:
-        ticket.priority = data.priority.upper()
+        ticket.priority = normalize_support_priority(data.priority)
 
     db.commit()
     db.refresh(ticket)
@@ -883,10 +924,11 @@ def create_support_ticket_comment(
 
     require_ticket_access(ticket, current_user)
 
+    body = normalize_support_body(data.body)
     comment = SupportTicketComment(
         ticket_id=ticket.id,
         author_id=current_user.id,
-        body=data.body.strip(),
+        body=body,
         is_admin_note=current_user.is_global_admin,
     )
     db.add(comment)

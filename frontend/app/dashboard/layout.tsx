@@ -19,7 +19,7 @@ export default function DashboardLayout({
   const router = useRouter();
   const pathname = usePathname();
   const currentUser = useAuthStore((state) => state.user);
-  const { currentProject, setCurrentProject } = useProjectStore();
+  const { currentProject, hasHydrated, setCurrentProject } = useProjectStore();
 
   const [methodology, setMethodology] = useState<string>("SCRUM");
   const [projectName, setProjectName] = useState<string>("");
@@ -29,6 +29,10 @@ export default function DashboardLayout({
   const archivedReadOnly = isArchived && pathname !== "/dashboard/support";
 
   useEffect(() => {
+    if (!hasHydrated) {
+      return;
+    }
+
     const loadProjectContext = async () => {
       try {
         let project = currentProject;
@@ -82,7 +86,7 @@ export default function DashboardLayout({
     };
 
     loadProjectContext();
-  }, [currentProject, currentUser?.id, router, setCurrentProject]);
+  }, [currentProject, currentUser?.id, hasHydrated, router, setCurrentProject]);
 
   if (loading) {
     return (

@@ -31,7 +31,7 @@ from backend.schemas.github import (
     PullRequestConfirmRequest,
 )
 from backend.services.documentation_service import upsert_task_documentation_page
-from backend.utils.permissions import check_project_permission, require_project_permission
+from backend.utils.permissions import check_project_permission, ensure_project_not_archived, require_project_permission
 
 
 router = APIRouter(prefix="/github", tags=["GitHub / DevOps"])
@@ -220,6 +220,8 @@ def _require_project_owner(db: Session, current_user: User, project_id: int) -> 
 
     if not project:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found.")
+
+    ensure_project_not_archived(project)
 
     if project.owner_id == current_user.id or bool(getattr(current_user, "is_global_admin", False)):
         return project
@@ -495,14 +497,15 @@ def _handle_push(
     delivery_id: str | None,
     payload: dict[str, Any],
     integration: GitHubProjectIntegration | None = None,
-) -> int:
+) -> tuple[int, list[dict[str, Any]]]:
     if integration and not integration.auto_link_commits:
-        return 0
+        return 0, []
 
     repository = (payload.get("repository") or {}).get("full_name")
     sender_login = (payload.get("sender") or {}).get("login")
     commits = payload.get("commits") or []
     processed = 0
+    linked_tasks: list[dict[str, Any]] = []
 
     for commit in commits:
         message = commit.get("message") or ""
@@ -514,6 +517,9 @@ def _handle_push(
         tasks = _find_tasks_by_keys(db, keys)
 
         for task in tasks:
+            if task.project and task.project.is_archived:
+                continue
+
             mapped_user = _resolve_github_user(db, sender_login, task.project_id)
             summary = f"Commit linked to {task.key}: {message.splitlines()[0][:180]}"
             body = (
@@ -550,9 +556,10 @@ def _handle_push(
                 summary=summary,
                 payload=payload,
             )
+            linked_tasks.append({"project_id": task.project_id, "task_id": task.id, "task_key": task.key})
             processed += 1
 
-    return processed
+    return processed, linked_tasks
 
 
 def _handle_pull_request(
@@ -561,7 +568,7 @@ def _handle_pull_request(
     delivery_id: str | None,
     payload: dict[str, Any],
     integration: GitHubProjectIntegration | None = None,
-) -> int:
+) -> tuple[int, list[dict[str, Any]]]:
     action = payload.get("action")
     repository = (payload.get("repository") or {}).get("full_name")
     sender_login = (payload.get("sender") or {}).get("login")
@@ -577,9 +584,13 @@ def _handle_pull_request(
     keys = _extract_task_keys(title, body, branch)
     tasks = _find_tasks_by_keys(db, keys)
     processed = 0
+    linked_tasks: list[dict[str, Any]] = []
     allow_auto_transition = bool(integration.auto_transition_prs) if integration else True
 
     for task in tasks:
+        if task.project and task.project.is_archived:
+            continue
+
         mapped_user = _resolve_github_user(db, sender_login, task.project_id)
         old_status = _enum_value(task.status)
         new_status = None
@@ -621,10 +632,6 @@ def _handle_pull_request(
         if new_status:
             comment_lines.append("")
             comment_lines.append(f"Task moved from {old_status} to {new_status}.")
-        elif not allow_auto_transition:
-            comment_lines.append("")
-            comment_lines.append("PR smart transitions are disabled for this project; task status was left unchanged.")
-
             _add_audit_log(
                 db,
                 task,
@@ -633,6 +640,9 @@ def _handle_pull_request(
                 old_value=old_status,
                 new_value=new_status,
             )
+        elif not allow_auto_transition:
+            comment_lines.append("")
+            comment_lines.append("PR smart transitions are disabled for this project; task status was left unchanged.")
 
         _add_task_comment(db, task, "\n".join(comment_lines), mapped_user.id if mapped_user else None)
         _add_audit_log(
@@ -660,9 +670,10 @@ def _handle_pull_request(
             summary=summary,
             payload=payload,
         )
+        linked_tasks.append({"project_id": task.project_id, "task_id": task.id, "task_key": task.key})
         processed += 1
 
-    return processed
+    return processed, linked_tasks
 
 
 
@@ -895,7 +906,16 @@ async def github_webhook(
     _verify_signature(settings.github_webhook_secret, body, x_hub_signature_256)
 
     if x_github_delivery:
-        duplicate = db.query(GitHubEvent).filter(GitHubEvent.delivery_id == x_github_delivery).first()
+        duplicate = (
+            db.query(GitHubEvent)
+            .filter(
+                or_(
+                    GitHubEvent.delivery_id == x_github_delivery,
+                    GitHubEvent.delivery_id.like(f"{x_github_delivery}:%"),
+                )
+            )
+            .first()
+        )
         if duplicate:
             return {"processed": False, "reason": "duplicate_delivery", "events_created": 0}
 
@@ -907,6 +927,7 @@ async def github_webhook(
     event_type = x_github_event or "unknown"
     integration = _refresh_integration_from_payload(db, payload, event_type)
     integration_project_id = integration.project_id if integration else None
+    linked_tasks: list[dict[str, Any]] = []
 
     if event_type == "ping":
         _store_event(
@@ -926,17 +947,23 @@ async def github_webhook(
             payload=payload,
         )
         db.commit()
+        if integration_project_id:
+            broadcast_project_event(
+                integration_project_id,
+                "github.changed",
+                {"action": "webhook_ping", "event_type": "ping", "events_created": 1},
+            )
         return {"processed": True, "event": "ping", "events_created": 1}
 
     if event_type == "push":
-        created = _handle_push(
+        created, linked_tasks = _handle_push(
             db,
             delivery_id=x_github_delivery,
             payload=payload,
             integration=integration,
         )
     elif event_type == "pull_request":
-        created = _handle_pull_request(
+        created, linked_tasks = _handle_pull_request(
             db,
             delivery_id=x_github_delivery,
             payload=payload,
@@ -962,6 +989,39 @@ async def github_webhook(
         created = 1
 
     db.commit()
+    affected_project_ids = {
+        int(item["project_id"])
+        for item in linked_tasks
+        if item.get("project_id") is not None
+    }
+    if integration_project_id:
+        affected_project_ids.add(integration_project_id)
+
+    for item in linked_tasks:
+        project_id = item.get("project_id")
+        if project_id is None:
+            continue
+        broadcast_project_event(
+            int(project_id),
+            "task.changed",
+            {
+                "action": "github_webhook",
+                "event_type": event_type,
+                "task_id": item.get("task_id"),
+                "task_key": item.get("task_key"),
+            },
+        )
+
+    for project_id in affected_project_ids:
+        broadcast_project_event(
+            project_id,
+            "github.changed",
+            {
+                "action": "webhook_delivery",
+                "event_type": event_type,
+                "events_created": created,
+            },
+        )
     return {"processed": True, "event": event_type, "events_created": created}
 
 
@@ -1077,6 +1137,17 @@ def confirm_pull_request_transition(
         event.project_id,
         "task.changed",
         {"action": "github_pr_manual_confirm", "task_id": task.id, "task_key": task.key},
+    )
+    broadcast_project_event(
+        event.project_id,
+        "github.changed",
+        {
+            "action": "github_pr_manual_confirm",
+            "event_id": event.id,
+            "target_status": target_status,
+            "task_id": task.id,
+            "task_key": task.key,
+        },
     )
     return _pull_request_payload(db, event)
 

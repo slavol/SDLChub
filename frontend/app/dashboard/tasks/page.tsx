@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useDeferredValue, useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
   CalendarClock,
@@ -30,7 +30,7 @@ import {
 } from "@/components/ui/select";
 import { UserAvatar } from "@/components/user-avatar";
 import { useProjectPermissions } from "@/hooks/use-project-permissions";
-import { useRealtimeEvent } from "@/hooks/use-realtime-event";
+import { useDebouncedRealtimeEvent } from "@/hooks/use-realtime-event";
 import { getApiErrorMessage } from "@/lib/api-error";
 import { cn } from "@/lib/utils";
 import { getMyProjects, getProjectMembers, Project, ProjectMember } from "@/services/project";
@@ -158,6 +158,7 @@ export default function TasksListPage() {
   const [updatingTaskId, setUpdatingTaskId] = useState<number | null>(null);
 
   const [query, setQuery] = useState("");
+  const deferredQuery = useDeferredValue(query);
   const [statusFilter, setStatusFilter] = useState("all");
   const [priorityFilter, setPriorityFilter] = useState("all");
   const [assigneeFilter, setAssigneeFilter] = useState("all");
@@ -211,19 +212,19 @@ export default function TasksListPage() {
     loadData();
   }, [loadData]);
 
-  useRealtimeEvent((message) => {
-    if (!project?.id || message.project_id !== project.id) return;
-
-    if (
-      message.type === "task.created" ||
-      message.type === "task.updated" ||
-      message.type === "task.deleted" ||
-      message.type === "project.changed" ||
-      message.type === "sprint.changed"
-    ) {
-      loadData(false);
+  useDebouncedRealtimeEvent(
+    () => loadData(false),
+    [project?.id, loadData],
+    350,
+    (message) => {
+      if (!project?.id || message.project_id !== project.id) return false;
+      return (
+        message.type === "task.changed" ||
+        message.type === "project.changed" ||
+        message.type === "sprint.changed"
+      );
     }
-  }, [project?.id, loadData]);
+  );
 
   const memberByUserId = useMemo(() => {
     return new Map(members.map((member) => [member.user.id, member]));
@@ -234,7 +235,7 @@ export default function TasksListPage() {
   }, [sprints]);
 
   const filteredTasks = useMemo(() => {
-    const normalizedQuery = query.trim().toLowerCase();
+    const normalizedQuery = deferredQuery.trim().toLowerCase();
 
     return tasks.filter((task) => {
       if (statusFilter !== "all" && task.status !== statusFilter) return false;
@@ -272,7 +273,7 @@ export default function TasksListPage() {
         .filter(Boolean)
         .some((value) => String(value).toLowerCase().includes(normalizedQuery));
     });
-  }, [assigneeFilter, dueFilter, priorityFilter, query, sprintFilter, statusFilter, tasks]);
+  }, [assigneeFilter, deferredQuery, dueFilter, priorityFilter, sprintFilter, statusFilter, tasks]);
 
   const metrics = useMemo(() => {
     const active = tasks.filter((task) => task.status !== TaskStatus.DONE).length;
@@ -361,47 +362,54 @@ export default function TasksListPage() {
         </section>
 
         <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-          <Card className="border-slate-800 bg-slate-900 text-slate-50">
-            <CardContent className="p-4">
-              <CheckCircle2 className="mb-3 h-5 w-5 text-blue-300" />
-              <p className="text-sm text-slate-500">Active</p>
-              <p className="mt-1 text-2xl font-semibold text-white">{metrics.active}</p>
-            </CardContent>
-          </Card>
-          <Card className="border-slate-800 bg-slate-900 text-slate-50">
-            <CardContent className="p-4">
-              <CheckCircle2 className="mb-3 h-5 w-5 text-emerald-300" />
-              <p className="text-sm text-slate-500">Done</p>
-              <p className="mt-1 text-2xl font-semibold text-white">{metrics.done}</p>
-            </CardContent>
-          </Card>
-          <Card
+          <div className="rounded-2xl border border-slate-800 bg-slate-900 p-4 text-slate-50">
+            <CheckCircle2 className="mb-3 h-5 w-5 text-blue-300" />
+            <p className="text-sm text-slate-500">Active</p>
+            <p className="mt-1 text-2xl font-semibold text-white">{metrics.active}</p>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setStatusFilter(statusFilter === TaskStatus.DONE ? "all" : TaskStatus.DONE)}
             className={cn(
-              "border-slate-800 bg-slate-900 text-slate-50 transition",
+              "rounded-2xl border border-slate-800 bg-slate-900 p-4 text-left text-slate-50 transition hover:border-emerald-500/35 hover:bg-emerald-500/5 focus:outline-none focus:ring-2 focus:ring-emerald-500/35",
+              statusFilter === TaskStatus.DONE && "border-emerald-500/45 bg-emerald-500/10"
+            )}
+          >
+            <CheckCircle2 className="mb-3 h-5 w-5 text-emerald-300" />
+            <p className="text-sm text-slate-500">Done</p>
+            <p className="mt-1 text-2xl font-semibold text-white">{metrics.done}</p>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setDueFilter(dueFilter === "overdue" ? "all" : "overdue")}
+            className={cn(
+              "rounded-2xl border border-slate-800 bg-slate-900 p-4 text-left text-slate-50 transition hover:border-rose-500/35 hover:bg-rose-500/5 focus:outline-none focus:ring-2 focus:ring-rose-500/35",
               dueFilter === "overdue" && "border-rose-500/45 bg-rose-500/10"
             )}
           >
-            <button
-              type="button"
-              onClick={() => setDueFilter(dueFilter === "overdue" ? "all" : "overdue")}
-              className="block w-full rounded-[inherit] p-4 text-left transition hover:bg-rose-500/5 focus:outline-none focus:ring-2 focus:ring-rose-500/35"
-            >
-              <AlertTriangle className="mb-3 h-5 w-5 text-rose-300" />
-              <p className="text-sm text-slate-500">Overdue</p>
-              <p className={cn("mt-1 text-2xl font-semibold", metrics.overdue ? "text-rose-200" : "text-white")}>
-                {metrics.overdue}
-              </p>
-            </button>
-          </Card>
-          <Card className="border-slate-800 bg-slate-900 text-slate-50">
-            <CardContent className="p-4">
-              <UserRound className="mb-3 h-5 w-5 text-amber-300" />
-              <p className="text-sm text-slate-500">Unassigned</p>
-              <p className={cn("mt-1 text-2xl font-semibold", metrics.unassigned ? "text-amber-200" : "text-white")}>
-                {metrics.unassigned}
-              </p>
-            </CardContent>
-          </Card>
+            <AlertTriangle className="mb-3 h-5 w-5 text-rose-300" />
+            <p className="text-sm text-slate-500">Overdue</p>
+            <p className={cn("mt-1 text-2xl font-semibold", metrics.overdue ? "text-rose-200" : "text-white")}>
+              {metrics.overdue}
+            </p>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setAssigneeFilter(assigneeFilter === "unassigned" ? "all" : "unassigned")}
+            className={cn(
+              "rounded-2xl border border-slate-800 bg-slate-900 p-4 text-left text-slate-50 transition hover:border-amber-500/35 hover:bg-amber-500/5 focus:outline-none focus:ring-2 focus:ring-amber-500/35",
+              assigneeFilter === "unassigned" && "border-amber-500/45 bg-amber-500/10"
+            )}
+          >
+            <UserRound className="mb-3 h-5 w-5 text-amber-300" />
+            <p className="text-sm text-slate-500">Unassigned</p>
+            <p className={cn("mt-1 text-2xl font-semibold", metrics.unassigned ? "text-amber-200" : "text-white")}>
+              {metrics.unassigned}
+            </p>
+          </button>
         </section>
 
         <Card className="border-slate-800 bg-slate-900 text-slate-50">

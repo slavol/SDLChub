@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useDeferredValue, useEffect, useMemo, useState } from "react";
 import {
   Crown,
   GitBranch,
@@ -27,7 +27,7 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { UserAvatar } from "@/components/user-avatar";
-import { useRealtimeEvent } from "@/hooks/use-realtime-event";
+import { useDebouncedRealtimeEvent } from "@/hooks/use-realtime-event";
 import { hasProjectPermission } from "@/lib/project-permissions";
 import { cn } from "@/lib/utils";
 import {
@@ -119,6 +119,7 @@ export default function TeamPage() {
   const [newTeamParentId, setNewTeamParentId] = useState("root");
 
   const [search, setSearch] = useState("");
+  const deferredSearch = useDeferredValue(search);
   const [roleFilter, setRoleFilter] = useState("all");
 
   const [loading, setLoading] = useState(true);
@@ -243,7 +244,7 @@ export default function TeamPage() {
   );
 
   const filteredMembers = useMemo(() => {
-    const q = search.trim().toLowerCase();
+    const q = deferredSearch.trim().toLowerCase();
 
     return members.filter((member) => {
       const roleId = member.role?.id ? String(member.role.id) : "";
@@ -259,7 +260,7 @@ export default function TeamPage() {
         roleName,
       ].some((value) => value.toLowerCase().includes(q));
     });
-  }, [members, roleFilter, search]);
+  }, [deferredSearch, members, roleFilter]);
 
   const loadData = useCallback(async (showLoader = true) => {
     if (showLoader) setLoading(true);
@@ -318,13 +319,15 @@ export default function TeamPage() {
     loadData();
   }, [loadData, currentUser?.id]);
 
-  useRealtimeEvent((message) => {
-    if (!projectId || (message.project_id && message.project_id !== projectId)) return;
-
-    if (message.type === "user.updated" || message.type === "project.changed") {
-      loadData(false);
+  useDebouncedRealtimeEvent(
+    () => loadData(false),
+    [loadData, projectId],
+    350,
+    (message) => {
+      if (!projectId || (message.project_id && message.project_id !== projectId)) return false;
+      return message.type === "user.updated" || message.type === "project.changed";
     }
-  }, [loadData, projectId]);
+  );
 
   const handleInvite = async () => {
     if (!projectId || !inviteEmail.trim() || !inviteRoleId) return;

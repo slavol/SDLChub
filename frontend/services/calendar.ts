@@ -1,4 +1,5 @@
 import api from "@/lib/axios";
+import { dedupeRequest } from "@/lib/request-dedupe";
 
 export type CalendarEventType =
   | "MEETING"
@@ -48,8 +49,12 @@ export const getProjectCalendarEvents = async (
   projectId: number,
   params: { start?: string; end?: string } = {}
 ): Promise<CalendarEvent[]> => {
-  const response = await api.get(`/calendar/project/${projectId}`, { params });
-  return response.data;
+  const paramsKey = JSON.stringify(params);
+
+  return dedupeRequest(`calendar:events:${projectId}:${paramsKey}`, async () => {
+    const response = await api.get(`/calendar/project/${projectId}`, { params });
+    return response.data;
+  });
 };
 
 export const createProjectCalendarEvent = async (
@@ -125,8 +130,12 @@ export const getProjectCalendarAvailability = async (
   projectId: number,
   params: { start?: string; end?: string; user_id?: number } = {}
 ): Promise<CalendarAvailability[]> => {
-  const response = await api.get(`/calendar/project/${projectId}/availability`, { params });
-  return response.data;
+  const paramsKey = JSON.stringify(params);
+
+  return dedupeRequest(`calendar:availability:${projectId}:${paramsKey}`, async () => {
+    const response = await api.get(`/calendar/project/${projectId}/availability`, { params });
+    return response.data;
+  });
 };
 
 export const createProjectCalendarAvailability = async (
