@@ -39,8 +39,10 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { pickWorkspaceProject } from "@/lib/project-selection";
 import { cn } from "@/lib/utils";
 import { useRealtimeEvent } from "@/hooks/use-realtime-event";
+import { useProjectPermissions } from "@/hooks/use-project-permissions";
 import { getMyProjects, Project } from "@/services/project";
 import { getUnreadNotificationCount } from "@/services/notification";
 import { useAuthStore } from "@/store/use-auth-store";
@@ -107,12 +109,10 @@ export function AppSidebar({ methodology, role, projectName }: SidebarProps) {
           return;
         }
 
-        const stillAvailable = currentProject
-          ? remoteProjects.some((project) => project.id === currentProject.id)
-          : false;
+        const selectedProject = pickWorkspaceProject(remoteProjects, currentProject);
 
-        if (!currentProject || !stillAvailable) {
-          setCurrentProject(remoteProjects[0]);
+        if (selectedProject && selectedProject.id !== currentProject?.id) {
+          setCurrentProject(selectedProject);
         }
       } catch {
         setProjects([]);
@@ -147,7 +147,8 @@ export function AppSidebar({ methodology, role, projectName }: SidebarProps) {
     if (
       message.type === "notification.created" ||
       message.type === "notification.read" ||
-      message.type === "notification.read_all"
+      message.type === "notification.read_all" ||
+      message.type === "notification.deleted"
     ) {
       getUnreadNotificationCount()
         .then(setUnreadNotifications)
@@ -211,30 +212,56 @@ export function AppSidebar({ methodology, role, projectName }: SidebarProps) {
   const activeProjectName =
     activeProject?.name || projectName || "Select workspace";
   const activeProjectKey = activeProject?.key || "NO-KEY";
+  const permissionProjectId = activeProject?.id || currentProject?.id || null;
+  const {
+    can: canForActiveProject,
+    isProjectOwner,
+    isProjectAdmin,
+  } = useProjectPermissions(permissionProjectId);
 
   const displayName = user?.full_name || "User";
   const projectInitials = getProjectMark(activeProject);
+  const activeProjectLogoUrl = resolveMediaUrl(activeProject?.logo_url);
 
-  const isScrum =
+  const isScrumLike =
     activeMethodology === "SCRUM" || activeMethodology === "SCRUMBAN";
-  const isAdmin = ["Owner", "Admin", "Project Admin"].includes(role);
+  const showBoard = activeMethodology !== "SCRUM";
+  const isRoleAdmin = ["Owner", "Admin", "Project Admin"].includes(role);
+  const canOpenSettings =
+    isRoleAdmin ||
+    isProjectOwner ||
+    isProjectAdmin ||
+    canForActiveProject("SETTINGS_MANAGE") ||
+    canForActiveProject("PROJECT_UPDATE") ||
+    canForActiveProject("MEMBER_INVITE") ||
+    canForActiveProject("ROLE_MANAGE") ||
+    canForActiveProject("TEAM_MANAGE");
+  const canViewReports =
+    isRoleAdmin ||
+    isProjectOwner ||
+    isProjectAdmin ||
+    canForActiveProject("REPORT_VIEW");
 
   const links = [
     { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
     { name: "Workload", href: "/dashboard/workload", icon: Gauge },
-    { name: "Reports", href: "/dashboard/reports", icon: BarChart3 },
+    ...(canViewReports
+      ? [{ name: "Reports", href: "/dashboard/reports", icon: BarChart3 }]
+      : []),
     { name: "Documentation", href: "/dashboard/documentation", icon: BookOpen },
     { name: "DevOps", href: "/dashboard/devops", icon: Github },
     { name: "Activity", href: "/dashboard/activity", icon: Activity },
     { name: "Calendar", href: "/dashboard/calendar", icon: CalendarDays },
-    { name: "Board", href: "/dashboard/board", icon: KanbanSquare },
+    ...(showBoard
+      ? [{ name: "Board", href: "/dashboard/board", icon: KanbanSquare }]
+      : []),
     { name: "Tasks", href: "/dashboard/tasks", icon: ListChecks },
-    ...(isScrum
+    ...(isScrumLike
       ? [{ name: "Backlog", href: "/dashboard/backlog", icon: FileText }]
       : []),
     { name: "Team", href: "/dashboard/team", icon: Users },
     { name: "Support", href: "/dashboard/support", icon: MessageSquareWarning },
-    ...(isAdmin
+    ...(canOpenSettings
       ? [{ name: "Settings", href: "/dashboard/settings", icon: Settings }]
       : []),
   ];
@@ -242,7 +269,6 @@ export function AppSidebar({ methodology, role, projectName }: SidebarProps) {
   const handleProjectChange = (project: Project) => {
     setCurrentProject(project);
     router.push("/dashboard");
-    router.refresh();
   };
 
   const handleCreateProject = () => {
@@ -304,8 +330,17 @@ export function AppSidebar({ methodology, role, projectName }: SidebarProps) {
               className="mt-3 w-full rounded-2xl border border-slate-800 bg-slate-900/70 p-2.5 text-left transition hover:border-blue-500/35 hover:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
             >
               <div className="flex items-center gap-3">
-                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-blue-500/25 bg-blue-500/10 text-[11px] font-bold text-blue-200">
-                  {projectInitials}
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-blue-500/25 bg-blue-500/10 text-[11px] font-bold text-blue-200">
+                  {activeProjectLogoUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={activeProjectLogoUrl}
+                      alt={`${activeProjectName} icon`}
+                      className="h-full w-full object-cover"
+                    />
+                  ) : (
+                    projectInitials
+                  )}
                 </div>
 
                 <div className="min-w-0 flex-1">
@@ -338,6 +373,7 @@ export function AppSidebar({ methodology, role, projectName }: SidebarProps) {
             <div className="max-h-64 overflow-y-auto py-1">
               {projects.map((project) => {
                 const selected = activeProject?.id === project.id;
+                const logoUrl = resolveMediaUrl(project.logo_url);
 
                 return (
                   <DropdownMenuItem
@@ -345,8 +381,17 @@ export function AppSidebar({ methodology, role, projectName }: SidebarProps) {
                     onSelect={() => handleProjectChange(project)}
                     className="cursor-pointer rounded-xl px-2 py-2 text-slate-200 focus:bg-slate-900 focus:text-white"
                   >
-                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-slate-700 bg-slate-900 text-[10px] font-bold text-slate-300">
-                      {getProjectMark(project)}
+                    <div className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-slate-700 bg-slate-900 text-[10px] font-bold text-slate-300">
+                      {logoUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={logoUrl}
+                          alt={`${project.name} icon`}
+                          className="h-full w-full object-cover"
+                        />
+                      ) : (
+                        getProjectMark(project)
+                      )}
                     </div>
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm font-medium">
@@ -513,7 +558,7 @@ export function AppSidebar({ methodology, role, projectName }: SidebarProps) {
             type="button"
             aria-label="Close navigation"
             className={cn(
-              "absolute inset-0 bg-slate-950/65 backdrop-blur-sm transition-opacity duration-200 ease-out",
+              "absolute inset-y-0 right-0 left-[min(21rem,calc(100vw-2rem))] bg-slate-950/65 backdrop-blur-sm transition-opacity duration-200 ease-out",
               mobileOpen ? "opacity-100" : "opacity-0"
             )}
             onClick={closeMobileDrawer}

@@ -37,6 +37,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { getApiErrorMessage } from "@/lib/api-error";
+import { pickWorkspaceProject } from "@/lib/project-selection";
 import { cn } from "@/lib/utils";
 import {
   getMyProjects,
@@ -434,15 +435,15 @@ export default function WorkloadPage() {
   const canAssignTasks = can("TASK_ASSIGN");
   const canUseAi = can("AI_USE");
 
-  const loadWorkload = useCallback(async () => {
-    setLoading(true);
+  const loadWorkload = useCallback(async (showLoader = true) => {
+    if (showLoader) setLoading(true);
 
     try {
       let selectedProject = currentProject;
 
       if (!selectedProject) {
         const projects = await getMyProjects();
-        selectedProject = projects[0] ?? null;
+        selectedProject = pickWorkspaceProject(projects, currentProject);
 
         if (selectedProject) {
           setCurrentProject(selectedProject);
@@ -462,7 +463,7 @@ export default function WorkloadPage() {
     } catch (error) {
       toast.error(getApiErrorMessage(error, "Could not load workload data."));
     } finally {
-      setLoading(false);
+      if (showLoader) setLoading(false);
     }
   }, [currentProject, setCurrentProject]);
 
@@ -497,6 +498,70 @@ export default function WorkloadPage() {
     }
   };
 
+  const applyLocalAssignment = useCallback((task: WorkloadTask, userId: number | null) => {
+    setWorkload((current) => {
+      if (!current) return current;
+
+      const targetMember = userId
+        ? current.members.find((member) => member.user_id === userId)
+        : null;
+      const movedTask: WorkloadTask = {
+        ...task,
+        assignee_id: userId,
+        assignee_name: targetMember?.full_name || null,
+        assignee_avatar_url: targetMember?.avatar_url || null,
+      };
+
+      const members = current.members.map((member) => {
+        const nextTasks = member.tasks.filter((item) => item.id !== task.id);
+        return {
+          ...member,
+          tasks: nextTasks,
+          active_tasks: nextTasks.length,
+          story_points: nextTasks.reduce((total, item) => total + (item.story_points || 0), 0),
+          overdue_tasks: nextTasks.filter((item) => isOverdue(item.due_date)).length,
+          review_tasks: nextTasks.filter((item) => item.status === "REVIEW").length,
+          critical_tasks: nextTasks.filter((item) => item.priority === "CRITICAL").length,
+        };
+      });
+
+      let unassignedTasks = current.unassigned_tasks.filter((item) => item.id !== task.id);
+
+      if (targetMember) {
+        const targetIndex = members.findIndex((member) => member.user_id === targetMember.user_id);
+        if (targetIndex >= 0) {
+          const nextTasks = [movedTask, ...members[targetIndex].tasks];
+          members[targetIndex] = {
+            ...members[targetIndex],
+            tasks: nextTasks,
+            active_tasks: nextTasks.length,
+            story_points: nextTasks.reduce((total, item) => total + (item.story_points || 0), 0),
+            overdue_tasks: nextTasks.filter((item) => isOverdue(item.due_date)).length,
+            review_tasks: nextTasks.filter((item) => item.status === "REVIEW").length,
+            critical_tasks: nextTasks.filter((item) => item.priority === "CRITICAL").length,
+          };
+        }
+      } else {
+        unassignedTasks = [movedTask, ...unassignedTasks];
+      }
+
+      return {
+        ...current,
+        members,
+        unassigned_tasks: unassignedTasks,
+        summary: {
+          ...current.summary,
+          assigned_tasks: members.reduce((total, member) => total + member.tasks.length, 0),
+          unassigned_tasks: unassignedTasks.length,
+          unassigned_story_points: unassignedTasks.reduce(
+            (total, item) => total + (item.story_points || 0),
+            0
+          ),
+        },
+      };
+    });
+  }, []);
+
   const handleAssign = async (task: WorkloadTask, userId: number | null) => {
     if (!canAssignTasks) {
       toast.error("You do not have permission to assign tasks.");
@@ -504,13 +569,14 @@ export default function WorkloadPage() {
     }
 
     setAssigningTaskId(task.id);
+    applyLocalAssignment(task, userId);
 
     try {
-      await updateTask(task.id, { assignee_id: userId || undefined });
+      await updateTask(task.id, { assignee_id: userId });
       toast.success(userId ? "Task reassigned." : "Task marked as unassigned.");
-      await loadWorkload();
     } catch (error) {
       toast.error(getApiErrorMessage(error, "Could not update task assignee."));
+      void loadWorkload(false);
     } finally {
       setAssigningTaskId(null);
     }
@@ -610,7 +676,7 @@ export default function WorkloadPage() {
           <Button
             variant="outline"
             className="border-slate-700 bg-slate-900 text-slate-200 hover:bg-slate-800"
-            onClick={loadWorkload}
+            onClick={() => loadWorkload()}
           >
             <RefreshCw className="mr-2 h-4 w-4" />
             Refresh
@@ -618,26 +684,28 @@ export default function WorkloadPage() {
         </div>
       </div>
 
-      <Card className="mb-6 overflow-hidden border-blue-500/20 bg-blue-500/[0.06] shadow-2xl shadow-blue-950/20">
-        <CardContent className="p-0">
-          <div className="grid gap-0 xl:grid-cols-[380px_minmax(0,1fr)]">
-            <div className="border-b border-blue-500/15 bg-slate-950/55 p-5 xl:border-b-0 xl:border-r">
-              <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-2xl border border-blue-400/25 bg-blue-500/10 text-blue-200">
-                <Bot className="h-5 w-5" />
+      <Card className="mb-6 overflow-hidden border-blue-500/20 bg-slate-900/70 shadow-2xl shadow-slate-950/20">
+        <CardContent className="p-4 sm:p-5">
+          <div className="grid gap-4 lg:grid-cols-[minmax(16rem,0.72fr)_minmax(0,1.8fr)]">
+            <div className="flex min-h-[15rem] flex-col justify-between gap-5 rounded-2xl border border-slate-800 bg-slate-950/55 p-5">
+              <div>
+                <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-2xl border border-blue-400/25 bg-blue-500/10 text-blue-200">
+                  <Bot className="h-5 w-5" />
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <h2 className="text-xl font-semibold text-white">AI workload desk</h2>
+                  {suggestionSource && (
+                    <Badge className="border-blue-500/20 bg-blue-500/10 text-blue-200">
+                      {suggestionSource.replaceAll("_", " ")}
+                    </Badge>
+                  )}
+                </div>
+                <p className="mt-2 text-sm leading-6 text-slate-400">
+                  Generate redistribution ideas from current assignees, overdue work, story points and review queues.
+                </p>
               </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <h2 className="text-xl font-semibold text-white">AI workload desk</h2>
-                {suggestionSource && (
-                  <Badge className="border-blue-500/20 bg-blue-500/10 text-blue-200">
-                    {suggestionSource.replaceAll("_", " ")}
-                  </Badge>
-                )}
-              </div>
-              <p className="mt-2 text-sm leading-6 text-slate-400">
-                Generate redistribution ideas from current assignees, overdue work, story points and review queues.
-              </p>
               <Button
-                className="mt-5 w-full bg-blue-600 hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
+                className="w-full bg-blue-600 hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
                 onClick={handleGenerateSuggestions}
                 disabled={!canUseAi || suggestionsLoading}
                 title={!canUseAi ? "You do not have permission to use AI features." : undefined}
@@ -651,7 +719,7 @@ export default function WorkloadPage() {
               </Button>
             </div>
 
-            <div className="p-5">
+            <div className="min-w-0 rounded-2xl border border-slate-800 bg-slate-950/35 p-4 sm:p-5">
               {suggestionSummary ? (
                 <div className="mb-4 rounded-2xl border border-blue-500/20 bg-blue-500/10 p-4 text-sm leading-6 text-blue-100/85">
                   {suggestionSummary}

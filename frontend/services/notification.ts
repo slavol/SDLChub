@@ -45,6 +45,13 @@ export const markAllNotificationsRead = async (): Promise<{ updated: number }> =
   return response.data;
 };
 
+export const deleteNotification = async (
+  notificationId: number
+): Promise<{ message: string }> => {
+  const response = await api.delete(`/notifications/${notificationId}`);
+  return response.data;
+};
+
 export const generateDueTaskReminders = async (
   projectId?: number | null
 ): Promise<{

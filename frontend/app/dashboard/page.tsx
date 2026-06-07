@@ -29,6 +29,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AuditChangeSummary, formatAuditActionLabel } from "@/components/dashboard/audit-log-event";
 import { useDebouncedRealtimeEvent } from "@/hooks/use-realtime-event";
+import { pickWorkspaceProject } from "@/lib/project-selection";
 import {
   getMyProjects,
   getProjectDashboard,
@@ -383,7 +384,7 @@ export default function DashboardPage() {
 
         if (!selectedProject) {
           const projects = await getMyProjects();
-          selectedProject = projects[0] ?? null;
+          selectedProject = pickWorkspaceProject(projects, currentProject);
 
           if (selectedProject) {
             setCurrentProject(selectedProject);

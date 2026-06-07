@@ -44,6 +44,13 @@ class SprintCreate(BaseModel):
     end_date: Optional[datetime] = None
 
 
+class SprintUpdate(BaseModel):
+    name: Optional[str] = None
+    goal: Optional[str] = None
+    start_date: Optional[datetime] = None
+    end_date: Optional[datetime] = None
+
+
 def get_project_or_404(db: Session, project_id: int) -> Project:
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
@@ -105,6 +112,90 @@ def get_project_sprints(
         .order_by(Sprint.is_active.desc(), Sprint.id.desc())
         .all()
     )
+
+
+@router.put("/{sprint_id}", response_model=SprintOut)
+def update_sprint(
+    sprint_id: int,
+    sprint_in: SprintUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    sprint = db.query(Sprint).filter(Sprint.id == sprint_id).first()
+    if not sprint:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Sprint not found")
+
+    project = get_project_or_404(db, sprint.project_id)
+    ensure_project_uses_sprints(project)
+    require_project_permission(db, current_user.id, sprint.project_id, "SPRINT_UPDATE")
+
+    update_data = sprint_in.model_dump(exclude_unset=True)
+
+    if "name" in update_data:
+        next_name = (update_data["name"] or "").strip()
+        if not next_name:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Sprint name is required.",
+            )
+        sprint.name = next_name
+
+    if "goal" in update_data:
+        sprint.goal = update_data["goal"]
+    if "start_date" in update_data:
+        sprint.start_date = update_data["start_date"]
+    if "end_date" in update_data:
+        sprint.end_date = update_data["end_date"]
+
+    db.commit()
+    db.refresh(sprint)
+    broadcast_project_event(
+        sprint.project_id,
+        "sprint.changed",
+        {"action": "updated", "sprint_id": sprint.id},
+    )
+    return sprint
+
+
+@router.delete("/{sprint_id}")
+def delete_sprint(
+    sprint_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    sprint = db.query(Sprint).filter(Sprint.id == sprint_id).first()
+    if not sprint:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Sprint not found")
+
+    project = get_project_or_404(db, sprint.project_id)
+    ensure_project_uses_sprints(project)
+    require_project_permission(db, current_user.id, sprint.project_id, "SPRINT_DELETE")
+
+    if sprint.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Active sprints cannot be deleted. Complete the sprint first.",
+        )
+
+    affected_tasks = db.query(Task).filter(Task.sprint_id == sprint.id).all()
+    moved_count = 0
+    for task in affected_tasks:
+        task.sprint_id = None
+        moved_count += 1
+
+    project_id = sprint.project_id
+    db.delete(sprint)
+    db.commit()
+    broadcast_project_event(
+        project_id,
+        "sprint.changed",
+        {"action": "deleted", "sprint_id": sprint_id, "moved_count": moved_count},
+    )
+
+    return {
+        "message": f"Sprint deleted. {moved_count} task(s) moved to Backlog.",
+        "moved_count": moved_count,
+    }
 
 
 @router.post("/{sprint_id}/start")

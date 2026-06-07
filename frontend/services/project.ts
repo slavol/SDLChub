@@ -314,6 +314,12 @@ export interface MethodologyTransitionResult {
   message: string;
 }
 
+export interface ProjectOwnershipTransferResult {
+  project: Project;
+  new_owner: ProjectMember;
+  message: string;
+}
+
 export interface ProjectAuditLog {
   id: number;
   project_id: number;
@@ -343,6 +349,26 @@ export const updateProjectSettings = async (
   data: ProjectUpdateRequest
 ): Promise<Project> => {
   const response = await api.put(`/projects/${projectId}`, data);
+  invalidateProjectCache(projectId);
+  return response.data;
+};
+
+export const uploadProjectLogo = async (
+  projectId: number,
+  file: File
+): Promise<Project> => {
+  const formData = new FormData();
+  formData.append("logo", file);
+
+  const response = await api.post(`/projects/${projectId}/logo`, formData, {
+    headers: { "Content-Type": "multipart/form-data" },
+  });
+  invalidateProjectCache(projectId);
+  return response.data;
+};
+
+export const deleteProjectLogo = async (projectId: number): Promise<Project> => {
+  const response = await api.delete(`/projects/${projectId}/logo`);
   invalidateProjectCache(projectId);
   return response.data;
 };
@@ -483,6 +509,19 @@ export const updateProjectMemberRole = async (
 ): Promise<ProjectMember> => {
   const response = await api.put(`/projects/${projectId}/members/${membershipId}/role`, {
     role_id: roleId,
+  });
+  invalidateProjectCache(projectId);
+  return response.data;
+};
+
+export const transferProjectOwnership = async (
+  projectId: number,
+  targetUserId: number,
+  confirmationKey: string
+): Promise<ProjectOwnershipTransferResult> => {
+  const response = await api.post(`/projects/${projectId}/ownership/transfer`, {
+    target_user_id: targetUserId,
+    confirmation_key: confirmationKey,
   });
   invalidateProjectCache(projectId);
   return response.data;

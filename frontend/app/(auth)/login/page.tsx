@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { Loader2, LogIn, Eye, EyeOff, MailCheck } from "lucide-react";
+import { AlertTriangle, Loader2, LogIn, Eye, EyeOff, MailCheck } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -32,6 +32,7 @@ export default function LoginPage() {
   const [inactiveEmail, setInactiveEmail] = useState<string | null>(null);
   const [devVerificationUrl, setDevVerificationUrl] = useState<string | null>(null);
   const [isResending, setIsResending] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
   
   // Stare pentru vizibilitatea parolei
   const [showPassword, setShowPassword] = useState(false);
@@ -45,11 +46,11 @@ export default function LoginPage() {
     setIsLoading(true);
     setInactiveEmail(null);
     setDevVerificationUrl(null);
+    setFormError(null);
     try {
       // 1. Login
       const data = await loginUser(values);
-      const response = await loginUser(values);
-      useAuthStore.getState().setAuth(response.access_token, response.user);
+      useAuthStore.getState().setAuth(data.access_token, data.user);
       setToken(data.access_token);
       toast.success("Welcome back!");
 
@@ -75,8 +76,10 @@ export default function LoginPage() {
       const message = getApiErrorMessage(error, "Invalid credentials. Please try again.");
       if (message.toLowerCase().includes("not active")) {
         setInactiveEmail(values.email);
+        setFormError("Accountul exista, dar email-ul nu este confirmat inca.");
         toast.warning("Your account is not verified yet.");
       } else {
+        setFormError(message);
         toast.error(message);
       }
     } finally {
@@ -92,6 +95,7 @@ export default function LoginPage() {
     try {
       const response = await resendVerificationEmail(inactiveEmail);
       setDevVerificationUrl(response.dev_verification_url || null);
+      setFormError(null);
       toast.success(response.message);
     } catch (error: unknown) {
       console.error(error);
@@ -115,6 +119,14 @@ export default function LoginPage() {
       <CardContent>
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+            {formError && (
+              <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-sm text-rose-100">
+                <div className="flex items-start gap-2.5">
+                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-rose-300" />
+                  <p>{formError}</p>
+                </div>
+              </div>
+            )}
             <FormField
               control={form.control}
               name="email"

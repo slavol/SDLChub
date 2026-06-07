@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ChangeEvent } from "react";
 import { useRouter } from "next/navigation";
 import {
   AlertTriangle,
   ArrowRight,
   Bot,
+  Camera,
   CheckCircle2,
   Copy,
   Crown,
@@ -53,8 +54,10 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { AuditLogEvent } from "@/components/dashboard/audit-log-event";
+import { resolveMediaUrl } from "@/components/user-avatar";
 import { getApiErrorMessage } from "@/lib/api-error";
 import { hasProjectPermission } from "@/lib/project-permissions";
+import { pickWorkspaceProject } from "@/lib/project-selection";
 import {
   applyMethodologyTransition,
   deleteProject,
@@ -71,12 +74,15 @@ import {
   ProjectWorkflowColumn,
   ProjectRoleWithPermissions,
   ProjectAiConfig,
+  deleteProjectLogo,
   getProjectAiSettings,
   testProjectAiSettings,
+  uploadProjectLogo,
   updateProjectAiSettings,
   updateProjectWorkflow,
   updateProjectSettings,
   updateRolePermissions,
+  transferProjectOwnership,
 } from "@/services/project";
 import { useAuthStore } from "@/store/use-auth-store";
 import { useProjectStore } from "@/store/use-project-store";
@@ -107,7 +113,7 @@ const PERMISSION_GROUPS = [
   },
   {
     title: "Sprints",
-    keys: ["SPRINT_CREATE", "SPRINT_START", "SPRINT_CLOSE"],
+    keys: ["SPRINT_CREATE", "SPRINT_UPDATE", "SPRINT_START", "SPRINT_CLOSE", "SPRINT_DELETE"],
   },
   {
     title: "Calendar",
@@ -134,8 +140,10 @@ const PERMISSION_LABELS: Record<string, string> = {
   TASK_MOVE: "Move tasks",
   TASK_COMMENT: "Comment on tasks",
   SPRINT_CREATE: "Create sprints",
+  SPRINT_UPDATE: "Edit sprints",
   SPRINT_START: "Start sprints",
   SPRINT_CLOSE: "Close sprints",
+  SPRINT_DELETE: "Delete sprints",
   CALENDAR_CREATE: "Create calendar events",
   CALENDAR_UPDATE: "Edit calendar events",
   CALENDAR_DELETE: "Delete calendar events",
@@ -212,6 +220,18 @@ function formatSettingsDate(value?: string | null) {
   return date.toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
 }
 
+function getProjectInitials(name?: string | null, key?: string | null) {
+  if (key) return key.slice(0, 2).toUpperCase();
+  if (!name) return "PR";
+
+  return name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .join("") || "PR";
+}
+
 export default function SettingsPage() {
   const router = useRouter();
   const currentUser = useAuthStore((state) => state.user);
@@ -219,6 +239,7 @@ export default function SettingsPage() {
 
   const [project, setProject] = useState<Project | null>(currentProject);
   const [roles, setRoles] = useState<ProjectRoleWithPermissions[]>([]);
+  const [members, setMembers] = useState<ProjectMember[]>([]);
   const [memberCount, setMemberCount] = useState(0);
   const [myRoleName, setMyRoleName] = useState("Member");
   const [myMembership, setMyMembership] = useState<ProjectMember | null>(null);
@@ -234,6 +255,8 @@ export default function SettingsPage() {
   const [selectedRoleId, setSelectedRoleId] = useState<string>("");
   const [loading, setLoading] = useState(true);
   const [savingProject, setSavingProject] = useState(false);
+  const [uploadingProjectLogo, setUploadingProjectLogo] = useState(false);
+  const [removingProjectLogo, setRemovingProjectLogo] = useState(false);
   const [savingPermission, setSavingPermission] = useState<string | null>(null);
   const [deleteProjectOpen, setDeleteProjectOpen] = useState(false);
   const [deletingProject, setDeletingProject] = useState(false);
@@ -264,6 +287,9 @@ export default function SettingsPage() {
   const [ngrokStatus, setNgrokStatus] = useState<NgrokTunnelStatus | null>(null);
   const [startingNgrok, setStartingNgrok] = useState(false);
   const [stoppingNgrok, setStoppingNgrok] = useState(false);
+  const [ownershipTargetUserId, setOwnershipTargetUserId] = useState("");
+  const [ownershipConfirmKey, setOwnershipConfirmKey] = useState("");
+  const [transferringOwnership, setTransferringOwnership] = useState(false);
 
   const isProjectOwner = project?.owner_id === currentUser?.id;
   const canManageGithub = Boolean(
@@ -275,16 +301,52 @@ export default function SettingsPage() {
     myMembership,
     "SETTINGS_MANAGE"
   );
+  const canUpdateProject = hasProjectPermission(
+    project,
+    currentUser,
+    myMembership,
+    "PROJECT_UPDATE"
+  );
+  const canDeleteProject = hasProjectPermission(
+    project,
+    currentUser,
+    myMembership,
+    "PROJECT_DELETE"
+  );
   const canManageRoles = hasProjectPermission(
     project,
     currentUser,
     myMembership,
     "ROLE_MANAGE"
   );
+  const canManageAi = Boolean(project && currentUser && project.owner_id === currentUser.id);
+  const canTransferOwnership = isProjectOwner;
+  const canViewProjectAudit = canManageSettings;
+  const canAccessSettingsPage = Boolean(
+    canManageSettings ||
+      canUpdateProject ||
+      canDeleteProject ||
+      canManageRoles ||
+      canManageGithub ||
+      canManageAi ||
+      canTransferOwnership
+  );
 
   const selectedRole = useMemo(
     () => roles.find((role) => String(role.id) === selectedRoleId) || roles[0],
     [roles, selectedRoleId]
+  );
+
+  const ownershipCandidates = useMemo(
+    () => members.filter((member) => member.user.id !== currentUser?.id),
+    [currentUser?.id, members]
+  );
+
+  const selectedOwnershipMember = useMemo(
+    () =>
+      ownershipCandidates.find((member) => String(member.user.id) === ownershipTargetUserId) ||
+      null,
+    [ownershipCandidates, ownershipTargetUserId]
   );
 
   const loadData = async () => {
@@ -295,7 +357,7 @@ export default function SettingsPage() {
 
       if (!selectedProject) {
         const projects = await getMyProjects();
-        selectedProject = projects[0] ?? null;
+        selectedProject = pickWorkspaceProject(projects, currentProject);
 
         if (selectedProject) {
           setCurrentProject(selectedProject);
@@ -308,7 +370,7 @@ export default function SettingsPage() {
         return;
       }
 
-      const [freshProject, remoteRoles, members, nextGitHubIntegration, nextNgrokStatus] = await Promise.all([
+      const [freshProject, remoteRoles, remoteMembers, nextGitHubIntegration, nextNgrokStatus] = await Promise.all([
         getProjectDetail(selectedProject.id),
         getProjectRoles(selectedProject.id),
         getProjectMembers(selectedProject.id),
@@ -316,7 +378,7 @@ export default function SettingsPage() {
         getNgrokTunnelStatus().catch(() => null),
       ]);
 
-      const membership = members.find((member) => member.user.id === currentUser?.id);
+      const membership = remoteMembers.find((member) => member.user.id === currentUser?.id);
       const canLoadAudit =
         freshProject.owner_id === currentUser?.id ||
         currentUser?.is_global_admin ||
@@ -328,7 +390,21 @@ export default function SettingsPage() {
       setProject(freshProject);
       setCurrentProject(freshProject);
       setRoles(remoteRoles);
-      setMemberCount(members.length);
+      setMembers(remoteMembers);
+      setMemberCount(remoteMembers.length);
+      setOwnershipTargetUserId((current) => {
+        if (
+          current &&
+          remoteMembers.some(
+            (member) => String(member.user.id) === current && member.user.id !== currentUser?.id
+          )
+        ) {
+          return current;
+        }
+
+        const firstCandidate = remoteMembers.find((member) => member.user.id !== currentUser?.id);
+        return firstCandidate ? String(firstCandidate.user.id) : "";
+      });
       setMyRoleName(membership?.role?.name || "Member");
       setMyMembership(membership || null);
       setAuditLogs(remoteAuditLogs);
@@ -398,21 +474,33 @@ export default function SettingsPage() {
   }, [currentProject?.id, currentUser?.id]);
 
   const handleSaveProject = async () => {
-    if (!canManageSettings) return;
     if (!project) return;
+    if (!canUpdateProject && !(canManageSettings && methodology !== project.methodology)) return;
 
     setSavingProject(true);
     try {
-      const updated = await updateProjectSettings(project.id, {
-        name: projectName,
-        description,
-      });
+      let updated = project;
 
-      setProject(updated);
-      setCurrentProject(updated);
-      setAuditLogs(await getProjectAuditLogs(updated.id).catch(() => auditLogs));
+      if (canUpdateProject) {
+        updated = await updateProjectSettings(project.id, {
+          name: projectName,
+          description,
+        });
+
+        setProject(updated);
+        setCurrentProject(updated);
+      }
+
+      if (canViewProjectAudit) {
+        setAuditLogs(await getProjectAuditLogs(updated.id).catch(() => auditLogs));
+      }
 
       if (methodology !== updated.methodology) {
+        if (!canManageSettings) {
+          toast.error("You do not have permission to change methodology.");
+          return;
+        }
+
         setLoadingTransition(true);
         try {
           const preview = await getMethodologyTransitionPreview(project.id, methodology);
@@ -432,6 +520,55 @@ export default function SettingsPage() {
     }
   };
 
+  const handleProjectLogoUpload = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+
+    if (!project || !file) return;
+    if (!canUpdateProject) {
+      toast.error("You do not have permission to update project identity.");
+      return;
+    }
+
+    setUploadingProjectLogo(true);
+    try {
+      const updated = await uploadProjectLogo(project.id, file);
+      setProject(updated);
+      setCurrentProject(updated);
+      if (canViewProjectAudit) {
+        setAuditLogs(await getProjectAuditLogs(updated.id).catch(() => auditLogs));
+      }
+      toast.success("Project icon updated.");
+    } catch (error: unknown) {
+      toast.error(getApiErrorMessage(error, "Could not upload project icon."));
+    } finally {
+      setUploadingProjectLogo(false);
+    }
+  };
+
+  const handleProjectLogoDelete = async () => {
+    if (!project || !project.logo_url) return;
+    if (!canUpdateProject) {
+      toast.error("You do not have permission to update project identity.");
+      return;
+    }
+
+    setRemovingProjectLogo(true);
+    try {
+      const updated = await deleteProjectLogo(project.id);
+      setProject(updated);
+      setCurrentProject(updated);
+      if (canViewProjectAudit) {
+        setAuditLogs(await getProjectAuditLogs(updated.id).catch(() => auditLogs));
+      }
+      toast.success("Project icon removed.");
+    } catch (error: unknown) {
+      toast.error(getApiErrorMessage(error, "Could not remove project icon."));
+    } finally {
+      setRemovingProjectLogo(false);
+    }
+  };
+
   const handleApplyMethodologyTransition = async () => {
     if (!canManageSettings) return;
     if (!project || !transitionPreview) return;
@@ -447,6 +584,15 @@ export default function SettingsPage() {
       setProject(result.project);
       setCurrentProject(result.project);
       setMethodology(result.project.methodology);
+      setWipLimits({
+        ...DEFAULT_WIP_LIMITS,
+        ...(result.project.workflow_config?.wip_limits || {}),
+      });
+      setBoardColumns(
+        result.project.workflow_config?.columns?.length
+          ? result.project.workflow_config.columns
+          : DEFAULT_BOARD_COLUMNS
+      );
       setTransitionOpen(false);
       setTransitionPreview(null);
       toast.success(result.message || "Methodology updated");
@@ -800,6 +946,29 @@ export default function SettingsPage() {
     }
   };
 
+  const handleTransferOwnership = async () => {
+    if (!project || !selectedOwnershipMember || !canTransferOwnership) return;
+
+    setTransferringOwnership(true);
+    try {
+      const result = await transferProjectOwnership(
+        project.id,
+        selectedOwnershipMember.user.id,
+        ownershipConfirmKey
+      );
+
+      setProject(result.project);
+      setCurrentProject(result.project);
+      setOwnershipConfirmKey("");
+      toast.success(result.message || "Project ownership transferred.");
+      await loadData();
+    } catch (error: unknown) {
+      toast.error(getApiErrorMessage(error, "Could not transfer ownership."));
+    } finally {
+      setTransferringOwnership(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex h-full items-center justify-center bg-slate-950 text-blue-500">
@@ -812,7 +981,7 @@ export default function SettingsPage() {
     return <div className="p-8 text-slate-300">No project selected.</div>;
   }
 
-  if (!canManageSettings) {
+  if (!canAccessSettingsPage) {
     return (
       <div className="mx-auto max-w-3xl p-8 text-slate-50">
         <Card className="border-slate-800 bg-slate-900 text-slate-50">
@@ -824,7 +993,8 @@ export default function SettingsPage() {
           </CardHeader>
           <CardContent>
             <p className="text-slate-400">
-              Only the project owner or Project Admin can manage project settings.
+              You do not have project settings permissions. Ask a Project Admin for access to the
+              specific settings area you need.
             </p>
           </CardContent>
         </Card>
@@ -834,6 +1004,12 @@ export default function SettingsPage() {
 
   const deleteReady = deleteKey.trim().toUpperCase() === project.key;
   const selectedRoleLocked = selectedRole?.name === "Project Admin";
+  const projectLogoUrl = resolveMediaUrl(project.logo_url);
+  const projectInitials = getProjectInitials(projectName || project.name, project.key);
+  const ownershipTransferReady =
+    canTransferOwnership &&
+    Boolean(selectedOwnershipMember) &&
+    ownershipConfirmKey.trim().toUpperCase() === project.key;
 
   return (
     <div className="min-h-full bg-slate-950 text-slate-50">
@@ -864,14 +1040,16 @@ export default function SettingsPage() {
               </p>
             </div>
 
-            <Button
-              onClick={handleSaveProject}
-              disabled={savingProject || loadingTransition}
-              className="h-11 w-full bg-blue-600 px-5 hover:bg-blue-700 sm:w-auto"
-            >
-              {savingProject || loadingTransition ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
-              {methodology !== project.methodology ? "Review change" : "Save changes"}
-            </Button>
+            {(canUpdateProject || canManageSettings) && (
+              <Button
+                onClick={handleSaveProject}
+                disabled={savingProject || loadingTransition}
+                className="h-11 w-full bg-blue-600 px-5 text-white hover:bg-blue-700 sm:w-auto"
+              >
+                {savingProject || loadingTransition ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+                {methodology !== project.methodology && canManageSettings ? "Review change" : "Save changes"}
+              </Button>
+            )}
           </div>
         </section>
 
@@ -927,6 +1105,7 @@ export default function SettingsPage() {
 
         <section className="grid min-w-0 gap-6 xl:grid-cols-[minmax(0,1fr)_420px]">
           <div className="space-y-6">
+            {(canUpdateProject || canManageSettings) && (
             <Card className="border-slate-800 bg-slate-900 text-slate-50">
               <CardHeader className="border-b border-slate-800">
                 <CardTitle className="flex items-center gap-2 text-base">
@@ -942,6 +1121,7 @@ export default function SettingsPage() {
                     <Input
                       value={projectName}
                       onChange={(event) => setProjectName(event.target.value)}
+                      disabled={!canUpdateProject}
                       className="h-11 border-slate-700 bg-slate-950"
                     />
                   </div>
@@ -956,16 +1136,86 @@ export default function SettingsPage() {
                   </div>
                 </div>
 
+                <div className="rounded-2xl border border-slate-800 bg-slate-950 p-4">
+                  <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex min-w-0 items-center gap-4">
+                      <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-blue-500/25 bg-blue-500/10 text-sm font-black text-blue-200 shadow-lg shadow-blue-950/20">
+                        {projectLogoUrl ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={projectLogoUrl}
+                            alt={`${project.name} icon`}
+                            className="h-full w-full object-cover"
+                          />
+                        ) : (
+                          projectInitials
+                        )}
+                      </div>
+
+                      <div className="min-w-0">
+                        <p className="font-semibold text-white">Project icon</p>
+                        <p className="mt-1 text-sm leading-6 text-slate-500">
+                          Upload a square SVG, PNG, JPG, WEBP or GIF. Maximum size 2MB.
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex flex-wrap gap-2">
+                      <input
+                        id="project-logo-input"
+                        type="file"
+                        accept="image/jpeg,image/png,image/webp,image/gif,image/svg+xml"
+                        className="hidden"
+                        disabled={!canUpdateProject || uploadingProjectLogo}
+                        onChange={handleProjectLogoUpload}
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => document.getElementById("project-logo-input")?.click()}
+                        disabled={!canUpdateProject || uploadingProjectLogo}
+                        className="h-10 border-slate-700 bg-slate-900 text-slate-100 hover:bg-slate-800"
+                      >
+                        {uploadingProjectLogo ? (
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        ) : (
+                          <Camera className="mr-2 h-4 w-4" />
+                        )}
+                        Upload icon
+                      </Button>
+
+                      {project.logo_url && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={handleProjectLogoDelete}
+                          disabled={!canUpdateProject || removingProjectLogo}
+                          className="h-10 border-red-500/30 bg-red-500/10 text-red-100 hover:bg-red-500/15"
+                        >
+                          {removingProjectLogo ? (
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          ) : (
+                            <Trash2 className="mr-2 h-4 w-4" />
+                          )}
+                          Remove
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
                 <div className="space-y-2">
                   <Label>Description</Label>
                   <Textarea
                     value={description}
                     onChange={(event) => setDescription(event.target.value)}
+                    disabled={!canUpdateProject}
                     className="min-h-28 border-slate-700 bg-slate-950"
                     placeholder="Describe what this project is about."
                   />
                 </div>
 
+                {canManageSettings && (
                 <div className="grid gap-4 lg:grid-cols-[260px_minmax(0,1fr)]">
                   <div className="space-y-2">
                     <Label>Methodology</Label>
@@ -991,9 +1241,12 @@ export default function SettingsPage() {
                     </p>
                   </div>
                 </div>
+                )}
               </CardContent>
             </Card>
+            )}
 
+            {canManageAi && (
             <Card className="border-slate-800 bg-slate-900 text-slate-50">
               <CardHeader className="border-b border-slate-800">
                 <CardTitle className="flex items-center gap-2 text-base">
@@ -1217,7 +1470,9 @@ export default function SettingsPage() {
                 )}
               </CardContent>
             </Card>
+            )}
 
+            {canManageGithub && (
             <Card className="border-slate-800 bg-slate-900 text-slate-50">
               <CardHeader className="border-b border-slate-800">
                 <CardTitle className="flex items-center gap-2 text-base">
@@ -1516,7 +1771,9 @@ export default function SettingsPage() {
                 )}
               </CardContent>
             </Card>
+            )}
 
+            {canManageSettings && (
             <Card className="border-slate-800 bg-slate-900 text-slate-50">
                 <CardHeader className="border-b border-slate-800">
                   <CardTitle className="flex items-center gap-2 text-base">
@@ -1651,7 +1908,9 @@ export default function SettingsPage() {
                   </Button>
                 </CardContent>
               </Card>
+            )}
 
+            {canManageRoles && (
             <Card className="border-slate-800 bg-slate-900 text-slate-50">
               <CardHeader className="border-b border-slate-800">
                 <CardTitle className="flex items-center gap-2 text-base">
@@ -1758,6 +2017,7 @@ export default function SettingsPage() {
                 )}
               </CardContent>
             </Card>
+            )}
           </div>
 
           <aside className="space-y-6">
@@ -1793,6 +2053,86 @@ export default function SettingsPage() {
               </CardContent>
             </Card>
 
+            {canTransferOwnership && (
+              <Card className="border-amber-500/25 bg-amber-500/10 text-slate-50">
+                <CardHeader className="border-b border-amber-500/20">
+                  <CardTitle className="flex items-center gap-2 text-base text-amber-100">
+                    <Crown className="h-5 w-5 text-amber-300" />
+                    Transfer ownership
+                  </CardTitle>
+                </CardHeader>
+
+                <CardContent className="space-y-4 p-5">
+                  <div className="rounded-2xl border border-amber-500/20 bg-slate-950/70 p-4">
+                    <p className="text-sm leading-6 text-amber-100/85">
+                      Transferul schimba owner-ul proiectului. Tu ramai membru al proiectului,
+                      dar noul owner primeste controlul principal.
+                    </p>
+                  </div>
+
+                  {ownershipCandidates.length > 0 ? (
+                    <>
+                      <div className="space-y-2">
+                        <Label>New owner</Label>
+                        <Select
+                          value={ownershipTargetUserId}
+                          onValueChange={setOwnershipTargetUserId}
+                        >
+                          <SelectTrigger className="h-11 border-amber-500/25 bg-slate-950">
+                            <SelectValue placeholder="Select member" />
+                          </SelectTrigger>
+                          <SelectContent className="border-slate-800 bg-slate-950 text-slate-200">
+                            {ownershipCandidates.map((member) => (
+                              <SelectItem key={member.membership_id} value={String(member.user.id)}>
+                                {member.user.full_name || member.user.email}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        {selectedOwnershipMember && (
+                          <p className="text-xs leading-5 text-slate-500">
+                            {selectedOwnershipMember.user.email} · {selectedOwnershipMember.role?.name || "Member"}
+                          </p>
+                        )}
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label>
+                          Type project key:{" "}
+                          <span className="font-mono text-amber-200">{project.key}</span>
+                        </Label>
+                        <Input
+                          value={ownershipConfirmKey}
+                          onChange={(event) => setOwnershipConfirmKey(event.target.value)}
+                          placeholder={project.key}
+                          className="h-11 border-amber-500/25 bg-slate-950 font-mono"
+                        />
+                      </div>
+
+                      <Button
+                        type="button"
+                        onClick={handleTransferOwnership}
+                        disabled={!ownershipTransferReady || transferringOwnership}
+                        className="w-full bg-amber-500 text-slate-950 hover:bg-amber-400 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {transferringOwnership ? (
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        ) : (
+                          <Crown className="mr-2 h-4 w-4" />
+                        )}
+                        Transfer ownership
+                      </Button>
+                    </>
+                  ) : (
+                    <div className="rounded-2xl border border-dashed border-amber-500/25 bg-slate-950/70 p-4 text-sm leading-6 text-slate-400">
+                      Invite another member first, then return here to transfer ownership.
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            )}
+
+            {canViewProjectAudit && (
             <Card className="border-slate-800 bg-slate-900 text-slate-50">
               <CardHeader className="border-b border-slate-800">
                 <CardTitle className="flex items-center gap-2 text-base">
@@ -1818,7 +2158,9 @@ export default function SettingsPage() {
                 )}
               </CardContent>
             </Card>
+            )}
 
+            {canDeleteProject && (
             <Card className="border-red-950/60 bg-red-950/10 text-slate-50">
               <CardHeader className="border-b border-red-950/50">
                 <CardTitle className="flex items-center gap-2 text-base text-red-300">
@@ -1856,6 +2198,7 @@ export default function SettingsPage() {
                 </Button>
               </CardContent>
             </Card>
+            )}
           </aside>
         </section>
       </div>

@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 180">
+  <defs>
+    <linearGradient id="sdlcHubAppleIcon" x1="30" y1="22" x2="150" y2="160">
+      <stop offset="0%" stop-color="#38bdf8"/>
+      <stop offset="48%" stop-color="#2563eb"/>
+      <stop offset="100%" stop-color="#22c55e"/>
+    </linearGradient>
+  </defs>
+  <rect width="180" height="180" rx="42" fill="#020617"/>
+  <path d="M90 22 149 55v70L90 158 31 125V55L90 22Z" fill="#020617" stroke="url(#sdlcHubAppleIcon)" stroke-width="12" stroke-linejoin="round"/>
+  <path d="M56 70 90 49l34 21M56 110l34 21 34-21" fill="none" stroke="url(#sdlcHubAppleIcon)" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M90 49v82M56 70v40M124 70v40" fill="none" stroke="#93c5fd" stroke-width="7" stroke-linecap="round" opacity=".9"/>
+  <circle cx="56" cy="70" r="12" fill="#38bdf8"/>
+  <circle cx="124" cy="70" r="12" fill="#2563eb"/>
+  <circle cx="56" cy="110" r="12" fill="#22c55e"/>
+  <circle cx="124" cy="110" r="12" fill="#38bdf8"/>
+  <circle cx="90" cy="49" r="12" fill="#60a5fa"/>
+  <circle cx="90" cy="131" r="12" fill="#22c55e"/>
+</svg>

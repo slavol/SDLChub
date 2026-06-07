@@ -4,12 +4,13 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { getMyProjects } from "@/services/project";
 import { getProjectTasks, updateTask, Task } from "@/services/task";
-import { getProjectSprints, createSprint, startSprint, generateSprintReleaseNotes, Sprint, SprintReleaseNotes } from "@/services/sprint";
+import { getProjectSprints, createSprint, startSprint, generateSprintReleaseNotes, updateSprint, deleteSprint, Sprint, SprintReleaseNotes } from "@/services/sprint";
 import { createDocumentationPage } from "@/services/documentation";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Input } from "@/components/ui/input";
 import { CreateTaskDialog } from "@/components/dashboard/create-task-dialog";
 import { WorkspaceLoadingSkeleton } from "@/components/dashboard/workspace-loading-skeleton";
@@ -17,6 +18,7 @@ import { UserAvatar } from "@/components/user-avatar";
 import { useProjectPermissions } from "@/hooks/use-project-permissions";
 import { useDebouncedRealtimeEvent } from "@/hooks/use-realtime-event";
 import { formatAiSource } from "@/lib/ai-source";
+import { pickWorkspaceProject } from "@/lib/project-selection";
 import {
     Loader2,
     ChevronRight,
@@ -33,6 +35,8 @@ import {
     Copy,
     Download,
     BookOpen,
+    Pencil,
+    Trash2,
     UserRound
 } from "lucide-react";
 import {
@@ -80,6 +84,15 @@ function formatDate(value?: string | null) {
         day: "numeric",
         year: "numeric",
     });
+}
+
+function toDateInput(value?: string | null) {
+    if (!value) return "";
+
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return "";
+
+    return date.toISOString().slice(0, 10);
 }
 
 // --- COMPONENTA RAND TASK ---
@@ -208,6 +221,14 @@ export default function BacklogPage() {
     const [newSprintStartDate, setNewSprintStartDate] = useState("");
     const [newSprintEndDate, setNewSprintEndDate] = useState("");
     const [isCreatingSprint, setIsCreatingSprint] = useState(false);
+    const [editingSprint, setEditingSprint] = useState<Sprint | null>(null);
+    const [editSprintName, setEditSprintName] = useState("");
+    const [editSprintGoal, setEditSprintGoal] = useState("");
+    const [editSprintStartDate, setEditSprintStartDate] = useState("");
+    const [editSprintEndDate, setEditSprintEndDate] = useState("");
+    const [isUpdatingSprint, setIsUpdatingSprint] = useState(false);
+    const [sprintToDelete, setSprintToDelete] = useState<Sprint | null>(null);
+    const [isDeletingSprint, setIsDeletingSprint] = useState(false);
     const [releaseNotes, setReleaseNotes] = useState<SprintReleaseNotes | null>(null);
     const [releaseNotesSprintName, setReleaseNotesSprintName] = useState("");
     const [releaseNotesOpen, setReleaseNotesOpen] = useState(false);
@@ -216,7 +237,9 @@ export default function BacklogPage() {
     const { can } = useProjectPermissions(projectId);
     const canCreateTask = can("TASK_CREATE");
     const canCreateSprint = can("SPRINT_CREATE");
+    const canUpdateSprint = can("SPRINT_UPDATE");
     const canStartSprint = can("SPRINT_START");
+    const canDeleteSprint = can("SPRINT_DELETE");
     const canPlanTasks = can("TASK_UPDATE");
     const canUseAi = can("AI_USE");
 
@@ -228,7 +251,7 @@ export default function BacklogPage() {
 
                 if (!project) {
                     const projects = await getMyProjects();
-                    project = projects[0] ?? null;
+                    project = pickWorkspaceProject(projects, currentProject);
 
                     if (project) {
                         setCurrentProject(project);
@@ -313,6 +336,66 @@ export default function BacklogPage() {
             setSprints(sprints.map(s => s.id === sprintId ? { ...s, is_active: true } : s));
         } catch (error: unknown) {
             toast.error(getApiErrorMessage(error, "Failed to start sprint"));
+        }
+    };
+
+    const openEditSprint = (sprint: Sprint) => {
+        setEditingSprint(sprint);
+        setEditSprintName(sprint.name);
+        setEditSprintGoal(sprint.goal || "");
+        setEditSprintStartDate(toDateInput(sprint.start_date));
+        setEditSprintEndDate(toDateInput(sprint.end_date));
+    };
+
+    const handleUpdateSprint = async () => {
+        if (!editingSprint || !canUpdateSprint) return;
+
+        if (!editSprintName.trim()) {
+            toast.error("Sprint name is required.");
+            return;
+        }
+
+        setIsUpdatingSprint(true);
+        try {
+            const updated = await updateSprint(editingSprint.id, {
+                name: editSprintName.trim(),
+                goal: editSprintGoal || null,
+                start_date: editSprintStartDate ? `${editSprintStartDate}T09:00:00` : null,
+                end_date: editSprintEndDate ? `${editSprintEndDate}T18:00:00` : null,
+            });
+
+            setSprints((current) =>
+                current.map((sprint) => (sprint.id === updated.id ? updated : sprint))
+            );
+            setEditingSprint(null);
+            toast.success("Sprint updated.");
+        } catch (error: unknown) {
+            toast.error(getApiErrorMessage(error, "Could not update sprint."));
+        } finally {
+            setIsUpdatingSprint(false);
+        }
+    };
+
+    const handleDeleteSprint = async () => {
+        if (!sprintToDelete || !canDeleteSprint) return;
+
+        setIsDeletingSprint(true);
+        try {
+            const result = await deleteSprint(sprintToDelete.id);
+            const deletedSprintId = sprintToDelete.id;
+
+            setSprints((current) => current.filter((sprint) => sprint.id !== deletedSprintId));
+            setTasks((current) =>
+                current.map((task) =>
+                    task.sprint_id === deletedSprintId ? { ...task, sprint_id: null } : task
+                )
+            );
+            setSprintToDelete(null);
+            toast.success(result.message || "Sprint deleted.");
+        } catch (error: unknown) {
+            toast.error(getApiErrorMessage(error, "Could not delete sprint."));
+        } finally {
+            setIsDeletingSprint(false);
         }
     };
 
@@ -573,7 +656,29 @@ export default function BacklogPage() {
                                     </p>
                                 </div>
                             </div>
-                            <div className="flex gap-2">
+                            <div className="flex flex-wrap gap-2">
+                                {canUpdateSprint && (
+                                    <Button
+                                        size="sm"
+                                        variant="outline"
+                                        className="border-slate-700 bg-slate-950/80 text-slate-200 hover:bg-slate-900"
+                                        onClick={() => openEditSprint(sprint)}
+                                    >
+                                        <Pencil className="mr-2 h-4 w-4" />
+                                        Edit
+                                    </Button>
+                                )}
+                                {canDeleteSprint && !sprint.is_active && (
+                                    <Button
+                                        size="sm"
+                                        variant="outline"
+                                        className="border-red-500/25 bg-red-500/10 text-red-200 hover:bg-red-500/15"
+                                        onClick={() => setSprintToDelete(sprint)}
+                                    >
+                                        <Trash2 className="mr-2 h-4 w-4" />
+                                        Delete
+                                    </Button>
+                                )}
                                 {canUseAi && (
                                     <Button
                                         size="sm"
@@ -647,6 +752,102 @@ export default function BacklogPage() {
                     )}
                 </div>
             </section>
+
+            <Dialog
+                open={Boolean(editingSprint)}
+                onOpenChange={(open) => {
+                    if (!open) setEditingSprint(null);
+                }}
+            >
+                <DialogContent className="border-slate-800 bg-slate-950 text-white sm:max-w-xl">
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2">
+                            <Pencil className="h-5 w-5 text-blue-300" />
+                            Edit sprint
+                        </DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-4">
+                        <div className="space-y-2">
+                            <label className="text-sm font-medium text-slate-300">Sprint Name</label>
+                            <Input
+                                value={editSprintName}
+                                onChange={(event) => setEditSprintName(event.target.value)}
+                                className="border-slate-700 bg-slate-900"
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <label className="text-sm font-medium text-slate-300">Sprint Goal</label>
+                            <Input
+                                value={editSprintGoal}
+                                onChange={(event) => setEditSprintGoal(event.target.value)}
+                                placeholder="What should this sprint achieve?"
+                                className="border-slate-700 bg-slate-900"
+                            />
+                        </div>
+                        <div className="grid gap-4 sm:grid-cols-2">
+                            <div className="space-y-2">
+                                <label className="text-sm font-medium text-slate-300">Start Date</label>
+                                <Input
+                                    type="date"
+                                    value={editSprintStartDate}
+                                    onChange={(event) => setEditSprintStartDate(event.target.value)}
+                                    className="border-slate-700 bg-slate-900"
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <label className="text-sm font-medium text-slate-300">Target End Date</label>
+                                <Input
+                                    type="date"
+                                    value={editSprintEndDate}
+                                    onChange={(event) => setEditSprintEndDate(event.target.value)}
+                                    className="border-slate-700 bg-slate-900"
+                                />
+                            </div>
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button
+                            type="button"
+                            variant="ghost"
+                            className="text-slate-400 hover:text-white"
+                            disabled={isUpdatingSprint}
+                            onClick={() => setEditingSprint(null)}
+                        >
+                            Cancel
+                        </Button>
+                        <Button
+                            type="button"
+                            className="bg-blue-600 text-white hover:bg-blue-700"
+                            disabled={isUpdatingSprint}
+                            onClick={handleUpdateSprint}
+                        >
+                            {isUpdatingSprint ? (
+                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            ) : (
+                                <Pencil className="mr-2 h-4 w-4" />
+                            )}
+                            Save sprint
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            <ConfirmDialog
+                open={Boolean(sprintToDelete)}
+                onOpenChange={(open) => {
+                    if (!open) setSprintToDelete(null);
+                }}
+                title="Delete sprint?"
+                description={
+                    sprintToDelete
+                        ? `This removes "${sprintToDelete.name}". Its tasks will move back to Backlog.`
+                        : "This sprint will be deleted and its tasks will move back to Backlog."
+                }
+                confirmLabel="Delete sprint"
+                destructive
+                loading={isDeletingSprint}
+                onConfirm={handleDeleteSprint}
+            />
 
             <Dialog open={releaseNotesOpen} onOpenChange={setReleaseNotesOpen}>
                 <DialogContent className="border-slate-800 bg-slate-950 text-white sm:max-w-3xl">

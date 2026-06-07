@@ -719,7 +719,7 @@ export default function AdminConsolePage() {
           </div>
         </div>
 
-        <div className="flex gap-2 overflow-x-auto border-t border-slate-800 px-4 py-3">
+        <div className="flex flex-wrap gap-2 border-t border-slate-800 px-4 py-3">
           {[
             ["Identity", "#users"],
             ["Projects", "#projects"],
@@ -1041,7 +1041,7 @@ export default function AdminConsolePage() {
           </div>
         </div>
 
-        <div className="overflow-x-auto">
+        <div className="hidden overflow-x-auto md:block">
           <div className="grid min-w-[980px] grid-cols-[1.4fr_150px_150px_150px_220px] border-b border-slate-800 px-5 py-3 text-xs font-medium uppercase tracking-[0.14em] text-slate-600">
             <span>Workspace</span>
             <span>Method</span>
@@ -1125,6 +1125,88 @@ export default function AdminConsolePage() {
 
           {!loading && filteredProjects.length === 0 && (
             <div className="p-8 text-sm text-slate-500">No projects found.</div>
+          )}
+        </div>
+
+        <div className="grid gap-3 p-4 md:hidden">
+          {filteredProjects.map((project) => (
+            <div
+              key={project.id}
+              className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4"
+            >
+              <div className="flex items-start gap-2">
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h3 className="min-w-0 truncate text-base font-semibold text-white">
+                      {project.name}
+                    </h3>
+                    <Badge className="border-blue-500/30 bg-blue-500/10 text-blue-200">
+                      {project.key}
+                    </Badge>
+                    {project.is_archived && (
+                      <Badge className="border-amber-500/30 bg-amber-500/10 text-amber-200">
+                        Archived
+                      </Badge>
+                    )}
+                  </div>
+                  <p className="mt-2 truncate text-sm text-slate-500">
+                    Admin: {project.owner_name || "Unassigned"}
+                  </p>
+                </div>
+                <Badge className="shrink-0 border-slate-700 bg-slate-900 text-slate-300">
+                  {project.methodology}
+                </Badge>
+              </div>
+
+              <div className="mt-4 grid grid-cols-2 gap-2 text-sm">
+                <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-3">
+                  <p className="text-xs uppercase tracking-[0.14em] text-slate-600">Load</p>
+                  <p className="mt-1 font-semibold text-slate-100">
+                    {project.tasks_count} tasks
+                  </p>
+                </div>
+                <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-3">
+                  <p className="text-xs uppercase tracking-[0.14em] text-slate-600">Team</p>
+                  <p className="mt-1 font-semibold text-slate-100">
+                    {project.members_count} members
+                  </p>
+                </div>
+              </div>
+
+              <p className="mt-3 text-xs text-slate-500">
+                Created {formatDate(project.created_at)}
+              </p>
+
+              <div className="mt-4 grid grid-cols-2 gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={projectActionId === project.id}
+                  className="rounded-xl border-slate-700 bg-slate-900 text-slate-200 hover:bg-slate-800"
+                  onClick={() => handleProjectArchive(project)}
+                >
+                  {project.is_archived ? "Restore" : "Archive"}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={projectActionId === project.id}
+                  className="rounded-xl border-red-500/30 bg-red-500/10 text-red-200 hover:bg-red-500/20"
+                  onClick={() => {
+                    setProjectToDelete(project);
+                    setDeleteConfirmation("");
+                  }}
+                >
+                  Delete
+                </Button>
+              </div>
+            </div>
+          ))}
+
+          {!loading && filteredProjects.length === 0 && (
+            <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-6 text-sm text-slate-500">
+              No projects found.
+            </div>
           )}
         </div>
       </section>

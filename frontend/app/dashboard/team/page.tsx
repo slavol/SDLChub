@@ -29,6 +29,7 @@ import { Label } from "@/components/ui/label";
 import { UserAvatar } from "@/components/user-avatar";
 import { useDebouncedRealtimeEvent } from "@/hooks/use-realtime-event";
 import { hasProjectPermission } from "@/lib/project-permissions";
+import { pickWorkspaceProject } from "@/lib/project-selection";
 import { cn } from "@/lib/utils";
 import {
   Select,
@@ -235,6 +236,14 @@ export default function TeamPage() {
     () => (myTeam?.id ? childTeamsByParent[myTeam.id] || [] : []),
     [childTeamsByParent, myTeam?.id]
   );
+  const unassignedMembers = useMemo(
+    () => members.filter((member) => !member.team?.id),
+    [members]
+  );
+  const totalTeamTasks = useMemo(
+    () => teams.reduce((total, team) => total + (team.task_count || 0), 0),
+    [teams]
+  );
 
   const isTeamLeadershipRole = Boolean(
     isProjectOwner ||
@@ -270,7 +279,7 @@ export default function TeamPage() {
 
       if (!selectedProject) {
         const projects = await getMyProjects();
-        selectedProject = projects[0] ?? null;
+        selectedProject = pickWorkspaceProject(projects, currentProject);
 
         if (selectedProject) {
           setCurrentProject(selectedProject);
@@ -567,20 +576,25 @@ export default function TeamPage() {
     const isMyTeam = myTeam?.id === team.id;
 
     return (
-      <div key={team.id} className={depth > 0 ? "relative border-l border-slate-800 pl-4" : ""}>
+      <div key={team.id} className={depth > 0 ? "relative border-l border-slate-800/80 pl-4" : ""}>
         {depth > 0 && (
-          <span className="absolute left-0 top-6 h-px w-4 bg-slate-800" />
+          <span className="absolute left-0 top-8 h-px w-4 bg-slate-800" />
         )}
         <div
           className={cn(
-            "rounded-2xl border bg-slate-950 p-4",
-            isMyTeam ? "border-cyan-400/40 shadow-lg shadow-cyan-950/20" : "border-slate-800"
+            "group rounded-3xl border bg-slate-950/80 p-4 transition hover:border-cyan-500/30 hover:bg-slate-950",
+            isMyTeam
+              ? "border-cyan-400/45 bg-cyan-500/10 shadow-lg shadow-cyan-950/20"
+              : "border-slate-800"
           )}
         >
           <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0">
+            <div className="flex min-w-0 gap-3">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-cyan-500/25 bg-cyan-500/10 text-cyan-200">
+                <GitBranch className="h-5 w-5" />
+              </div>
+              <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
-                <GitBranch className="h-4 w-4 text-cyan-300" />
                 <p className="truncate font-semibold text-white">{team.name}</p>
                 {isMyTeam && (
                   <Badge className="bg-cyan-500/10 text-cyan-200 hover:bg-cyan-500/10">
@@ -591,6 +605,7 @@ export default function TeamPage() {
               <p className="mt-1 text-sm leading-6 text-slate-500">
                 {team.description || "No description"}
               </p>
+              </div>
             </div>
             {canManageTeams && (
               <Button
@@ -603,23 +618,27 @@ export default function TeamPage() {
             )}
           </div>
 
-          <div className="mt-4 grid grid-cols-2 gap-3">
-            <div className="rounded-xl border border-slate-800 bg-slate-900 p-3">
-              <p className="text-xs text-slate-500">Members</p>
-              <p className="mt-1 text-lg font-bold text-white">{team.member_count}</p>
+          <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-3">
+            <div className="rounded-2xl border border-slate-800 bg-slate-900/70 p-3">
+              <p className="text-xs uppercase tracking-[0.16em] text-slate-600">Members</p>
+              <p className="mt-1 text-lg font-bold text-white">{teamMembers.length || team.member_count}</p>
             </div>
-            <div className="rounded-xl border border-slate-800 bg-slate-900 p-3">
-              <p className="text-xs text-slate-500">Assigned tasks</p>
+            <div className="rounded-2xl border border-slate-800 bg-slate-900/70 p-3">
+              <p className="text-xs uppercase tracking-[0.16em] text-slate-600">Tasks</p>
               <p className="mt-1 text-lg font-bold text-white">{team.task_count}</p>
+            </div>
+            <div className="col-span-2 rounded-2xl border border-slate-800 bg-slate-900/70 p-3 md:col-span-1">
+              <p className="text-xs uppercase tracking-[0.16em] text-slate-600">Subteams</p>
+              <p className="mt-1 text-lg font-bold text-white">{children.length}</p>
             </div>
           </div>
 
           {teamMembers.length > 0 && (
-            <div className="mt-4 flex flex-wrap gap-2">
+            <div className="mt-4 grid gap-2 sm:grid-cols-2">
               {teamMembers.slice(0, 6).map((member) => (
                 <div
                   key={member.membership_id}
-                  className="flex items-center gap-2 rounded-full border border-slate-800 bg-slate-900 px-2 py-1"
+                  className="flex min-w-0 items-center gap-2 rounded-2xl border border-slate-800 bg-slate-900/70 px-3 py-2"
                 >
                   <UserAvatar
                     name={member.user.full_name}
@@ -634,16 +653,22 @@ export default function TeamPage() {
                 </div>
               ))}
               {teamMembers.length > 6 && (
-                <Badge variant="outline" className="border-slate-700 bg-slate-900 text-slate-400">
+                <Badge variant="outline" className="w-fit border-slate-700 bg-slate-900 text-slate-400">
                   +{teamMembers.length - 6}
                 </Badge>
               )}
             </div>
           )}
+
+          {teamMembers.length === 0 && (
+            <div className="mt-4 rounded-2xl border border-dashed border-slate-800 bg-slate-900/40 p-3 text-sm text-slate-500">
+              No direct members assigned.
+            </div>
+          )}
         </div>
 
         {children.length > 0 && (
-          <div className="mt-3 space-y-3">
+          <div className="mt-3 grid gap-3 lg:grid-cols-2">
             {children.map((child) => renderTeamTreeNode(child, depth + 1))}
           </div>
         )}
@@ -774,6 +799,21 @@ export default function TeamPage() {
                 Structure members into teams and subteams, then assign work to the right delivery group.
               </p>
             </div>
+
+            <div className="grid gap-2 sm:grid-cols-3 lg:min-w-[420px]">
+              <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-3">
+                <p className="text-xs uppercase tracking-[0.16em] text-slate-600">Root teams</p>
+                <p className="mt-1 text-lg font-bold text-white">{rootTeams.length}</p>
+              </div>
+              <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-3">
+                <p className="text-xs uppercase tracking-[0.16em] text-slate-600">Team tasks</p>
+                <p className="mt-1 text-lg font-bold text-white">{totalTeamTasks}</p>
+              </div>
+              <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-3">
+                <p className="text-xs uppercase tracking-[0.16em] text-slate-600">Unassigned</p>
+                <p className="mt-1 text-lg font-bold text-white">{unassignedMembers.length}</p>
+              </div>
+            </div>
           </div>
 
           {canManageTeams && (
@@ -814,8 +854,9 @@ export default function TeamPage() {
             </div>
           )}
 
+          <div className="mb-5 grid gap-4 xl:grid-cols-[minmax(0,1.25fr)_minmax(18rem,0.75fr)]">
           {isTeamLeadershipRole && (
-            <div className="mb-5 rounded-2xl border border-cyan-500/20 bg-cyan-500/10 p-4">
+            <div className="rounded-3xl border border-cyan-500/20 bg-cyan-500/10 p-4">
               <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                 <div>
                   <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-cyan-100">
@@ -849,6 +890,52 @@ export default function TeamPage() {
               </div>
             </div>
           )}
+
+          <div className="rounded-3xl border border-slate-800 bg-slate-950/70 p-4">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <div>
+                <p className="text-sm font-semibold text-white">Unassigned members</p>
+                <p className="mt-1 text-xs leading-5 text-slate-500">
+                  People without a delivery team yet.
+                </p>
+              </div>
+              <Badge variant="outline" className="border-slate-700 bg-slate-900 text-slate-300">
+                {unassignedMembers.length}
+              </Badge>
+            </div>
+
+            {unassignedMembers.length > 0 ? (
+              <div className="flex flex-wrap gap-2">
+                {unassignedMembers.slice(0, 8).map((member) => (
+                  <div
+                    key={member.membership_id}
+                    className="flex min-w-0 items-center gap-2 rounded-2xl border border-slate-800 bg-slate-900/70 px-3 py-2"
+                  >
+                    <UserAvatar
+                      name={member.user.full_name}
+                      email={member.user.email}
+                      src={member.user.avatar_url}
+                      className="h-7 w-7"
+                      fallbackClassName="text-[10px]"
+                    />
+                    <span className="max-w-36 truncate text-xs text-slate-300">
+                      {member.user.full_name || member.user.email}
+                    </span>
+                  </div>
+                ))}
+                {unassignedMembers.length > 8 && (
+                  <Badge variant="outline" className="border-slate-700 bg-slate-900 text-slate-400">
+                    +{unassignedMembers.length - 8}
+                  </Badge>
+                )}
+              </div>
+            ) : (
+              <div className="rounded-2xl border border-dashed border-slate-800 bg-slate-900/40 p-4 text-sm text-slate-500">
+                Every member is assigned to a delivery team.
+              </div>
+            )}
+          </div>
+          </div>
 
           <div className="space-y-3">
             {rootTeams.map((team) => renderTeamTreeNode(team))}

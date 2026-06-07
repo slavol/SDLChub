@@ -57,6 +57,7 @@ import { UserAvatar } from "@/components/user-avatar";
 import { useProjectPermissions } from "@/hooks/use-project-permissions";
 import { useDebouncedRealtimeEvent } from "@/hooks/use-realtime-event";
 import { getApiErrorMessage } from "@/lib/api-error";
+import { pickWorkspaceProject } from "@/lib/project-selection";
 import { cn } from "@/lib/utils";
 import {
   CalendarAvailability,
@@ -633,7 +634,7 @@ export default function CalendarPage() {
 
       if (!selectedProject) {
         const projects = await getMyProjects();
-        selectedProject = projects[0] ?? null;
+        selectedProject = pickWorkspaceProject(projects, currentProject);
 
         if (selectedProject) {
           setCurrentProject(selectedProject);
@@ -1830,10 +1831,10 @@ export default function CalendarPage() {
             <CardContent className="p-4 sm:p-5">
               <Tabs value={view} onValueChange={(value) => setView(value as CalendarView)}>
                 <TabsContent value="month" className="mt-0">
-                  <div className="sdlc-thin-scrollbar overflow-x-auto">
-                    <div className="grid min-w-[720px] grid-cols-7 overflow-hidden rounded-2xl border border-slate-800">
+                  <div className="min-w-0 overflow-hidden">
+                    <div className="grid min-w-0 grid-cols-7 overflow-hidden rounded-2xl border border-slate-800">
                     {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => (
-                      <div key={day} className="border-b border-slate-800 bg-slate-950/80 px-3 py-2 text-xs font-medium text-slate-500">
+                      <div key={day} className="truncate border-b border-slate-800 bg-slate-950/80 px-1.5 py-2 text-center text-[10px] font-medium text-slate-500 sm:px-3 sm:text-left sm:text-xs">
                         {day}
                       </div>
                     ))}
@@ -1851,42 +1852,42 @@ export default function CalendarPage() {
                           type="button"
                           onClick={() => setSelectedDate(key)}
                           className={cn(
-                            "min-h-32 border-b border-r border-slate-800 bg-slate-950/40 p-3 text-left transition hover:bg-slate-900",
+                            "min-w-0 border-b border-r border-slate-800 bg-slate-950/40 p-1.5 text-left transition hover:bg-slate-900 sm:min-h-32 sm:p-3",
                             !isCurrentMonth && "opacity-45",
                             isSelected && "bg-blue-500/10 ring-1 ring-inset ring-blue-500/35"
                           )}
                         >
-                          <div className="mb-3 flex items-center justify-between">
+                          <div className="mb-2 flex items-center justify-between gap-1 sm:mb-3">
                             <span
                               className={cn(
-                                "flex h-7 w-7 items-center justify-center rounded-full text-sm font-medium",
+                                "flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-medium sm:h-7 sm:w-7 sm:text-sm",
                                 isToday ? "bg-blue-600 text-white" : "text-slate-300"
                               )}
                             >
                               {day.getDate()}
                             </span>
                             {dayItems.length > 0 && (
-                              <span className="rounded-full bg-slate-800 px-2 py-0.5 text-[10px] text-slate-300">
+                              <span className="shrink-0 rounded-full bg-slate-800 px-1.5 py-0.5 text-[10px] text-slate-300 sm:px-2">
                                 {dayItems.length}
                               </span>
                             )}
                           </div>
 
                           <div className="space-y-1">
-                            {dayItems.slice(0, 3).map((item) => (
+                            {dayItems.slice(0, 2).map((item) => (
                               <div
                                 key={item.id}
                                 className={cn(
-                                  "truncate rounded-lg px-2 py-1 text-[11px]",
+                                  "truncate rounded-md px-1.5 py-1 text-[10px] sm:rounded-lg sm:px-2 sm:text-[11px]",
                                   feedItemTone(item)
                                 )}
                               >
                                 {feedItemLabel(item)} · {item.title}
                               </div>
                             ))}
-                            {dayItems.length > 3 && (
+                            {dayItems.length > 2 && (
                               <p className="px-1 text-[11px] text-slate-500">
-                                +{dayItems.length - 3} more
+                                +{dayItems.length - 2} more
                               </p>
                             )}
                           </div>
@@ -2068,6 +2069,57 @@ export default function CalendarPage() {
 
           <Card className="border-slate-800 bg-slate-900/80 text-slate-50 shadow-xl shadow-slate-950/20">
             <CardHeader className="border-b border-slate-800/80">
+              <CardTitle className="flex items-center justify-between gap-3 text-base">
+                <span className="flex items-center gap-2">
+                  <Clock3 className="h-5 w-5 text-emerald-300" />
+                  Upcoming
+                </span>
+                <Badge className="border-emerald-500/20 bg-emerald-500/10 text-emerald-200">
+                  {upcomingItems.length}
+                </Badge>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2 p-4">
+              {upcomingItems.map((item) => {
+                const itemDateKey = dateKey(item.date);
+
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => {
+                      setSelectedDate(itemDateKey);
+                      setCursor(item.date);
+                    }}
+                    className={cn(
+                      "group w-full rounded-2xl border border-slate-800 bg-slate-950/70 p-3 text-left transition hover:border-blue-500/35 hover:bg-slate-950",
+                      itemDateKey === selectedDate && "border-blue-500/40 bg-blue-500/10"
+                    )}
+                  >
+                    <div className="mb-2 flex items-center justify-between gap-3">
+                      <Badge variant="outline" className={cn("border text-[10px]", feedItemTone(item))}>
+                        {feedItemLabel(item)}
+                      </Badge>
+                      <span className="shrink-0 text-xs text-slate-500">{formatDateTime(item.date)}</span>
+                    </div>
+                    <div className="flex items-start justify-between gap-3">
+                      <p className="line-clamp-2 text-sm font-semibold text-white">{item.title}</p>
+                      <ChevronRight className="mt-0.5 h-4 w-4 shrink-0 text-slate-600 transition group-hover:text-blue-300" />
+                    </div>
+                  </button>
+                );
+              })}
+
+              {upcomingItems.length === 0 && (
+                <p className="rounded-2xl border border-dashed border-slate-800 p-5 text-sm text-slate-500">
+                  No upcoming items with the current filters.
+                </p>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card className="border-slate-800 bg-slate-900/80 text-slate-50 shadow-xl shadow-slate-950/20">
+            <CardHeader className="border-b border-slate-800/80">
               <CardTitle className="flex items-center gap-2 text-base">
                 <Users2 className="h-5 w-5 text-violet-300" />
                 Filters
@@ -2140,39 +2192,6 @@ export default function CalendarPage() {
             </CardContent>
           </Card>
 
-          <Card className="border-slate-800 bg-slate-900/80 text-slate-50 shadow-xl shadow-slate-950/20">
-            <CardHeader className="border-b border-slate-800/80">
-              <CardTitle className="flex items-center gap-2 text-base">
-                <Clock3 className="h-5 w-5 text-emerald-300" />
-                Upcoming
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3 p-5">
-              {upcomingItems.map((item) => (
-                <div key={item.id} className="rounded-2xl border border-slate-800 bg-slate-950/75 p-4">
-                  <div className="mb-2 flex items-center justify-between gap-3">
-                    <Badge
-                      variant="outline"
-                      className={cn(
-                        "border text-[10px]",
-                        feedItemTone(item)
-                      )}
-                    >
-                      {feedItemLabel(item)}
-                    </Badge>
-                    <span className="text-xs text-slate-500">{formatDateTime(item.date)}</span>
-                  </div>
-                  <p className="line-clamp-2 text-sm font-semibold text-white">{item.title}</p>
-                </div>
-              ))}
-
-              {upcomingItems.length === 0 && (
-                <p className="rounded-2xl border border-dashed border-slate-800 p-5 text-sm text-slate-500">
-                  No upcoming items with the current filters.
-                </p>
-              )}
-            </CardContent>
-          </Card>
         </aside>
       </section>
 

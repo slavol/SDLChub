@@ -144,6 +144,11 @@ export const uploadCurrentUserAvatar = async (file: File): Promise<AuthUser> => 
   return response.data;
 };
 
+export const deleteCurrentUserAvatar = async (): Promise<AuthUser> => {
+  const response = await api.delete("/auth/me/avatar");
+  return response.data;
+};
+
 export const updateCurrentUserPassword = async (data: {
   current_password: string;
   new_password: string;

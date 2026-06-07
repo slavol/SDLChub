@@ -608,6 +608,28 @@ async def upload_current_user_avatar(
     return current_user
 
 
+@router.delete("/me/avatar", response_model=AuthUser)
+def delete_current_user_avatar(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    if current_user.avatar_url:
+        current_user.avatar_url = None
+        _create_security_log(
+            db,
+            current_user,
+            event_type="AVATAR_DELETED",
+            title="Avatar removed",
+            detail="Account avatar was removed.",
+            request=None,
+        )
+        db.commit()
+        db.refresh(current_user)
+        broadcast_user_profile_changed(db, current_user)
+
+    return current_user
+
+
 @router.put("/me/password")
 def update_current_user_password(
     data: AccountPasswordUpdateRequest,

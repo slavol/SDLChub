@@ -41,6 +41,7 @@ import {
   ProjectMember,
 } from "@/services/project";
 import { getProjectActivity, ProjectActivity } from "@/services/activity";
+import { pickWorkspaceProject } from "@/lib/project-selection";
 import { useProjectStore } from "@/store/use-project-store";
 import { UserAvatar } from "@/components/user-avatar";
 
@@ -73,6 +74,7 @@ const actionStyles: Record<string, string> = {
 
 const INITIAL_VISIBLE_ACTIVITIES = 60;
 const ACTIVITY_PAGE_SIZE = 60;
+const ACTIVITY_FETCH_LIMIT = 1000;
 
 const scopeOptions: Array<{
   value: ScopeFilter;
@@ -356,7 +358,7 @@ export default function ActivityPage() {
 
         if (!selectedProject) {
           const projects = await getMyProjects();
-          selectedProject = projects[0] ?? null;
+          selectedProject = pickWorkspaceProject(projects, currentProject);
 
           if (selectedProject) {
             setCurrentProject(selectedProject);
@@ -373,8 +375,8 @@ export default function ActivityPage() {
 
         const filters =
           timeFilter === "all"
-            ? { limit: 200 }
-            : { limit: 200, hours: Number(timeFilter) };
+            ? { limit: ACTIVITY_FETCH_LIMIT }
+            : { limit: ACTIVITY_FETCH_LIMIT, hours: Number(timeFilter) };
 
         const [remoteMembers, remoteActivities] = await Promise.all([
           getProjectMembers(selectedProject.id).catch(() => []),

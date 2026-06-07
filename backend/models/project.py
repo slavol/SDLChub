@@ -14,6 +14,7 @@ class Project(Base):
     name = Column(String, index=True)
     key = Column(String, unique=True, index=True)
     description = Column(String, nullable=True)
+    logo_url = Column(String, nullable=True)
     methodology = Column(String, default="SCRUM")
     workflow_config = Column(Text, nullable=True)
     is_archived = Column(Boolean, default=False, nullable=False)

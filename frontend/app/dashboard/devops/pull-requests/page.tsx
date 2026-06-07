@@ -29,6 +29,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useProjectPermissions } from "@/hooks/use-project-permissions";
 import { useDebouncedRealtimeEvent } from "@/hooks/use-realtime-event";
 import { getApiErrorMessage } from "@/lib/api-error";
+import { pickWorkspaceProject } from "@/lib/project-selection";
 import { cn } from "@/lib/utils";
 import {
   confirmPullRequestTransition,
@@ -90,7 +91,7 @@ export default function PullRequestsPage() {
 
         if (!selectedProject) {
           const projects = await getMyProjects();
-          selectedProject = projects[0] ?? null;
+          selectedProject = pickWorkspaceProject(projects, currentProject);
 
           if (selectedProject) {
             setCurrentProject(selectedProject);

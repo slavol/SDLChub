@@ -44,6 +44,21 @@ export const createSprint = async (projectId: number, data: string | CreateSprin
     return response.data;
 };
 
+export const updateSprint = async (
+    sprintId: number,
+    data: Partial<CreateSprintDto>
+): Promise<Sprint> => {
+    const response = await api.put(`/sprints/${sprintId}`, data);
+    return response.data;
+};
+
+export const deleteSprint = async (
+    sprintId: number
+): Promise<{ message: string; moved_count: number }> => {
+    const response = await api.delete(`/sprints/${sprintId}`);
+    return response.data;
+};
+
 export const startSprint = async (sprintId: number): Promise<{ message: string; sprint: string }> => {
     const response = await api.post(`/sprints/${sprintId}/start`);
     return response.data;

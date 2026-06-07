@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   ArrowRight,
@@ -19,6 +19,7 @@ import {
   Lock,
   Mail,
   Save,
+  Trash2,
   UserRound,
   UserPlus,
 } from "lucide-react";
@@ -33,6 +34,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { AccountSecurityPanel } from "@/components/dashboard/account-security-panel";
 import { UserAvatar, resolveMediaUrl } from "@/components/user-avatar";
+import { useDebouncedRealtimeEvent } from "@/hooks/use-realtime-event";
 import { getApiErrorMessage } from "@/lib/api-error";
 import {
   getPendingInvitations,
@@ -42,6 +44,7 @@ import {
 import {
   AccountSummary,
   getAccountSummary,
+  deleteCurrentUserAvatar,
   updateNotificationPreferences,
   updateCurrentUser,
   updateCurrentUserPassword,
@@ -179,6 +182,7 @@ export default function AccountPage() {
   const [savingPassword, setSavingPassword] = useState(false);
   const [savingNotifications, setSavingNotifications] = useState(false);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const [deletingAvatar, setDeletingAvatar] = useState(false);
   const [joiningProject, setJoiningProject] = useState(false);
   const [acceptingInvitationId, setAcceptingInvitationId] = useState<number | null>(null);
 
@@ -201,8 +205,11 @@ export default function AccountPage() {
     [projects]
   );
 
-  const loadAccount = async () => {
-    setLoading(true);
+  const loadAccount = useCallback(async (showLoader = true) => {
+    if (showLoader) {
+      setLoading(true);
+    }
+
     try {
       const [data, invitations] = await Promise.all([
         getAccountSummary(),
@@ -218,14 +225,25 @@ export default function AccountPage() {
     } catch (error: unknown) {
       toast.error(getApiErrorMessage(error, "Could not load account settings."));
     } finally {
-      setLoading(false);
+      if (showLoader) {
+        setLoading(false);
+      }
     }
-  };
+  }, [setUser]);
 
   useEffect(() => {
     loadAccount();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [loadAccount]);
+
+  useDebouncedRealtimeEvent(
+    () => loadAccount(false),
+    [loadAccount],
+    400,
+    (message) =>
+      message.type === "invitation.created" ||
+      message.type === "membership.changed" ||
+      message.type === "member.changed"
+  );
 
   const handleJoinProject = async (code?: string, invitationId?: number) => {
     const nextCode = (code || invitationCode).trim().toUpperCase();
@@ -303,6 +321,21 @@ export default function AccountPage() {
       toast.error(getApiErrorMessage(error, "Could not upload avatar."));
     } finally {
       setUploadingAvatar(false);
+    }
+  };
+
+  const handleAvatarDelete = async () => {
+    setDeletingAvatar(true);
+    try {
+      const updated = await deleteCurrentUserAvatar();
+      setUser(updated);
+      setSummary((current) => (current ? { ...current, user: updated } : current));
+      setAvatarUrl("");
+      toast.success("Avatar removed");
+    } catch (error: unknown) {
+      toast.error(getApiErrorMessage(error, "Could not remove avatar."));
+    } finally {
+      setDeletingAvatar(false);
     }
   };
 
@@ -499,24 +532,41 @@ export default function AccountPage() {
                     </p>
                   </div>
 
-                  <label className="inline-flex h-10 cursor-pointer items-center justify-center rounded-xl bg-blue-600 px-4 text-sm font-medium text-white transition hover:bg-blue-700">
-                    {uploadingAvatar ? (
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    ) : (
-                      <Camera className="mr-2 h-4 w-4" />
-                    )}
-                    Upload
-                    <input
-                      type="file"
-                      accept="image/png,image/jpeg,image/webp,image/gif"
-                      className="sr-only"
-                      disabled={uploadingAvatar}
-                      onChange={(event) => {
-                        handleAvatarUpload(event.target.files?.[0]);
-                        event.target.value = "";
-                      }}
-                    />
-                  </label>
+                  <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
+                    <label className="inline-flex h-10 cursor-pointer items-center justify-center rounded-xl bg-blue-600 px-4 text-sm font-medium text-white transition hover:bg-blue-700">
+                      {uploadingAvatar ? (
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      ) : (
+                        <Camera className="mr-2 h-4 w-4" />
+                      )}
+                      Upload
+                      <input
+                        type="file"
+                        accept="image/png,image/jpeg,image/webp,image/gif"
+                        className="sr-only"
+                        disabled={uploadingAvatar || deletingAvatar}
+                        onChange={(event) => {
+                          handleAvatarUpload(event.target.files?.[0]);
+                          event.target.value = "";
+                        }}
+                      />
+                    </label>
+
+                    <Button
+                      type="button"
+                      variant="outline"
+                      disabled={!avatarUrl || deletingAvatar || uploadingAvatar}
+                      onClick={handleAvatarDelete}
+                      className="h-10 border-rose-500/25 bg-rose-500/10 text-rose-200 hover:bg-rose-500/15 hover:text-rose-100"
+                    >
+                      {deletingAvatar ? (
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      ) : (
+                        <Trash2 className="mr-2 h-4 w-4" />
+                      )}
+                      Remove
+                    </Button>
+                  </div>
                 </div>
               </div>
 

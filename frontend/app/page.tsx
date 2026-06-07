@@ -46,11 +46,6 @@ export default function Home() {
 
   return (
     <div className="relative min-h-screen bg-[#030712] text-slate-50 selection:bg-blue-500/30 font-sans overflow-x-hidden">
-      <div className="pointer-events-none absolute inset-0 overflow-hidden">
-        <div className="absolute -top-[20%] left-1/2 -z-10 h-[800px] w-[1000px] -translate-x-1/2 rounded-full bg-blue-600/10 opacity-50 blur-[120px]"></div>
-        <div className="absolute top-[20%] -right-[10%] -z-10 h-[600px] w-[600px] rounded-full bg-indigo-600/10 opacity-40 blur-[100px]"></div>
-      </div>
-
       <header className="fixed top-0 z-50 w-full border-b border-white/5 bg-[#030712]/60 backdrop-blur-xl">
         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
           <div className="flex items-center gap-2">

@@ -29,6 +29,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useDebouncedRealtimeEvent } from "@/hooks/use-realtime-event";
 import { getApiErrorMessage } from "@/lib/api-error";
+import { pickWorkspaceProject } from "@/lib/project-selection";
 import { cn } from "@/lib/utils";
 import {
   deleteProjectGitHubIntegration,
@@ -102,7 +103,6 @@ export default function DevOpsPage() {
   const { currentProject, setCurrentProject } = useProjectStore();
   const currentUser = useAuthStore((state) => state.user);
 
-  const [projects, setProjects] = useState<Project[]>([]);
   const [project, setProject] = useState<Project | null>(currentProject);
   const [integration, setIntegration] = useState<GitHubIntegration | null>(null);
   const [events, setEvents] = useState<GitHubEventItem[]>([]);
@@ -140,10 +140,9 @@ export default function DevOpsPage() {
       try {
         let selectedProject = currentProject;
         const ownedProjects = await getMyProjects();
-        setProjects(ownedProjects);
 
         if (!selectedProject) {
-          selectedProject = ownedProjects[0] ?? null;
+          selectedProject = pickWorkspaceProject(ownedProjects, currentProject);
           if (selectedProject) setCurrentProject(selectedProject);
         }
 
@@ -207,13 +206,6 @@ export default function DevOpsPage() {
           ["github.changed", "task.changed", "project.changed"].includes(message.type)
       )
   );
-
-  const handleProjectChange = (projectId: number) => {
-    const selected = projects.find((item) => item.id === projectId) ?? null;
-    if (!selected) return;
-    setCurrentProject(selected);
-    setProject(selected);
-  };
 
   const handleSaveIntegration = async () => {
     if (!project) return;
@@ -398,20 +390,6 @@ export default function DevOpsPage() {
             </div>
 
             <div className="flex flex-wrap gap-2">
-              {projects.length > 1 && (
-                <select
-                  value={project.id}
-                  onChange={(event) => handleProjectChange(Number(event.target.value))}
-                  className="h-10 rounded-xl border border-slate-700 bg-slate-950 px-3 text-sm text-slate-200"
-                >
-                  {projects.map((item) => (
-                    <option key={item.id} value={item.id}>
-                      {item.name}
-                    </option>
-                  ))}
-                </select>
-              )}
-
               <Button
                 variant="outline"
                 className="border-slate-700 bg-slate-950 text-slate-200 hover:bg-slate-900"
@@ -421,12 +399,14 @@ export default function DevOpsPage() {
                 Refresh
               </Button>
 
-              <Button asChild variant="outline" className="border-slate-700 bg-slate-950 text-slate-200 hover:bg-slate-900">
-                <Link href="/dashboard/settings">
-                  <PlugZap className="mr-2 h-4 w-4" />
-                  Repository settings
-                </Link>
-              </Button>
+              {canManageIntegration && (
+                <Button asChild variant="outline" className="border-slate-700 bg-slate-950 text-slate-200 hover:bg-slate-900">
+                  <Link href="/dashboard/settings">
+                    <PlugZap className="mr-2 h-4 w-4" />
+                    Repository settings
+                  </Link>
+                </Button>
+              )}
 
               <Button asChild className="bg-slate-100 text-slate-950 hover:bg-white">
                 <Link href="/dashboard/devops/pull-requests">

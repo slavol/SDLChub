@@ -11,8 +11,11 @@ import {
   closestCorners,
   KeyboardSensor,
   PointerSensor,
+  pointerWithin,
+  useDroppable,
   useSensor,
   useSensors,
+  type CollisionDetection,
   DragStartEvent,
   DragOverEvent,
   DragEndEvent,
@@ -49,6 +52,7 @@ import { UserAvatar } from "@/components/user-avatar";
 import { useProjectPermissions } from "@/hooks/use-project-permissions";
 import { useDebouncedRealtimeEvent } from "@/hooks/use-realtime-event";
 import { cn } from "@/lib/utils";
+import { pickWorkspaceProject } from "@/lib/project-selection";
 
 // 4. Services, Store & Types
 import { getMyProjects, getProjectDetail } from "@/services/project";
@@ -110,6 +114,11 @@ const priorityStripe = {
   [TaskPriority.HIGH]: "bg-orange-500",
   [TaskPriority.MEDIUM]: "bg-blue-500",
   [TaskPriority.LOW]: "bg-slate-500",
+};
+
+const boardCollisionDetection: CollisionDetection = (args) => {
+  const pointerCollisions = pointerWithin(args);
+  return pointerCollisions.length > 0 ? pointerCollisions : closestCorners(args);
 };
 
 function formatTaskDate(value?: string | null) {
@@ -185,7 +194,7 @@ function TaskCard({
       className={cn(
         "group relative overflow-hidden rounded-lg border border-slate-800 bg-slate-900/90 p-4 shadow-sm transition-all cursor-grab active:cursor-grabbing",
         "hover:-translate-y-0.5 hover:border-blue-500/35 hover:bg-slate-900 hover:shadow-lg hover:shadow-slate-950/25",
-        isOverlay && "rotate-2 scale-105 border-blue-500 shadow-2xl shadow-blue-950/30 cursor-grabbing z-50"
+        isOverlay && "scale-[1.02] border-blue-500 shadow-2xl shadow-blue-950/30 cursor-grabbing z-50"
       )}
     >
       {/* Indicator prioritate (Linie laterală) */}
@@ -277,7 +286,7 @@ function BoardColumn({
   showStoryPoints: boolean;
   wipLimit?: number | null;
 }) {
-  const { setNodeRef } = useSortable({
+  const { setNodeRef, isOver } = useDroppable({
     id: id,
     data: { type: "Column", id },
   });
@@ -288,8 +297,9 @@ function BoardColumn({
     <div
       ref={setNodeRef}
       className={cn(
-        "flex h-full w-[320px] min-w-[320px] max-w-[calc(100vw-2.5rem)] flex-col rounded-lg border bg-slate-950/70 shadow-xl shadow-slate-950/20 sm:w-[340px] sm:min-w-[340px] xl:min-w-0 xl:flex-1",
-        limitExceeded ? "border-red-500/45" : "border-slate-800"
+        "flex h-auto min-h-[calc(100vh-260px)] w-full min-w-0 max-w-full flex-col rounded-lg border bg-slate-950/70 shadow-xl shadow-slate-950/20 transition md:w-[300px] md:min-w-[280px] xl:min-w-0 xl:flex-1",
+        limitExceeded ? "border-red-500/45" : "border-slate-800",
+        isOver && "border-blue-500/60 bg-blue-500/[0.04] ring-2 ring-blue-500/20"
       )}
     >
       <div className="flex items-center justify-between border-b border-slate-800 bg-slate-900/50 p-4">
@@ -316,7 +326,7 @@ function BoardColumn({
         {limitExceeded && <AlertTriangle className="h-4 w-4 text-red-300" />}
       </div>
 
-      <div className="min-h-[180px] flex-1 overflow-y-auto p-3">
+      <div className="min-h-[260px] flex-1 overflow-visible p-3">
         <SortableContext items={tasks.map((t) => t.id)} strategy={verticalListSortingStrategy}>
           <div className="space-y-3">
             {tasks.map((task) => (
@@ -377,7 +387,7 @@ export default function BoardPage() {
 
         if (!project) {
           const projects = await getMyProjects();
-          project = projects[0] ?? null;
+          project = pickWorkspaceProject(projects, currentProject);
           if (project) setCurrentProject(project);
         }
 
@@ -572,6 +582,42 @@ export default function BoardPage() {
       }).length
     : 0;
 
+  if (!loading && methodology === "SCRUM") {
+    return (
+      <div className="min-h-full bg-slate-950 p-6 text-slate-50">
+        <div className="mx-auto flex min-h-[60vh] max-w-3xl items-center">
+          <div className="w-full rounded-3xl border border-slate-800 bg-slate-900/80 p-8 shadow-2xl shadow-slate-950/30">
+            <Badge className="mb-5 rounded-md border-blue-500/25 bg-blue-500/10 text-blue-200">
+              Scrum project
+            </Badge>
+            <div className="flex items-start gap-4">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-blue-500/25 bg-blue-500/10 text-blue-200">
+                <KanbanSquare className="h-6 w-6" />
+              </div>
+              <div className="min-w-0">
+                <h1 className="text-2xl font-semibold text-white">
+                  Board-ul direct este ascuns pentru Scrum
+                </h1>
+                <p className="mt-3 text-sm leading-6 text-slate-400">
+                  Pentru Scrum, execuția trebuie pornită și administrată prin Backlog și sprintul activ.
+                  Board-ul rămâne disponibil pentru Kanban și Scrumban, unde fluxul este continuu.
+                </p>
+                <div className="mt-6 flex flex-wrap gap-3">
+                  <Button asChild className="bg-blue-600 hover:bg-blue-700">
+                    <Link href="/dashboard/backlog">Open Backlog</Link>
+                  </Button>
+                  <Button asChild variant="outline" className="border-slate-700 bg-slate-950 text-slate-200 hover:bg-slate-800">
+                    <Link href="/dashboard/tasks">Open Tasks</Link>
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex h-full flex-col bg-slate-950 text-slate-50">
       
@@ -684,18 +730,18 @@ export default function BoardPage() {
       </div>
 
       {/* --- BOARD CONTENT --- */}
-      <div className="flex-1 overflow-x-auto overflow-y-hidden bg-slate-950 p-4 sm:p-5">
+      <div className="flex-1 overflow-auto bg-slate-950 p-4 sm:p-5">
         {loading ? (
           <BoardLoadingSkeleton />
         ) : (
           <DndContext
             sensors={sensors}
-            collisionDetection={closestCorners}
+            collisionDetection={boardCollisionDetection}
             onDragStart={handleDragStart}
             onDragOver={handleDragOver}
             onDragEnd={handleDragEnd}
           >
-            <div className="flex h-full min-w-0 gap-4 xl:w-full xl:gap-5">
+            <div className="flex min-w-0 flex-col items-stretch gap-4 pb-4 md:min-w-max md:flex-row md:items-stretch xl:min-w-0 xl:w-full xl:gap-5">
               {visibleColumns.map((col) => (
                 <BoardColumn
                   key={col.id}

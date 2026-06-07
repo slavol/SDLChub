@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   BookOpen,
+  CheckCircle2,
   FileText,
   History,
   Loader2,
@@ -11,6 +12,7 @@ import {
   Plus,
   RefreshCw,
   Save,
+  Search,
   Sparkles,
   Trash2,
 } from "lucide-react";
@@ -21,9 +23,17 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useDebouncedRealtimeEvent } from "@/hooks/use-realtime-event";
 import { getApiErrorMessage } from "@/lib/api-error";
+import { pickWorkspaceProject } from "@/lib/project-selection";
 import { cn } from "@/lib/utils";
 import {
   createDocumentationPage,
@@ -126,6 +136,7 @@ export default function DocumentationPageRoute() {
   const [revisions, setRevisions] = useState<DocumentationRevision[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [selectedDoneTaskId, setSelectedDoneTaskId] = useState("");
+  const [pageQuery, setPageQuery] = useState("");
   const [title, setTitle] = useState("New documentation page");
   const [content, setContent] = useState(emptyContent);
   const [isEditing, setIsEditing] = useState(false);
@@ -140,7 +151,7 @@ export default function DocumentationPageRoute() {
 
       if (!selectedProject) {
         const projects = await getMyProjects();
-        selectedProject = projects[0] ?? null;
+        selectedProject = pickWorkspaceProject(projects, currentProject);
 
         if (selectedProject) {
           setCurrentProject(selectedProject);
@@ -203,6 +214,20 @@ export default function DocumentationPageRoute() {
     () => doneTasks.find((task) => String(task.id) === selectedDoneTaskId),
     [doneTasks, selectedDoneTaskId]
   );
+  const generatedPages = useMemo(
+    () => pages.filter((page) => page.task_id).length,
+    [pages]
+  );
+  const filteredPages = useMemo(() => {
+    const query = pageQuery.trim().toLowerCase();
+    if (!query) return pages;
+
+    return pages.filter((page) =>
+      [page.title, page.content, page.task_id ? `task ${page.task_id}` : ""]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(query))
+    );
+  }, [pageQuery, pages]);
 
   const loadPageHistory = useCallback(async (pageId: number | null) => {
     if (!pageId) {
@@ -374,13 +399,14 @@ export default function DocumentationPageRoute() {
 
   return (
     <div className="min-h-screen w-full min-w-0 overflow-x-hidden bg-slate-950 px-4 py-6 text-slate-100 sm:px-6 lg:px-10">
-      <div className="mb-8 flex flex-col justify-between gap-5 lg:flex-row lg:items-center">
-        <div>
+      <div className="mb-6 overflow-hidden rounded-3xl border border-slate-800 bg-slate-900/80 shadow-2xl shadow-slate-950/25">
+        <div className="flex flex-col justify-between gap-5 border-b border-slate-800 bg-slate-950/40 p-5 lg:flex-row lg:items-center">
+        <div className="min-w-0">
           <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-blue-500/20 bg-blue-500/10 px-3 py-1 text-xs font-medium text-blue-200">
             <BookOpen className="h-3.5 w-3.5" />
             Documentation
           </div>
-          <h1 className="text-3xl font-bold tracking-tight text-white">
+          <h1 className="break-words text-3xl font-bold tracking-tight text-white">
             Project wiki for {project.name}
           </h1>
           <p className="mt-2 max-w-2xl text-sm text-slate-400">
@@ -405,60 +431,113 @@ export default function DocumentationPageRoute() {
         </div>
       </div>
 
-      <div className="mb-6 rounded-2xl border border-slate-800 bg-slate-900/70 p-5">
-        <div className="mb-3 flex items-center gap-2">
-          <Sparkles className="h-5 w-5 text-blue-300" />
-          <h2 className="text-lg font-semibold text-white">
-            Generate from Done task
-          </h2>
+        <div className="grid gap-3 p-5 md:grid-cols-2 xl:grid-cols-4">
+          <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
+            <FileText className="mb-3 h-5 w-5 text-blue-300" />
+            <p className="text-sm text-slate-500">Wiki pages</p>
+            <p className="mt-1 text-2xl font-semibold text-white">{pages.length}</p>
+          </div>
+          <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
+            <Sparkles className="mb-3 h-5 w-5 text-cyan-300" />
+            <p className="text-sm text-slate-500">Generated pages</p>
+            <p className="mt-1 text-2xl font-semibold text-white">{generatedPages}</p>
+          </div>
+          <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
+            <CheckCircle2 className="mb-3 h-5 w-5 text-emerald-300" />
+            <p className="text-sm text-slate-500">Done tasks</p>
+            <p className="mt-1 text-2xl font-semibold text-white">{doneTasks.length}</p>
+          </div>
+          <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
+            <History className="mb-3 h-5 w-5 text-violet-300" />
+            <p className="text-sm text-slate-500">Selected revisions</p>
+            <p className="mt-1 text-2xl font-semibold text-white">{revisions.length}</p>
+          </div>
         </div>
-
-        <div className="flex flex-col gap-3 lg:flex-row">
-          <select
-            value={selectedDoneTaskId}
-            onChange={(event) => setSelectedDoneTaskId(event.target.value)}
-            className="h-11 flex-1 rounded-xl border border-slate-800 bg-slate-950 px-3 text-sm text-slate-200 outline-none focus:border-blue-500"
-          >
-            <option value="">Select a completed task...</option>
-            {doneTasks.map((task) => (
-              <option key={task.id} value={task.id}>
-                {task.key} - {task.title}
-              </option>
-            ))}
-          </select>
-
-          <Button
-            className="bg-blue-600 hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
-            onClick={handleGenerateFromTask}
-            disabled={saving || !selectedTask}
-          >
-            {saving ? (
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            ) : (
-              <Sparkles className="mr-2 h-4 w-4" />
-            )}
-            Generate documentation
-          </Button>
-        </div>
-
-        <p className="mt-3 text-xs text-slate-500">
-          Only tasks with status Done are eligible for generated documentation.
-        </p>
       </div>
+
+      <Card className="mb-6 overflow-hidden border-blue-500/20 bg-slate-900/70 text-slate-50 shadow-xl shadow-slate-950/20">
+        <CardContent className="grid gap-4 p-4 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.35fr)] lg:p-5">
+          <div className="rounded-2xl border border-slate-800 bg-slate-950/55 p-5">
+            <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-2xl border border-blue-400/25 bg-blue-500/10 text-blue-200">
+              <Sparkles className="h-5 w-5" />
+            </div>
+            <h2 className="text-lg font-semibold text-white">Generate from delivery work</h2>
+            <p className="mt-2 text-sm leading-6 text-slate-400">
+              Convert a completed task into a wiki page with context, implementation notes and maintenance details.
+            </p>
+          </div>
+
+          <div className="rounded-2xl border border-slate-800 bg-slate-950/35 p-4">
+            <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto]">
+              <Select
+                value={selectedDoneTaskId || "none"}
+                onValueChange={(value) => setSelectedDoneTaskId(value === "none" ? "" : value)}
+              >
+                <SelectTrigger className="h-11 border-slate-700 bg-slate-950 text-slate-100">
+                  <SelectValue placeholder="Select a completed task..." />
+                </SelectTrigger>
+                <SelectContent className="border-slate-800 bg-slate-950 text-slate-200">
+                  <SelectItem value="none">Select a completed task...</SelectItem>
+                  {doneTasks.map((task) => (
+                    <SelectItem key={task.id} value={String(task.id)}>
+                      {task.key} - {task.title}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              <Button
+                className="h-11 bg-blue-600 hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+                onClick={handleGenerateFromTask}
+                disabled={saving || !selectedTask}
+              >
+                {saving ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <Sparkles className="mr-2 h-4 w-4" />
+                )}
+                Generate
+              </Button>
+            </div>
+
+            <div className="mt-4 rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
+              <p className="text-xs uppercase tracking-[0.18em] text-slate-600">Source rule</p>
+              <p className="mt-2 text-sm leading-6 text-slate-400">
+                Only tasks in <span className="font-medium text-emerald-200">Done</span> are eligible, so generated pages stay tied to reviewed delivery.
+              </p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-6 xl:grid-cols-[340px_minmax(0,1fr)]">
         <aside className="w-full min-w-0 max-w-full space-y-4 overflow-hidden">
           <Card className="min-w-0 max-w-full overflow-hidden border-slate-800 bg-slate-900/70">
             <CardContent className="p-4">
-              <div className="mb-4 flex items-center justify-between">
-                <h2 className="font-semibold text-white">Pages</h2>
+              <div className="mb-4 flex items-center justify-between gap-3">
+                <div>
+                  <h2 className="font-semibold text-white">Pages</h2>
+                  <p className="mt-1 text-xs text-slate-500">
+                    {filteredPages.length} shown
+                  </p>
+                </div>
                 <Badge className="border-slate-700 bg-slate-950 text-slate-300">
                   {pages.length}
                 </Badge>
               </div>
 
+              <div className="relative mb-4">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+                <Input
+                  value={pageQuery}
+                  onChange={(event) => setPageQuery(event.target.value)}
+                  placeholder="Search wiki pages..."
+                  className="h-10 border-slate-800 bg-slate-950 pl-9 text-sm text-slate-100"
+                />
+              </div>
+
               <div className="min-w-0 space-y-2">
-                {pages.map((page) => (
+                {filteredPages.map((page) => (
                   <button
                     key={page.id}
                     type="button"
@@ -494,6 +573,15 @@ export default function DocumentationPageRoute() {
                     <BookOpen className="mx-auto mb-3 h-8 w-8 text-slate-600" />
                     <p className="text-sm text-slate-500">
                       No documentation pages yet.
+                    </p>
+                  </div>
+                )}
+
+                {pages.length > 0 && filteredPages.length === 0 && (
+                  <div className="rounded-2xl border border-dashed border-slate-800 bg-slate-950/60 p-6 text-center">
+                    <Search className="mx-auto mb-3 h-8 w-8 text-slate-600" />
+                    <p className="text-sm text-slate-500">
+                      No pages match this search.
                     </p>
                   </div>
                 )}

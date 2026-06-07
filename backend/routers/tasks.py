@@ -5,7 +5,7 @@ from threading import Thread
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from backend.database.session import SessionLocal, get_db
 from backend.models.project import (
@@ -526,7 +526,11 @@ def get_project_tasks(
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
-    query = db.query(Task).filter(Task.project_id == project_id)
+    query = (
+        db.query(Task)
+        .options(selectinload(Task.assignee), selectinload(Task.team))
+        .filter(Task.project_id == project_id)
+    )
 
     if project.methodology == "SCRUM" and view == "board":
         active_sprint = db.query(Sprint).filter(
@@ -547,7 +551,7 @@ def get_project_tasks(
 @router.get("/project/{project_id}/activity", response_model=List[ProjectActivityOut])
 def get_project_activity(
     project_id: int,
-    limit: int = Query(50, ge=1, le=200),
+    limit: int = Query(50, ge=1, le=1000),
     hours: Optional[int] = Query(None, description="Filter activity from the last N hours"),
     actor_id: Optional[int] = Query(None, description="Filter by actor/user id"),
     action: Optional[str] = Query(None, description="Filter by action type"),

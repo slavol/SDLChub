@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { Loader2, UserPlus, MailCheck } from "lucide-react";
+import { AlertTriangle, Loader2, UserPlus, MailCheck } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -29,6 +29,7 @@ export default function RegisterPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false); // Stare nouă pentru succes
   const [devVerificationUrl, setDevVerificationUrl] = useState<string | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -37,6 +38,7 @@ export default function RegisterPage() {
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
     setIsLoading(true);
+    setFormError(null);
     try {
       // Apelăm endpoint-ul de register
       const response = await registerUser({
@@ -52,7 +54,9 @@ export default function RegisterPage() {
 
     } catch (error: unknown) {
       console.error(error);
-      toast.error(getApiErrorMessage(error, "Registration failed."));
+      const message = getApiErrorMessage(error, "Registration failed.");
+      setFormError(message);
+      toast.error(message);
     } finally {
       setIsLoading(false);
     }
@@ -100,6 +104,14 @@ export default function RegisterPage() {
       <CardContent>
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+            {formError && (
+              <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-sm text-rose-100">
+                <div className="flex items-start gap-2.5">
+                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-rose-300" />
+                  <p>{formError}</p>
+                </div>
+              </div>
+            )}
             <FormField
               control={form.control}
               name="full_name"

@@ -7,6 +7,7 @@ import { AlertTriangle, Archive } from "lucide-react";
 import { AppSidebar } from "@/components/dashboard/app-sidebar";
 import { RealtimeBridge } from "@/components/realtime/realtime-bridge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { pickWorkspaceProject } from "@/lib/project-selection";
 import { getMyProjects, getProjectMembers } from "@/services/project";
 import { useAuthStore } from "@/store/use-auth-store";
 import { useProjectStore } from "@/store/use-project-store";
@@ -26,7 +27,15 @@ export default function DashboardLayout({
   const [role, setRole] = useState<string>("Member");
   const [loading, setLoading] = useState(true);
   const isArchived = Boolean(currentProject?.is_archived);
-  const archivedReadOnly = isArchived && pathname !== "/dashboard/support";
+  const archivedAllowedRoutes = [
+    "/dashboard/support",
+    "/dashboard/account",
+    "/dashboard/notifications",
+  ];
+  const isArchivedAllowedRoute = archivedAllowedRoutes.some(
+    (route) => pathname === route || pathname.startsWith(`${route}/`)
+  );
+  const archivedReadOnly = isArchived && !isArchivedAllowedRoute;
 
   useEffect(() => {
     if (!hasHydrated) {
@@ -39,7 +48,7 @@ export default function DashboardLayout({
         const projects = await getMyProjects();
 
         if (!project) {
-          project = projects[0] ?? null;
+          project = pickWorkspaceProject(projects, currentProject);
 
           if (project) {
             setCurrentProject(project);

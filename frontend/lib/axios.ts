@@ -32,7 +32,10 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     // Dacă primim 401 (Unauthorized), înseamnă că token-ul a expirat sau e invalid
-    if (error.response?.status === 401) {
+    const requestUrl = String(error.config?.url || "");
+    const isAuthRequest = requestUrl.includes("/auth/login") || requestUrl.includes("/auth/register");
+
+    if (error.response?.status === 401 && !isAuthRequest) {
       console.warn("Token expired or unauthorized. Logging out...");
       
       // Delogăm utilizatorul automat

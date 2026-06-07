@@ -4539,6 +4539,339 @@ Ce ramane imediat dupa batch BZ4:
    - account settings/avatar/sessions.
 
 
+6.34. BATCH CA - QA autentificat, icon route fix si stabilizare login
+
+Context:
+- Dupa branding cleanup, browserul inca cerea `/apple-icon.svg?v=sdlc-hub-2`, dar Next returna 404.
+- In pagina de login exista un bug vechi: `loginUser(values)` era apelat de doua ori pentru acelasi submit.
+- Interceptorul Axios facea logout/redirect pe orice 401, inclusiv pe endpointuri de autentificare, ceea ce poate ascunde eroarea reala din formular si poate produce UX confuz.
+
+Implementat:
+- frontend/public/icon.svg:
+  - adaugat icon public pentru requesturile browserului.
+- frontend/public/apple-icon.svg:
+  - adaugat icon public pentru Apple/browser metadata.
+- frontend/app/(auth)/login/page.tsx:
+  - eliminat apelul duplicat `loginUser(values)`.
+  - loginul seteaza auth state o singura data din acelasi raspuns.
+- frontend/lib/axios.ts:
+  - 401 pe `/auth/login` si `/auth/register` nu mai declanseaza logout + redirect automat.
+  - 401 ramane tratat strict pentru requesturi protejate.
+
+Verificari:
+- `curl -I http://127.0.0.1:3000/apple-icon.svg?v=sdlc-hub-2`: 200 OK.
+- `curl -I http://127.0.0.1:3000/icon.svg?v=sdlc-hub-2`: 200 OK.
+- Audit vizual Playwright autentificat:
+  - `NODE_PATH=frontend/node_modules SDLC_BASE_URL=http://127.0.0.1:3000 node scripts/visual_audit_playwright.js`
+  - raport: `/tmp/sdlc-visual-audit/report.json`
+  - rezultat: `findings: []`.
+- `npm run lint`: OK.
+- `npm run build`: OK.
+  - ramane doar warning-ul cunoscut de mediu: `--localstorage-file was provided without a valid path`.
+
+Observatie QA:
+- Parola locala incercata pentru `slavoliu.preda24@gmail.com` nu mai corespunde hash-ului din PostgreSQL.
+- Auditul autentificat a fost rulat cu storage state generat din sesiunea activa existenta in aplicatie.
+- Nu s-a resetat parola si nu s-au modificat credentiale fara cerere explicita.
+
+Fisiere cheie batch CA:
+- frontend/public/icon.svg
+- frontend/public/apple-icon.svg
+- frontend/app/(auth)/login/page.tsx
+- frontend/lib/axios.ts
+- PLAN_CONTINUARE_LICENTA_SDLC_HUB.txt
+
+Ce ramane imediat dupa batch CA:
+1. Test manual/functional pe fluxuri critice, in aceasta ordine:
+   - auth/mail cu credentialele curente reale;
+   - project selection persistence dupa refresh pe alt proiect;
+   - invitations multi-project din Account;
+   - methodology transition SCRUM/KANBAN/SCRUMBAN;
+   - task CRUD/subtask/comment/audit;
+   - calendar availability/events;
+   - DevOps setup/events/PR confirm si Task Detail development links;
+   - support tickets user/admin;
+   - account settings/avatar/sessions.
+2. Daca apar probleme de UX in fluxurile de mai sus, se repara punctual si se reruleaza auditul vizual.
+
+
+6.35. BATCH CB - Persistenta selectie proiect dupa refresh
+
+Context:
+- Exista risc ca unele pagini sa revina la primul proiect din lista cand `currentProject` nu era disponibil exact in momentul initial al incarcarii.
+- Problema afecta testarea pe proiecte multiple si experienta dupa refresh.
+
+Implementat:
+- frontend/lib/project-selection.ts:
+  - helper nou `pickWorkspaceProject(projects, currentProject)`.
+  - respecta intai proiectul curent din store.
+  - daca store-ul inca nu e disponibil, citeste `project-storage` din `localStorage` si cauta ID-ul persistat in lista de proiecte.
+  - revine la primul proiect doar daca nu exista proiect persistat valid.
+- Inlocuit fallback-urile directe catre `projects[0]` / `remoteProjects[0]` in:
+  - frontend/app/dashboard/layout.tsx
+  - frontend/components/dashboard/app-sidebar.tsx
+  - frontend/app/dashboard/page.tsx
+  - frontend/app/dashboard/tasks/page.tsx
+  - frontend/app/dashboard/board/page.tsx
+  - frontend/app/dashboard/backlog/page.tsx
+  - frontend/app/dashboard/activity/page.tsx
+  - frontend/app/dashboard/calendar/page.tsx
+  - frontend/app/dashboard/reports/page.tsx
+  - frontend/app/dashboard/devops/page.tsx
+  - frontend/app/dashboard/devops/pull-requests/page.tsx
+  - frontend/app/dashboard/team/page.tsx
+  - frontend/app/dashboard/settings/page.tsx
+  - frontend/app/dashboard/documentation/page.tsx
+  - frontend/app/dashboard/workload/page.tsx
+
+Verificari:
+- `rg "projects\\[0\\]|ownedProjects\\[0\\]|remoteProjects\\[0\\]|selectedProject = projects\\[0\\]|project = projects\\[0\\]" frontend/app frontend/components -g "*.tsx"`: fara rezultate.
+- `npm run lint`: OK.
+- `npm run build`: OK.
+- Audit vizual Playwright autentificat:
+  - `NODE_PATH=frontend/node_modules SDLC_BASE_URL=http://127.0.0.1:3000 node scripts/visual_audit_playwright.js`
+  - raport: `/tmp/sdlc-visual-audit/report.json`
+  - rezultat: `findings: []`.
+
+Ce ramane imediat dupa batch CB:
+1. Verificare manuala pe proiecte multiple:
+   - selectezi proiectul B;
+   - refresh pe `/dashboard`, `/dashboard/tasks`, `/dashboard/board`, `/dashboard/settings`;
+   - proiectul trebuie sa ramana B.
+2. Urmatorul punct functional:
+   - invitations multi-project din Account;
+   - utilizator deja inregistrat trebuie sa poata accepta invitatii catre alte proiecte fara first-login special.
+
+
+6.36. BATCH CC - Invitatii multi-project realtime in Account
+
+Context:
+- Account avea deja UI pentru `Pending invitations` si `Join with code`.
+- Backend permitea deja invitarea unui utilizator existent daca nu era membru in proiectul respectiv.
+- Lipsea sincronizarea realtime pentru utilizatorul invitat si refresh-ul automat in Account.
+
+Implementat:
+- backend/routers/projects.py:
+  - importat `broadcast_user_event`.
+  - adaugat `serialize_project_basic(project)` pentru payload-uri realtime compacte.
+  - la acceptarea invitatiei:
+    - emite `membership.changed` catre utilizatorul curent.
+    - emite `member.changed` catre proiect.
+  - daca utilizatorul era deja membru si codul era valid:
+    - marcheaza invitatia ca `ACCEPTED`.
+    - emite `membership.changed` catre utilizator.
+  - la crearea unei invitatii pentru un email care exista deja in platforma:
+    - emite `invitation.created` catre utilizatorul respectiv.
+- frontend/app/dashboard/account/page.tsx:
+  - `loadAccount` convertit in `useCallback`.
+  - Account asculta realtime cu debounce pentru:
+    - `invitation.created`
+    - `membership.changed`
+    - `member.changed`
+  - la aceste evenimente reincarca sumarul contului si invitatiile fara skeleton full-page.
+
+Verificari:
+- `.venv/bin/python -m py_compile backend/routers/projects.py backend/realtime.py`: OK.
+- `npm run lint`: OK.
+- `npm run build`: OK.
+
+Observatie:
+- Pentru ca backend-ul ruleaza fara reload automat, modificarile din `backend/routers/projects.py` intra in aplicatia locala dupa restart backend/start.sh.
+
+Ce ramane imediat dupa batch CC:
+1. Test functional dupa restart backend:
+   - Project Admin trimite invitatie catre un email deja existent.
+   - Utilizatorul invitat vede invitatia in Account fara refresh sau dupa refresh.
+   - Acceptarea invitatiei adauga proiectul la lista `My projects`.
+   - Dupa acceptare, `currentProject` se seteaza pe proiectul nou.
+2. Urmatorul punct functional major:
+   - methodology transition SCRUM/KANBAN/SCRUMBAN end-to-end;
+   - verificat ca board/backlog/settings nu pastreaza configuratii vechi dupa schimbari repetate.
+
+
+6.37. BATCH CD - Methodology transition hardening fara repetarea Batch BV
+
+Context:
+- Fisierul plan a fost recitit inainte de lucru pentru a evita repetarea taskurilor.
+- Batch BV implementase deja preseturi workflow, resetare `workflow_config`, audit si broadcast realtime.
+- Am continuat strict pe zonele ramase fragile:
+  - normalizarea configului peste presetul metodologiei active;
+  - raspunsul API dupa transition;
+  - state-ul local din Settings dupa apply.
+
+Implementat:
+- backend/routers/projects.py:
+  - `_parse_workflow_config(raw_config, base_config=None)` accepta acum un preset de baza.
+  - `_project_workflow_config(project)` normalizeaza configul peste presetul metodologiei proiectului, nu peste default generic.
+  - `update_project_workflow` normalizeaza peste presetul metodologiei active.
+  - reports overview foloseste workflow config normalizat peste metodologia proiectului.
+  - endpointul `POST /projects/{project_id}/methodology-transition` returneaza `transition: preview` dinainte de aplicare, nu un preview reconstruit dupa ce proiectul a ajuns deja in metodologia tinta.
+- frontend/app/dashboard/settings/page.tsx:
+  - dupa `applyMethodologyTransition`, Settings reseteaza explicit:
+    - `methodology`
+    - `wipLimits`
+    - `boardColumns`
+  - valorile vin din `result.project.workflow_config`, astfel UI-ul nu ramane cu limite/coloane vechi intre tranzitii repetate.
+
+Verificari:
+- `.venv/bin/python -m py_compile backend/routers/projects.py`: OK.
+- Import-test workflow:
+  - `_parse_workflow_config(None, _workflow_config_for_methodology("KANBAN"))`
+  - rezultat: `Intake 5`.
+- `npm run lint`: OK.
+- `npm run build`: OK.
+  - ramane doar warning-ul cunoscut de mediu: `--localstorage-file was provided without a valid path`.
+
+Ce ramane imediat dupa batch CD:
+1. Test functional dupa restart backend:
+   - SCRUMBAN -> SCRUM -> KANBAN -> SCRUMBAN.
+   - verificat Board labels:
+     - SCRUM: Sprint To Do / In Progress / Sprint Review / Done.
+     - KANBAN: Intake / In Progress / Review / Done.
+     - SCRUMBAN: Ready / In Progress / Code Review / Done.
+   - verificat Settings/WIP limits dupa fiecare tranzitie.
+   - verificat ca Backlog apare pentru SCRUM/SCRUMBAN si dispare pentru KANBAN.
+2. Urmatorul punct ramas din plan dupa metodologia end-to-end:
+   - test manual final al fluxurilor critice:
+     - task CRUD/subtask/comment/audit;
+     - calendar availability/events;
+     - DevOps setup/events/PR confirm;
+     - support tickets user/admin;
+     - account settings/avatar/sessions.
+
+
+6.38. BATCH CE - Sanity-check non-distructiv pe fluxurile critice ramase
+
+Context:
+- Inainte de continuare s-a recitit planul si s-au verificat batch-urile recente, ca sa nu se repete implementari deja facute.
+- Batch BV si CD acopera metodologia/workflow; Batch AT/BO acopera deja subtask edit/delete si eliminarea SDLC checklist din codul activ.
+- Acest batch nu introduce feature nou, ci marcheaza verificarea pe backend/frontend activ ca sa nu revenim inutil peste aceleasi zone.
+
+Verificat in cod activ:
+- Task Detail:
+  - edit/delete subtask exista in frontend si backend.
+  - edit/delete comment exista in frontend si backend.
+  - typing indicator exista pentru comentarii.
+  - delete task cu motiv + confirm key exista.
+  - invalidare estimare cu motiv + audit special exista.
+  - `SDLC checklist` mai apare doar in fisiere `.bak`, nu in cod activ.
+- Calendar:
+  - evenimente, recurenta, meeting link, locatie, attendees, delete serie.
+  - availability/concedii/focus time exista in service, backend si pagina Calendar.
+- DevOps:
+  - `/github/events/task/{task_id}` exista in OpenAPI-ul backend activ.
+  - task detail poate consuma events pentru Development Links.
+  - PR confirm endpoint exista.
+- Support:
+  - user support tickets + comentarii + delete.
+  - admin support desk + comentarii + delete.
+
+Sanity-check API pe instanta locala:
+- `GET /projects/mine` cu sesiunea locala:
+  - raspunde cu proiecte multiple:
+    - GradeFlow / SCRUMBAN.
+    - CautAcasa / SCRUM.
+- `GET /projects/invitations/pending`:
+  - raspunde OK.
+- `GET /projects/1/methodology-transition-preview?target=SCRUM`:
+  - `current=SCRUMBAN`, `target=SCRUM`, `can_apply=true`, cu warnings/actions.
+- `GET /github/events/task/1?limit=5`:
+  - raspunde OK, include evenimente `push` si `pull_request`.
+- `GET /calendar/project/1`:
+  - raspunde OK, exista evenimente in calendar.
+- `GET /tasks/project/1?view=board`:
+  - raspunde OK, 59 task-uri in proiectul demo curent.
+
+Verificari tehnice:
+- `.venv/bin/python -m py_compile backend/routers/projects.py backend/routers/tasks.py backend/routers/calendar.py backend/routers/github.py backend/routers/admin.py`: OK.
+- `npm run lint`: OK.
+- `npm run build`: OK.
+  - ramane doar warning-ul cunoscut de mediu: `--localstorage-file was provided without a valid path`.
+
+Ce NU s-a facut in batch CE:
+- Nu s-a aplicat efectiv tranzitia de metodologie, ca sa nu se modifice proiectul demo fara confirmare explicita.
+- Nu s-au creat/sters task-uri, comentarii, tichete sau evenimente de calendar in baza de date.
+
+Ce ramane imediat dupa batch CE:
+1. Test manual explicit, cand vrem sa modificam date:
+   - metodologia: SCRUMBAN -> SCRUM -> KANBAN -> SCRUMBAN.
+   - dupa fiecare pas:
+     - Board labels;
+     - Settings/WIP limits;
+     - Backlog vizibil doar pentru SCRUM/SCRUMBAN;
+     - refresh pe pagini ca sa confirmam persistenta proiectului selectat.
+2. Daca testul manual e OK, urmatorul pas logic este QA UI/UX final:
+   - responsive pe rute principale;
+   - modaluri;
+   - dark/light;
+   - skeleton/loading states;
+   - performanta cautari si filtre.
+3. Daca testul manual pica, se repara strict bug-ul observat, fara reimplementarea batch-urilor deja bifate.
+
+
+6.39. BATCH CF - QA vizual si audit skeleton/performance fara modificari de date
+
+Context:
+- Dupa sanity-check-ul API, urmatorul pas din plan era QA UI/UX final.
+- Tranzitia reala spre KANBAN nu a fost rulata automat, deoarece endpointul inchide sprintul activ si muta task-uri deschise din sprint in flow. Acesta este un test care modifica datele demo si trebuie facut intentionat.
+
+Audit vizual Playwright:
+- Rulat:
+  - `NODE_PATH=frontend/node_modules SDLC_BASE_URL=http://127.0.0.1:3000 node scripts/visual_audit_playwright.js`
+- Rezultat:
+  - raport: `/tmp/sdlc-visual-audit/report.json`
+  - `findings: []`
+
+Audit skeleton/loading:
+- Exista skeleton-uri active pentru:
+  - Global Admin Console;
+  - Dashboard layout;
+  - Dashboard principal;
+  - Activity;
+  - Tasks list;
+  - Task Detail;
+  - Board;
+  - Backlog;
+  - Calendar;
+  - DevOps;
+  - Pull Requests;
+  - Documentation;
+  - Reports;
+  - Workload;
+  - Team;
+  - Account;
+  - Notifications;
+  - Support.
+- Concluzie:
+  - nu se adauga skeleton-uri duplicate in acest moment.
+
+Audit performance cautari/filtre:
+- Tasks list:
+  - foloseste deja `useDeferredValue(query)`.
+  - filtrarea este memoizata cu `useMemo`.
+- Activity:
+  - foloseste deja `useDeferredValue(searchTerm)`.
+  - filtrarea/sortarea este memoizata cu `useMemo`.
+  - lista este paginata incremental prin `visibleActivityCount`.
+- Concluzie:
+  - nu exista un fix evident de performanta de aplicat fara un bug concret observat in profilare.
+
+Ce ramane imediat dupa batch CF:
+1. Test manual cu date modificate, daca acceptam sa alteram proiectul demo:
+   - SCRUMBAN -> SCRUM -> KANBAN -> SCRUMBAN.
+   - atentie: trecerea in KANBAN inchide sprintul activ si scoate task-urile nedone din sprint.
+2. Verificare manuala interactiva pe UI:
+   - create/edit/delete task;
+   - subtask edit/delete/toggle;
+   - comment edit/delete + typing realtime;
+   - support ticket user/admin;
+   - calendar event + availability;
+   - DevOps PR confirm si development links in Task Detail.
+3. Daca utilizatorul observa lag concret:
+   - profilare in browser/Playwright pe ruta exacta;
+   - optimizare punctuala a componentei care produce re-render greu.
+
+
 7. OBSERVATII IMPORTANTE
 
 - Nu sterge fisierele .bak_batch si scripturile batch fara confirmare; au fost folosite ca backup/istoric.
@@ -4547,3 +4880,456 @@ Ce ramane imediat dupa batch BZ4:
 - Dupa modificari backend cu modele/tabele, creeaza migrare Alembic si ruleaza upgrade head.
 - Dupa modificari frontend, ruleaza lint si build.
 - Daca schimbi comportamentul metodologiilor, verifica mereu toate cele trei moduri: SCRUM, KANBAN, SCRUMBAN.
+
+
+6.40. BATCH CG - Lista finala de polish/bugfix observata in QA manual
+
+Context:
+- Dupa testarea automata cu 170 PASS / 0 FAIL au aparut observatii manuale de UI/UX si cateva bug-uri functionale.
+- Acestea sunt impartite pe batch-uri ca sa se poata lucra incremental, fara reimplementarea functionalitatilor deja bifate.
+
+Implementat in primul pas al Batch CG:
+- frontend/app/dashboard/tasks/page.tsx:
+  - pagina Tasks nu mai cere mereu `/projects/mine` cand exista deja proiect curent in store.
+  - cardurile metrice folosesc `focus-visible` si stari active mai subtile, ca sa nu ramana nuante/dubluri vizuale dupa click.
+- frontend/app/dashboard/workload/page.tsx:
+  - reassign/unassign face update optimist in UI.
+  - bug fix: `assignee_id: null` este trimis corect pentru unassign, nu `undefined`.
+  - dupa reassign nu se mai porneste skeleton/full refresh; reload-ul este silent in fundal.
+  - AI workload desk a fost separat mai clar pe layout, fara sa para lipit de margini.
+- frontend/app/dashboard/board/page.tsx:
+  - board-ul foloseste scroll unic pe pagina, nu scroll separat in fiecare coloana.
+  - coloanele au suprafata mai mare de drop, pentru cazurile in care o coloana este mult mai lunga decat alta.
+  - pentru metodologia SCRUM, ruta directa `/dashboard/board` afiseaza o stare explicita care trimite spre Backlog/Tasks.
+- frontend/components/dashboard/app-sidebar.tsx:
+  - Board nu mai apare in sidebar pentru proiectele SCRUM.
+  - schimbarea proiectului nu mai forteaza `router.refresh()`.
+- backend/routers/projects.py si backend/routers/tasks.py:
+  - limita pentru activity a fost ridicata la 1000.
+- frontend/app/dashboard/activity/page.tsx:
+  - Activity cere pana la 1000 evenimente si le afiseaza incremental.
+- frontend/app/dashboard/devops/page.tsx:
+  - selectorul de proiect a fost eliminat din DevOps.
+  - link-ul catre Repository settings apare doar pentru Project Owner / Global Admin.
+
+Ce ramane pentru urmatoarele batch-uri:
+1. Documentation:
+   - redesign pentru zona Generate + lista de pagini.
+   - separare mai clara intre actiunea AI si browsing-ul documentatiei.
+2. Calendar:
+   - repoziționare / redesign pentru panoul Upcoming.
+   - verificat mobile si empty states.
+3. Backlog / Sprints:
+   - edit sprint.
+   - delete sprint.
+   - permisiuni dedicate in Settings pentru cine poate edita/sterge sprinturi.
+   - redesign backlog pentru planificare mai rapida.
+4. Team:
+   - redesign complet pentru Team hierarchy, mai vizual si mai usor de inteles.
+5. Settings:
+   - upload icon/logo proiect direct din Project Settings.
+   - conectat la header/sidebar/workspace switcher.
+6. Account:
+   - redesign modern, mai bine organizat pe grid si sectiuni.
+   - pastrat avatar upload, proiecte, roluri, sesiuni active si security log.
+7. DevOps:
+   - verificat cu rol non-owner ca repository settings nu mai sunt accesibile din pagina DevOps.
+   - verificat ca Pull Requests si events raman read-only pentru membrii fara permisiuni.
+8. QA final:
+   - Playwright screenshots pentru dark/light + mobile pe rutele atinse.
+   - profilare pe Tasks/Workload daca se mai simte lag la cautare sau drag/drop.
+
+
+6.41. BATCH CH - Observatii noi pentru finalizare UI/UX si functionalitati lipsa
+
+Context:
+- Dupa batch CG, au ramas observatii manuale pe performanta, notificari, Board drag/drop si permisiuni.
+- Acest batch trebuie lucrat incremental, cu verificari Playwright/manuale dupa fiecare grup de modificari.
+
+Implementat in primul pas al Batch CH:
+- frontend/app/layout.tsx:
+  - toast-urile globale Sonner apar jos-dreapta, nu sus.
+- frontend/app/dashboard/board/page.tsx:
+  - coloanele de Board sunt drop-zone-uri reale, nu coloane sortable.
+  - detectia de drop foloseste pozitia pointerului inainte de fallback, ca sa nu mai aleaga gresit o coloana indepartata.
+  - overlay-ul taskului mutat nu mai este rotit.
+  - coloanele nu mai forteaza inaltimea intregii pagini cand alte coloane sunt mai lungi.
+- frontend/app/dashboard/tasks/page.tsx:
+  - cautarea are input local cu debounce, ca pagina sa nu refaca lista grea la fiecare tasta.
+- frontend/components/dashboard/app-sidebar.tsx:
+  - link-ul Settings apare si pentru roluri care au permisiuni reale relevante, nu doar pentru roluri cu nume de admin.
+- frontend/app/(auth)/login/page.tsx si frontend/app/(auth)/register/page.tsx:
+  - erorile sunt afisate si ca bannere persistente in formular, nu doar ca toast.
+- frontend/app/dashboard/notifications/page.tsx:
+  - pagina Notifications a fost redesenata ca centru de notificari.
+  - include metrici Total/Unread/Handled.
+  - include filtre pentru search, status si tip notificare.
+  - randurile au actiune vizibila pentru deschiderea obiectului legat.
+
+Ce ramane pentru urmatoarele batch-uri:
+1. Notifications:
+   - adaugat filtru per proiect, daca notificarile globale devin aglomerate.
+   - verificat toast realtime cu link/actiune catre notificare/task.
+2. Global Admin:
+   - tab nou "Regression Testing".
+   - backend endpoint pornit doar de Global Admin pentru rulare teste Playwright/regression.
+   - log-uri de executie, status per test, durata si istoric rulari.
+   - seed/test suite dedicat pentru smoke UI + flows critice.
+3. Tasks performance:
+   - profilare ruta `/dashboard/tasks` dupa debounce.
+   - daca mai exista lag, split pe componente memoizate sau virtualizare randuri.
+4. Project permissions / Settings:
+   - in Settings se afiseaza doar sectiunile pentru care utilizatorul are permisiune.
+   - Role Permissions, AI provider, GitHub settings, Danger Zone si Workflow trebuie separate pe permisiuni dedicate.
+5. Ownership transfer:
+   - mecanism pentru transfer owner catre membru existent.
+   - mecanism pentru transfer/invitatie owner pe email.
+   - confirmare securizata si audit log special.
+6. Multi-project invitations:
+   - pagina in Account/Profile pentru invitatii pending.
+   - utilizatorul deja inregistrat poate accepta invitatii spre proiecte suplimentare.
+   - onboarding nu trebuie sa fie singura cale de join.
+7. Board:
+   - verificare manuala drag/drop pe coloane cu inaltimi diferite.
+   - daca bug-ul persista, se adauga test Playwright cu drag pe coordonate si fallback custom pentru empty lanes.
+8. Backlog / Sprints:
+   - edit sprint.
+   - delete sprint.
+   - permisiuni dedicate pentru edit/delete sprint.
+9. Documentation:
+   - redesign pentru Generate + lista.
+10. Calendar:
+   - redesign Upcoming si verificare mobile.
+11. Team:
+   - redesign Team hierarchy.
+12. Settings:
+   - upload icon/logo proiect direct din Project Settings.
+13. Account:
+   - redesign modern pe grid, cu proiecte, roluri, sesiuni si security log.
+
+
+6.42. BATCH CI - Settings permission-aware pe sectiuni
+
+Context:
+- Daca un rol primea o permisiune relevanta, link-ul Settings putea aparea in sidebar, dar pagina Settings era inca tratata prea mult ca all-or-nothing.
+- De asemenea, zone sensibile precum AI provider, GitHub repository settings, Role permissions si Danger Zone nu trebuiau sa apara tuturor celor care intra in Settings.
+
+Implementat:
+- frontend/app/dashboard/settings/page.tsx:
+  - accesul in Settings este permis pentru orice utilizator cu una dintre permisiunile relevante:
+    - `SETTINGS_MANAGE`;
+    - `PROJECT_UPDATE`;
+    - `PROJECT_DELETE`;
+    - `ROLE_MANAGE`;
+    - owner pentru AI provider;
+    - owner/global admin pentru GitHub repository settings.
+  - sectiunea General:
+    - campurile de nume/descriere sunt editabile doar cu `PROJECT_UPDATE`.
+    - selectorul de metodologie apare doar cu `SETTINGS_MANAGE`.
+  - Project AI provider:
+    - apare doar pentru project owner.
+  - Repository integration:
+    - apare doar pentru project owner / global admin.
+  - WIP limits / Board workflow:
+    - apare doar cu `SETTINGS_MANAGE`.
+  - Role permissions:
+    - apare doar cu `ROLE_MANAGE`.
+  - Project audit trail:
+    - apare doar cu `SETTINGS_MANAGE`, pentru ca endpointul backend cere aceasta permisiune.
+  - Danger Zone:
+    - apare doar cu `PROJECT_DELETE`.
+  - save-ul proiectului nu mai presupune automat `SETTINGS_MANAGE`; salveaza identitatea proiectului doar daca exista `PROJECT_UPDATE`, iar metodologia doar daca exista `SETTINGS_MANAGE`.
+
+Verificari:
+- `npm run lint`: OK.
+- `npm run build`: OK.
+  - ramane doar warning-ul cunoscut de mediu: `--localstorage-file was provided without a valid path`.
+
+
+6.50. BATCH CQ - Board drop zone fix pentru coloane lungi/scurte
+
+Context:
+- Pe Board, cand o coloana era mult mai lunga decat alta, drag & drop-ul devenea greu sau imposibil in zona joasa a coloanelor scurte.
+- Cauza probabila: droppable-ul coloanei scurte se termina dupa continut/min-height, deci mai jos pe scroll nu mai exista suprafata de drop.
+
+Implementat:
+- frontend/app/dashboard/board/page.tsx:
+  - coloanele au acum `min-h-[calc(100vh-260px)]`.
+  - continutul coloanei foloseste `flex-1`, astfel droppable-ul acopera toata inaltimea coloanei.
+  - randul de coloane foloseste `md:items-stretch`, nu `md:items-start`, ca toate coloanele sa se intinda coerent cand una devine mai lunga.
+
+Verificari:
+- `npm run lint`: OK.
+- `npm run build`: OK.
+  - ramane doar warning-ul cunoscut de mediu: `--localstorage-file was provided without a valid path`.
+
+Ce ramane imediat dupa batch CI:
+1. Ownership transfer:
+   - transfer owner catre membru existent.
+   - transfer/invitatie owner catre email extern.
+   - confirmare securizata si audit log special.
+2. Multi-project invitations:
+   - pagina Account/Profile pentru invitatii pending.
+   - utilizator existent poate accepta proiecte suplimentare usor.
+3. Global Admin Regression Testing:
+   - tab dedicat in Global Admin.
+   - endpoint backend Global Admin-only pentru pornire teste Playwright/smoke.
+   - log-uri si istoric rulari.
+
+
+6.43. BATCH CJ - Transfer ownership catre membru existent
+
+Context:
+- Era nevoie de o modalitate de mostenire/transfer al proiectului catre altcineva din echipa.
+- Modelul actual are `projects.owner_id`, dar nu avea flux UI/API pentru schimbarea controlata a owner-ului.
+
+Implementat:
+- backend/routers/projects.py:
+  - endpoint nou `POST /projects/{project_id}/ownership/transfer`.
+  - poate fi apelat doar de owner-ul curent.
+  - cere `target_user_id` si `confirmation_key`.
+  - noul owner trebuie sa fie deja membru in proiect.
+  - cheia introdusa trebuie sa fie cheia proiectului.
+  - creeaza `ProjectAuditLog` cu actiunea `PROJECT_OWNERSHIP_TRANSFERRED`.
+  - emite realtime:
+    - `project.changed` catre proiect;
+    - `membership.changed` catre vechiul owner;
+    - `membership.changed` catre noul owner.
+- frontend/services/project.ts:
+  - adaugat `transferProjectOwnership`.
+- frontend/app/dashboard/settings/page.tsx:
+  - pastreaza lista de membri in state.
+  - card nou `Transfer ownership`, vizibil doar pentru project owner.
+  - dropdown pentru selectia unui membru existent.
+  - confirmare prin tastarea cheii proiectului.
+  - dupa transfer reincarca datele Settings si actualizeaza proiectul curent.
+- frontend/components/dashboard/audit-log-event.tsx:
+  - label nou pentru `PROJECT_OWNERSHIP_TRANSFERRED`.
+  - field label pentru `owner_id`.
+
+Verificari:
+- `.venv/bin/python -m py_compile backend/routers/projects.py`: OK.
+- `npm run lint`: OK.
+- `npm run build`: OK.
+  - ramane doar warning-ul cunoscut de mediu: `--localstorage-file was provided without a valid path`.
+
+Observatie:
+- Pentru ca backend-ul local ruleaza fara reload automat, endpointul nou intra in functiune dupa restart backend/start.sh.
+
+Ce ramane imediat dupa batch CJ:
+1. Transfer ownership catre email extern:
+   - necesita model/coloane pentru `pending ownership transfer` sau un tabel dedicat.
+   - flux recomandat:
+     - owner initiaza transfer catre email;
+     - daca userul nu e membru, se creeaza invitatie speciala;
+     - la acceptare, userul devine membru si apoi owner;
+     - audit special + notificari.
+2. Multi-project invitations in Account:
+   - verificat si imbunatatit UX pentru pending invitations.
+3. Global Admin Regression Testing:
+   - tab dedicat + runner Playwright + log-uri.
+
+
+6.44. BATCH CK - Navigatie permission-aware, arhivare si cleanup notificari/avatar
+
+Context:
+- Link-ul Reports trebuia ascuns cand rolul curent nu are acces la rapoarte.
+- Proiectele arhivate trebuiau sa pastreze functionale paginile de suport, notificari si account.
+- Utilizatorul trebuia sa isi poata sterge avatarul deja incarcat.
+- Notificarile trebuiau sa poata fi sterse cu confirmare, fara stergere accidentala.
+
+Implementat:
+- frontend/components/dashboard/app-sidebar.tsx:
+  - `Reports` apare in navigatie doar pentru Owner/Admin/Project Admin sau roluri cu `REPORT_VIEW`.
+  - badge-ul de notificari se actualizeaza si la evenimentul realtime `notification.deleted`.
+- frontend/app/dashboard/layout.tsx:
+  - arhivarea ramane read-only pentru proiect, dar permite acces interactiv la:
+    - `/dashboard/support`;
+    - `/dashboard/account`;
+    - `/dashboard/notifications`.
+- backend/routers/auth.py:
+  - endpoint nou `DELETE /auth/me/avatar`.
+  - sterge referinta avatarului din profil, creeaza security log `AVATAR_DELETED` si emite profile broadcast.
+- frontend/services/auth.ts:
+  - adaugat `deleteCurrentUserAvatar`.
+- frontend/app/dashboard/account/page.tsx:
+  - buton `Remove` langa upload avatar.
+  - dupa stergere actualizeaza user store, account summary si avatarul din pagina/sidebar.
+- backend/routers/notifications.py:
+  - endpoint nou `DELETE /notifications/{notification_id}`.
+  - stergerea este user-scoped si emite `notification.deleted`.
+- frontend/services/notification.ts:
+  - adaugat `deleteNotification`.
+- frontend/app/dashboard/notifications/page.tsx:
+  - fiecare notificare are actiuni separate `Open`/`Mark read` si `Delete`.
+  - stergerea foloseste `ConfirmDialog`.
+  - lista se actualizeaza local si prin realtime.
+
+Verificari:
+- `.venv/bin/python -m py_compile backend/routers/auth.py backend/routers/notifications.py`: OK.
+- `npm run lint`: OK.
+- `npm run build`: OK.
+  - ramane doar warning-ul cunoscut de mediu: `--localstorage-file was provided without a valid path`.
+
+Observatie:
+- Pentru endpointurile noi de backend este necesar restart la backend/start.sh daca serverul ruleaza deja.
+
+
+6.45. BATCH CL - Tasks performance si Workload UX polish
+
+Context:
+- `/dashboard/tasks` se simtea lent, in special cand lista continea multe task-uri.
+- Workload Balancer parea ca isi da refresh dupa schimbarea assignee-ului si designul zonei AI era lipit/dezechilibrat.
+
+Implementat:
+- backend/routers/tasks.py:
+  - endpointul `GET /tasks/project/{project_id}` foloseste `selectinload(Task.assignee)` si `selectinload(Task.team)`.
+  - reduce query-urile lazy pentru `assignee_name`, `assignee_avatar_url` si `team_name`.
+- frontend/app/dashboard/workload/page.tsx:
+  - dupa reassign/rebalancing se pastreaza update-ul optimist local pe success.
+  - refetch complet se face doar cand serverul respinge update-ul.
+  - zona `AI workload desk` a fost refacuta cu doua panouri aerisite, fara separare verticala lipita.
+
+Verificari:
+- `.venv/bin/python -m py_compile backend/routers/tasks.py`: OK.
+- `npm run lint`: OK.
+- `npm run build`: OK.
+  - ramane doar warning-ul cunoscut de mediu: `--localstorage-file was provided without a valid path`.
+
+
+6.46. BATCH CM - Documentation cockpit si Calendar Upcoming
+
+Context:
+- Pagina Documentation avea generatorul si lista de pagini aranjate prea simplu, greu de folosit cand se strang multe pagini.
+- In Calendar, zona Upcoming era pozitionata jos sub filtre si nu se simtea ca parte naturala din workflow.
+
+Implementat:
+- frontend/app/dashboard/documentation/page.tsx:
+  - antet transformat in cockpit cu metrici:
+    - wiki pages;
+    - generated pages;
+    - done tasks;
+    - selected revisions.
+  - generatorul `Generate from Done task` a fost refacut ca panou de lucru cu Select Shadcn si zona de regula/sursa.
+  - lista de pagini are search local si stari clare pentru empty/no results.
+- frontend/app/dashboard/calendar/page.tsx:
+  - `Upcoming` a fost mutat deasupra filtrelor, imediat dupa ziua selectata.
+  - fiecare item Upcoming este clickabil si sare la ziua lui in calendar.
+  - cardul are badge de count si stari active/hover mai clare.
+
+Verificari:
+- `npm run lint`: OK.
+- `npm run build`: OK.
+  - ramane doar warning-ul cunoscut de mediu: `--localstorage-file was provided without a valid path`.
+
+
+6.47. BATCH CN - Backlog sprint edit/delete cu permisiuni
+
+Context:
+- In Backlog exista creare/start sprint, dar lipsea edit/delete sprint.
+- Cerinta era ca aceste actiuni sa fie controlabile din Role permissions, nu expuse tuturor.
+
+Implementat:
+- backend/routers/projects.py:
+  - permisiuni noi:
+    - `SPRINT_UPDATE`;
+    - `SPRINT_DELETE`.
+  - Project Admin primeste implicit aceste permisiuni.
+  - metodologia Kanban dezactiveaza si aceste permisiuni in normalizarea permisiunilor de sprint.
+- frontend/app/dashboard/settings/page.tsx:
+  - grupul `Sprints` include acum:
+    - Create sprints;
+    - Edit sprints;
+    - Start sprints;
+    - Close sprints;
+    - Delete sprints.
+- backend/routers/sprints.py:
+  - endpoint nou `PUT /sprints/{sprint_id}` pentru editare nume, goal, start_date, end_date.
+  - endpoint nou `DELETE /sprints/{sprint_id}` pentru stergere sprint.
+  - delete muta taskurile sprintului inapoi in Backlog.
+  - delete refuza sprinturile active; trebuie completate mai intai.
+  - ambele endpointuri emit `sprint.changed`.
+- frontend/services/sprint.ts:
+  - adaugat `updateSprint`.
+  - adaugat `deleteSprint`.
+- frontend/app/dashboard/backlog/page.tsx:
+  - fiecare sprint are `Edit` daca rolul are `SPRINT_UPDATE`.
+  - fiecare sprint inactiv are `Delete` daca rolul are `SPRINT_DELETE`.
+  - editarea se face intr-un modal.
+  - stergerea foloseste `ConfirmDialog`.
+  - dupa stergere, taskurile locale din sprint sunt mutate inapoi in Backlog.
+
+Verificari:
+- `.venv/bin/python -m py_compile backend/routers/sprints.py backend/routers/projects.py`: OK.
+- `npm run lint`: OK.
+- `npm run build`: OK.
+  - ramane doar warning-ul cunoscut de mediu: `--localstorage-file was provided without a valid path`.
+
+Observatie:
+- Endpointurile noi de sprint necesita restart backend daca serverul local ruleaza deja.
+
+
+6.48. BATCH CO - Project icon upload in Settings
+
+Context:
+- Settings trebuia sa permita schimbarea iconitei proiectului direct din UI.
+- Frontend-ul avea deja tipul `logo_url`, iar unele serializari il mentionau, dar baza de date si endpointurile reale lipseau.
+
+Implementat:
+- backend/models/project.py:
+  - adaugata coloana `Project.logo_url`.
+- backend/alembic/versions/0f1a2b3c4d5e_add_project_logo_url.py:
+  - migrare noua pentru `projects.logo_url`.
+- backend/routers/projects.py:
+  - `_serialize_project` include acum `logo_url`.
+  - endpoint nou `POST /projects/{project_id}/logo`.
+  - endpoint nou `DELETE /projects/{project_id}/logo`.
+  - upload-ul accepta JPG, PNG, WEBP, GIF si SVG pana la 2MB.
+  - fiecare schimbare scrie `ProjectAuditLog`.
+  - fiecare schimbare emite `project.changed`, deci RealtimeBridge poate actualiza workspace-ul curent.
+- frontend/services/project.ts:
+  - adaugat `uploadProjectLogo`.
+  - adaugat `deleteProjectLogo`.
+- frontend/app/dashboard/settings/page.tsx:
+  - cardul General are acum sectiune `Project icon` cu preview, upload si remove.
+  - dupa upload/remove se actualizeaza local `project`, `currentProject` si audit log-ul.
+- frontend/components/dashboard/app-sidebar.tsx:
+  - selectorul de workspace afiseaza logo-ul proiectului daca exista.
+  - lista de workspaces afiseaza logo-ul fiecarui proiect daca exista.
+
+Verificari:
+- `.venv/bin/python -m py_compile backend/models/project.py backend/routers/projects.py`: OK.
+- `npm run lint`: OK.
+- `npm run build`: OK.
+  - ramane doar warning-ul cunoscut de mediu: `--localstorage-file was provided without a valid path`.
+
+Observatie:
+- Trebuie rulat `alembic upgrade head` si restartat backend-ul pentru ca upload-ul de icon proiect sa functioneze pe PostgreSQL.
+
+
+6.49. BATCH CP - Team hierarchy polish
+
+Context:
+- Pagina Team avea arbore functional, dar vizual era prea simplu si nu comunica bine structura echipelor.
+- Cerinta era ca Team hierarchy sa fie mai modern si mai util pentru rolurile de management.
+
+Implementat:
+- frontend/app/dashboard/team/page.tsx:
+  - adaugate metrici in zona Team hierarchy:
+    - root teams;
+    - team tasks;
+    - unassigned members.
+  - cardurile de echipa au fost refacute:
+    - icon dedicat;
+    - highlight pentru `My team`;
+    - statistici Members / Tasks / Subteams;
+    - lista compacta de membri directi;
+    - stare vizuala pentru echipe fara membri.
+  - subechipele sunt afisate intr-un grid responsive in loc sa creasca doar vertical.
+  - `My team view` ramane vizibil pentru rolurile de leadership.
+  - adaugata zona `Unassigned members`, ca Project Admin / managerul sa vada rapid cine nu este inca alocat unei echipe.
+
+Verificari:
+- `npm run lint`: OK.
+- `npm run build`: OK.
+  - ramane doar warning-ul cunoscut de mediu: `--localstorage-file was provided without a valid path`.

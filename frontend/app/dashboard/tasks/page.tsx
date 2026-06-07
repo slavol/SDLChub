@@ -32,6 +32,7 @@ import { UserAvatar } from "@/components/user-avatar";
 import { useProjectPermissions } from "@/hooks/use-project-permissions";
 import { useDebouncedRealtimeEvent } from "@/hooks/use-realtime-event";
 import { getApiErrorMessage } from "@/lib/api-error";
+import { pickWorkspaceProject } from "@/lib/project-selection";
 import { cn } from "@/lib/utils";
 import { getMyProjects, getProjectMembers, Project, ProjectMember } from "@/services/project";
 import { getProjectSprints, Sprint } from "@/services/sprint";
@@ -147,6 +148,42 @@ function TasksListSkeleton() {
   );
 }
 
+function TaskSearchInput({
+  value,
+  onValueChange,
+}: {
+  value: string;
+  onValueChange: (value: string) => void;
+}) {
+  const [draft, setDraft] = useState(value);
+
+  useEffect(() => {
+    setDraft(value);
+  }, [value]);
+
+  useEffect(() => {
+    if (draft === value) return;
+
+    const timer = window.setTimeout(() => {
+      onValueChange(draft);
+    }, 220);
+
+    return () => window.clearTimeout(timer);
+  }, [draft, onValueChange, value]);
+
+  return (
+    <div className="relative sm:col-span-2 lg:col-span-3 2xl:col-span-1">
+      <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+      <Input
+        value={draft}
+        onChange={(event) => setDraft(event.target.value)}
+        placeholder="Search key, title, assignee..."
+        className="h-10 border-slate-700 bg-slate-950 pl-9"
+      />
+    </div>
+  );
+}
+
 export default function TasksListPage() {
   const { currentProject, setCurrentProject } = useProjectStore();
 
@@ -175,11 +212,12 @@ export default function TasksListPage() {
     if (showLoader) setLoading(true);
 
     try {
-      const projects = await getMyProjects();
-      const selectedProject =
-        currentProject && projects.some((item) => item.id === currentProject.id)
-          ? currentProject
-          : projects[0];
+      let selectedProject = currentProject;
+
+      if (!selectedProject) {
+        const projects = await getMyProjects();
+        selectedProject = pickWorkspaceProject(projects, currentProject);
+      }
 
       if (!selectedProject) {
         setProject(null);
@@ -190,7 +228,9 @@ export default function TasksListPage() {
       }
 
       setProject(selectedProject);
-      setCurrentProject(selectedProject);
+      if (currentProject?.id !== selectedProject.id) {
+        setCurrentProject(selectedProject);
+      }
 
       const [remoteTasks, remoteMembers, remoteSprints] = await Promise.all([
         getProjectTasks(selectedProject.id, "backlog"),
@@ -372,8 +412,8 @@ export default function TasksListPage() {
             type="button"
             onClick={() => setStatusFilter(statusFilter === TaskStatus.DONE ? "all" : TaskStatus.DONE)}
             className={cn(
-              "rounded-2xl border border-slate-800 bg-slate-900 p-4 text-left text-slate-50 transition hover:border-emerald-500/35 hover:bg-emerald-500/5 focus:outline-none focus:ring-2 focus:ring-emerald-500/35",
-              statusFilter === TaskStatus.DONE && "border-emerald-500/45 bg-emerald-500/10"
+              "rounded-2xl border border-slate-800 bg-slate-900 p-4 text-left text-slate-50 transition hover:border-emerald-500/35 hover:bg-emerald-500/[0.04] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/25",
+              statusFilter === TaskStatus.DONE && "border-emerald-500/35 bg-emerald-500/[0.06]"
             )}
           >
             <CheckCircle2 className="mb-3 h-5 w-5 text-emerald-300" />
@@ -385,8 +425,8 @@ export default function TasksListPage() {
             type="button"
             onClick={() => setDueFilter(dueFilter === "overdue" ? "all" : "overdue")}
             className={cn(
-              "rounded-2xl border border-slate-800 bg-slate-900 p-4 text-left text-slate-50 transition hover:border-rose-500/35 hover:bg-rose-500/5 focus:outline-none focus:ring-2 focus:ring-rose-500/35",
-              dueFilter === "overdue" && "border-rose-500/45 bg-rose-500/10"
+              "rounded-2xl border border-slate-800 bg-slate-900 p-4 text-left text-slate-50 transition hover:border-rose-500/35 hover:bg-rose-500/[0.04] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500/25",
+              dueFilter === "overdue" && "border-rose-500/35 bg-rose-500/[0.06]"
             )}
           >
             <AlertTriangle className="mb-3 h-5 w-5 text-rose-300" />
@@ -400,8 +440,8 @@ export default function TasksListPage() {
             type="button"
             onClick={() => setAssigneeFilter(assigneeFilter === "unassigned" ? "all" : "unassigned")}
             className={cn(
-              "rounded-2xl border border-slate-800 bg-slate-900 p-4 text-left text-slate-50 transition hover:border-amber-500/35 hover:bg-amber-500/5 focus:outline-none focus:ring-2 focus:ring-amber-500/35",
-              assigneeFilter === "unassigned" && "border-amber-500/45 bg-amber-500/10"
+              "rounded-2xl border border-slate-800 bg-slate-900 p-4 text-left text-slate-50 transition hover:border-amber-500/35 hover:bg-amber-500/[0.04] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/25",
+              assigneeFilter === "unassigned" && "border-amber-500/35 bg-amber-500/[0.06]"
             )}
           >
             <UserRound className="mb-3 h-5 w-5 text-amber-300" />
@@ -462,16 +502,8 @@ export default function TasksListPage() {
               </div>
             </div>
 
-            <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6">
-                <div className="relative sm:col-span-2 lg:col-span-3 2xl:col-span-1">
-                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
-                  <Input
-                    value={query}
-                    onChange={(event) => setQuery(event.target.value)}
-                    placeholder="Search key, title, assignee..."
-                    className="h-10 border-slate-700 bg-slate-950 pl-9"
-                  />
-                </div>
+            <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-[minmax(260px,1.25fr)_repeat(5,minmax(150px,1fr))]">
+                <TaskSearchInput value={query} onValueChange={setQuery} />
 
                 <Select value={statusFilter} onValueChange={setStatusFilter}>
                   <SelectTrigger className="h-10 w-full border-slate-700 bg-slate-950">

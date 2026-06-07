@@ -1,17 +1,34 @@
 import json
 import secrets
 from datetime import datetime, timedelta
+from pathlib import Path
 from typing import List
+from uuid import uuid4
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
+from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Query, UploadFile, status
 from pydantic import BaseModel
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from backend.database.session import get_db
-from backend.models.project import Invitation, Project, ProjectMember, ProjectTeam, Role, Task, TaskAuditLog
+from backend.models.admin import AiUsageLog
+from backend.models.documentation import DocumentationPage
+from backend.models.github import GitHubEvent, GitHubProjectIntegration
+from backend.models.notification import Notification
+from backend.models.project import (
+    CalendarAvailability,
+    CalendarEvent,
+    Invitation,
+    Project,
+    ProjectAuditLog,
+    ProjectMember,
+    ProjectTeam,
+    Role,
+    Task,
+    TaskAuditLog,
+)
 from backend.models.user import User
-from backend.realtime import broadcast_project_event
+from backend.realtime import broadcast_project_event, broadcast_user_event
 from backend.routers.auth import get_current_user
 from backend.schemas.project import (
     AIRequest,
@@ -48,8 +65,10 @@ PROJECT_ADMIN_PERMISSIONS = {
     "TASK_ASSIGN": True,
     "TASK_MOVE": True,
     "SPRINT_CREATE": True,
+    "SPRINT_UPDATE": True,
     "SPRINT_START": True,
     "SPRINT_CLOSE": True,
+    "SPRINT_DELETE": True,
     "AI_USE": True,
     "REPORT_VIEW": True,
     "SETTINGS_MANAGE": True,
@@ -67,8 +86,10 @@ DEFAULT_ROLE_PERMISSIONS = {
     "TASK_MOVE": True,
     "TEAM_MANAGE": False,
     "SPRINT_CREATE": False,
+    "SPRINT_UPDATE": False,
     "SPRINT_START": False,
     "SPRINT_CLOSE": False,
+    "SPRINT_DELETE": False,
     "AI_USE": True,
     "REPORT_VIEW": True,
     "CALENDAR_CREATE": True,
@@ -76,7 +97,13 @@ DEFAULT_ROLE_PERMISSIONS = {
     "CALENDAR_DELETE": False,
 }
 
-SPRINT_PERMISSION_KEYS = {"SPRINT_CREATE", "SPRINT_START", "SPRINT_CLOSE"}
+SPRINT_PERMISSION_KEYS = {
+    "SPRINT_CREATE",
+    "SPRINT_UPDATE",
+    "SPRINT_START",
+    "SPRINT_CLOSE",
+    "SPRINT_DELETE",
+}
 
 
 class JoinRequest(BaseModel):
@@ -133,6 +160,22 @@ def serialize_invitation(invite: Invitation) -> dict:
         "code": invite.code,
         "status": invite.status,
         "created_at": invite.created_at,
+    }
+
+
+def serialize_project_basic(project: Project) -> dict:
+    return {
+        "id": project.id,
+        "name": project.name,
+        "key": project.key,
+        "description": project.description,
+        "methodology": project.methodology,
+        "workflow_config": project.workflow_config,
+        "ai_config": _serialize_project_ai_config(project),
+        "is_archived": project.is_archived,
+        "owner_id": project.owner_id,
+        "created_at": project.created_at,
+        "logo_url": getattr(project, "logo_url", None),
     }
 
 
@@ -203,6 +246,14 @@ def join_project(
     if existing_member:
         invite.status = "ACCEPTED"
         db.commit()
+        broadcast_user_event(
+            current_user.id,
+            "membership.changed",
+            {
+                "project": serialize_project_basic(existing_member.project) if existing_member.project else None,
+                "status": "already_member",
+            },
+        )
         return {
             "message": "You are already a member of this project.",
             "project": existing_member.project,
@@ -218,6 +269,23 @@ def join_project(
     invite.status = "ACCEPTED"
     db.commit()
     db.refresh(new_member)
+
+    broadcast_user_event(
+        current_user.id,
+        "membership.changed",
+        {
+            "project": serialize_project_basic(new_member.project) if new_member.project else None,
+            "status": "joined",
+        },
+    )
+    broadcast_project_event(
+        invite.project_id,
+        "member.changed",
+        {
+            "member": serialize_member(new_member),
+            "action": "joined",
+        },
+    )
 
     return {
         "message": "Successfully joined project!",
@@ -469,6 +537,11 @@ class UpdateMemberRoleRequest(BaseModel):
     role_id: int
 
 
+class TransferProjectOwnershipRequest(BaseModel):
+    target_user_id: int
+    confirmation_key: str
+
+
 class UpdateRolePermissionsRequest(BaseModel):
     permissions: dict[str, bool]
 
@@ -590,8 +663,8 @@ def _workflow_config_for_methodology(methodology: str) -> dict:
     return json.loads(json.dumps(preset))
 
 
-def _parse_workflow_config(raw_config: str | None) -> dict:
-    config = json.loads(json.dumps(DEFAULT_WORKFLOW_CONFIG))
+def _parse_workflow_config(raw_config: str | None, base_config: dict | None = None) -> dict:
+    config = json.loads(json.dumps(base_config or DEFAULT_WORKFLOW_CONFIG))
     if not raw_config:
         return config
 
@@ -618,10 +691,10 @@ def _parse_workflow_config(raw_config: str | None) -> dict:
 
             config["wip_limits"][status_key] = max(0, normalized_value)
 
-    allowed_statuses = set(DEFAULT_WORKFLOW_CONFIG["wip_limits"].keys())
+    allowed_statuses = set(config["wip_limits"].keys())
     default_columns = {
         column["key"]: column.copy()
-        for column in DEFAULT_WORKFLOW_CONFIG["columns"]
+        for column in config["columns"]
     }
     raw_columns = parsed.get("columns")
     if isinstance(raw_columns, list):
@@ -651,9 +724,10 @@ def _parse_workflow_config(raw_config: str | None) -> dict:
 
 
 def _project_workflow_config(project: Project) -> dict:
+    base_config = _workflow_config_for_methodology(project.methodology)
     if project.workflow_config:
-        return _parse_workflow_config(project.workflow_config)
-    return _workflow_config_for_methodology(project.methodology)
+        return _parse_workflow_config(project.workflow_config, base_config)
+    return base_config
 
 
 def _serialize_project(project: Project) -> dict:
@@ -662,6 +736,7 @@ def _serialize_project(project: Project) -> dict:
         "name": project.name,
         "key": project.key,
         "description": project.description,
+        "logo_url": project.logo_url,
         "methodology": project.methodology,
         "workflow_config": _project_workflow_config(project),
         "is_archived": project.is_archived,
@@ -973,7 +1048,7 @@ def apply_methodology_transition(
 
     return {
         "project": _serialize_project(project),
-        "transition": _build_methodology_transition_preview(db, project, target_methodology),
+        "transition": preview,
         "message": f"Methodology changed from {old_methodology} to {target_methodology}.",
     }
 
@@ -1393,6 +1468,115 @@ def update_project_settings(
     return serialized_project
 
 
+@router.post("/{project_id}/logo")
+async def upload_project_logo(
+    project_id: int,
+    logo: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    ensure_project_member(project_id, current_user.id, db)
+    require_project_permission(db, current_user.id, project_id, "PROJECT_UPDATE")
+
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found.")
+
+    allowed_types = {
+        "image/jpeg": ".jpg",
+        "image/png": ".png",
+        "image/webp": ".webp",
+        "image/gif": ".gif",
+        "image/svg+xml": ".svg",
+    }
+
+    if logo.content_type not in allowed_types:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Project icon must be a JPG, PNG, WEBP, GIF or SVG image.",
+        )
+
+    content = await logo.read()
+    max_size = 2 * 1024 * 1024
+    if len(content) > max_size:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Project icon must be smaller than 2MB.",
+        )
+
+    upload_dir = Path(__file__).resolve().parents[2] / "uploads" / "projects"
+    upload_dir.mkdir(parents=True, exist_ok=True)
+
+    extension = allowed_types[logo.content_type]
+    filename = f"project-{project.id}-{uuid4().hex}{extension}"
+    destination = upload_dir / filename
+    destination.write_bytes(content)
+
+    previous_logo = project.logo_url
+    project.logo_url = f"/uploads/projects/{filename}"
+    db.add(
+        ProjectAuditLog(
+            project_id=project.id,
+            actor_id=current_user.id,
+            action="PROJECT_LOGO_UPDATED",
+            field="logo_url",
+            old_value=previous_logo,
+            new_value=project.logo_url,
+        )
+    )
+    db.commit()
+    db.refresh(project)
+
+    serialized_project = _serialize_project(project)
+    broadcast_project_event(
+        project.id,
+        "project.changed",
+        {"action": "logo_updated", "project": serialized_project},
+    )
+
+    return serialized_project
+
+
+@router.delete("/{project_id}/logo")
+def delete_project_logo(
+    project_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    ensure_project_member(project_id, current_user.id, db)
+    require_project_permission(db, current_user.id, project_id, "PROJECT_UPDATE")
+
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found.")
+
+    if project.logo_url:
+        previous_logo = project.logo_url
+        project.logo_url = None
+        db.add(
+            ProjectAuditLog(
+                project_id=project.id,
+                actor_id=current_user.id,
+                action="PROJECT_LOGO_REMOVED",
+                field="logo_url",
+                old_value=previous_logo,
+                new_value=None,
+            )
+        )
+        db.commit()
+        db.refresh(project)
+
+        serialized_project = _serialize_project(project)
+        broadcast_project_event(
+            project.id,
+            "project.changed",
+            {"action": "logo_removed", "project": serialized_project},
+        )
+        return serialized_project
+
+    return _serialize_project(project)
+
+
 def _require_project_owner(project: Project, current_user: User) -> None:
     if project.owner_id == current_user.id or current_user.is_global_admin:
         return
@@ -1572,7 +1756,10 @@ def update_project_workflow(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found.")
 
     old_config = project.workflow_config
-    config = _parse_workflow_config(project.workflow_config)
+    config = _parse_workflow_config(
+        project.workflow_config,
+        _workflow_config_for_methodology(project.methodology),
+    )
 
     if data.wip_limits is not None:
         next_limits = config.get("wip_limits", {}).copy()
@@ -1592,7 +1779,7 @@ def update_project_workflow(
         allowed_statuses = set(DEFAULT_WORKFLOW_CONFIG["wip_limits"].keys())
         default_columns = {
             column["key"]: column.copy()
-            for column in DEFAULT_WORKFLOW_CONFIG["columns"]
+            for column in _workflow_config_for_methodology(project.methodology)["columns"]
         }
         next_columns = {
             column["key"]: column.copy()
@@ -1666,10 +1853,38 @@ def delete_project(
     task_ids = [task.id for task in db.query(Task).filter(Task.project_id == project_id).all()]
 
     if task_ids:
+        db.query(Notification).filter(Notification.task_id.in_(task_ids)).update(
+            {"task_id": None},
+            synchronize_session=False,
+        )
+        db.query(GitHubEvent).filter(GitHubEvent.task_id.in_(task_ids)).update(
+            {"task_id": None},
+            synchronize_session=False,
+        )
+        db.query(DocumentationPage).filter(DocumentationPage.task_id.in_(task_ids)).update(
+            {"task_id": None},
+            synchronize_session=False,
+        )
         db.query(TaskAuditLog).filter(TaskAuditLog.task_id.in_(task_ids)).delete(synchronize_session=False)
         db.query(TaskComment).filter(TaskComment.task_id.in_(task_ids)).delete(synchronize_session=False)
         db.query(Subtask).filter(Subtask.task_id.in_(task_ids)).delete(synchronize_session=False)
 
+    db.query(Notification).filter(Notification.project_id == project_id).update(
+        {"project_id": None},
+        synchronize_session=False,
+    )
+    db.query(AiUsageLog).filter(AiUsageLog.project_id == project_id).update(
+        {"project_id": None},
+        synchronize_session=False,
+    )
+    db.query(GitHubProjectIntegration).filter(
+        GitHubProjectIntegration.project_id == project_id
+    ).delete(synchronize_session=False)
+    db.query(GitHubEvent).filter(GitHubEvent.project_id == project_id).delete(synchronize_session=False)
+    db.query(DocumentationPage).filter(DocumentationPage.project_id == project_id).delete(synchronize_session=False)
+    db.query(CalendarAvailability).filter(CalendarAvailability.project_id == project_id).delete(synchronize_session=False)
+    db.query(CalendarEvent).filter(CalendarEvent.project_id == project_id).delete(synchronize_session=False)
+    db.query(ProjectAuditLog).filter(ProjectAuditLog.project_id == project_id).delete(synchronize_session=False)
     db.query(Task).filter(Task.project_id == project_id).delete(synchronize_session=False)
     db.query(Sprint).filter(Sprint.project_id == project_id).delete(synchronize_session=False)
     db.query(Invitation).filter(Invitation.project_id == project_id).delete(synchronize_session=False)
@@ -1824,6 +2039,16 @@ def invite_project_member(
         code=final_code,
     )
 
+    if existing_user:
+        broadcast_user_event(
+            existing_user.id,
+            "invitation.created",
+            {
+                "invitation": _serialize_project_invitation(invite),
+                "project": serialize_project_basic(project),
+            },
+        )
+
     return _serialize_project_invitation(invite)
 
 
@@ -1957,6 +2182,95 @@ def remove_project_member(
     db.commit()
 
     return {"message": "Member removed."}
+
+
+@router.post("/{project_id}/ownership/transfer")
+def transfer_project_ownership(
+    project_id: int,
+    data: TransferProjectOwnershipRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    project = db.query(Project).filter(Project.id == project_id).first()
+
+    if not project:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found.")
+
+    if project.owner_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only the current project owner can transfer ownership.",
+        )
+
+    if data.confirmation_key.strip().upper() != project.key.upper():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Project key confirmation does not match.",
+        )
+
+    if data.target_user_id == current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Select another project member as the new owner.",
+        )
+
+    target_membership = (
+        db.query(ProjectMember)
+        .filter(
+            ProjectMember.project_id == project_id,
+            ProjectMember.user_id == data.target_user_id,
+        )
+        .first()
+    )
+
+    if not target_membership:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="The new owner must already be a project member.",
+        )
+
+    previous_owner_id = project.owner_id
+    project.owner_id = target_membership.user_id
+
+    db.add(
+        ProjectAuditLog(
+            project_id=project.id,
+            actor_id=current_user.id,
+            action="PROJECT_OWNERSHIP_TRANSFERRED",
+            field="owner_id",
+            old_value=str(previous_owner_id),
+            new_value=str(target_membership.user_id),
+            metadata_json=json.dumps(
+                {
+                    "previous_owner_id": previous_owner_id,
+                    "previous_owner_name": current_user.full_name,
+                    "new_owner_id": target_membership.user_id,
+                    "new_owner_name": target_membership.user.full_name if target_membership.user else None,
+                    "new_owner_email": target_membership.user.email if target_membership.user else None,
+                }
+            ),
+        )
+    )
+
+    db.commit()
+    db.refresh(project)
+    db.refresh(target_membership)
+
+    payload = {
+        "project": _serialize_project(project),
+        "previous_owner_id": previous_owner_id,
+        "new_owner": serialize_member(target_membership),
+    }
+
+    broadcast_project_event(project.id, "project.changed", payload)
+    broadcast_user_event(previous_owner_id, "membership.changed", payload)
+    broadcast_user_event(target_membership.user_id, "membership.changed", payload)
+
+    return {
+        "project": _serialize_project(project),
+        "new_owner": serialize_member(target_membership),
+        "message": "Project ownership transferred.",
+    }
 
 
 
@@ -2844,7 +3158,10 @@ def _build_reports_overview(db: Session, project_id: int) -> dict:
     status_order = ["TODO", "IN_PROGRESS", "REVIEW", "DONE"]
     priority_order = ["LOW", "MEDIUM", "HIGH", "CRITICAL"]
 
-    workflow_config = _parse_workflow_config(project.workflow_config if project else None)
+    workflow_config = _parse_workflow_config(
+        project.workflow_config if project else None,
+        _workflow_config_for_methodology(project.methodology) if project else None,
+    )
     workflow_columns = {
         str(column.get("key", "")).upper(): column
         for column in workflow_config.get("columns", [])
@@ -3622,7 +3939,7 @@ def get_project_activity(
 
     from datetime import datetime, timedelta
 
-    safe_limit = max(1, min(limit, 200))
+    safe_limit = max(1, min(limit, 1000))
 
     query = (
         db.query(TaskAuditLog, Task)
