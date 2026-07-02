@@ -324,12 +324,12 @@ export default function SettingsPage() {
   const canViewProjectAudit = canManageSettings;
   const canAccessSettingsPage = Boolean(
     canManageSettings ||
-      canUpdateProject ||
-      canDeleteProject ||
-      canManageRoles ||
-      canManageGithub ||
-      canManageAi ||
-      canTransferOwnership
+    canUpdateProject ||
+    canDeleteProject ||
+    canManageRoles ||
+    canManageGithub ||
+    canManageAi ||
+    canTransferOwnership
   );
 
   const selectedRole = useMemo(
@@ -1106,675 +1106,675 @@ export default function SettingsPage() {
         <section className="grid min-w-0 gap-6 xl:grid-cols-[minmax(0,1fr)_420px]">
           <div className="space-y-6">
             {(canUpdateProject || canManageSettings) && (
-            <Card className="border-slate-800 bg-slate-900 text-slate-50">
-              <CardHeader className="border-b border-slate-800">
-                <CardTitle className="flex items-center gap-2 text-base">
-                  <Settings className="h-5 w-5 text-blue-300" />
-                  General
-                </CardTitle>
-              </CardHeader>
+              <Card className="border-slate-800 bg-slate-900 text-slate-50">
+                <CardHeader className="border-b border-slate-800">
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <Settings className="h-5 w-5 text-blue-300" />
+                    General
+                  </CardTitle>
+                </CardHeader>
 
-              <CardContent className="space-y-5 p-5">
-                <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_220px]">
-                  <div className="space-y-2">
-                    <Label>Project name</Label>
-                    <Input
-                      value={projectName}
-                      onChange={(event) => setProjectName(event.target.value)}
-                      disabled={!canUpdateProject}
-                      className="h-11 border-slate-700 bg-slate-950"
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label>Project key</Label>
-                    <Input
-                      value={project.key}
-                      disabled
-                      className="h-11 border-slate-800 bg-slate-950 font-mono text-slate-500"
-                    />
-                  </div>
-                </div>
-
-                <div className="rounded-2xl border border-slate-800 bg-slate-950 p-4">
-                  <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                    <div className="flex min-w-0 items-center gap-4">
-                      <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-blue-500/25 bg-blue-500/10 text-sm font-black text-blue-200 shadow-lg shadow-blue-950/20">
-                        {projectLogoUrl ? (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img
-                            src={projectLogoUrl}
-                            alt={`${project.name} icon`}
-                            className="h-full w-full object-cover"
-                          />
-                        ) : (
-                          projectInitials
-                        )}
-                      </div>
-
-                      <div className="min-w-0">
-                        <p className="font-semibold text-white">Project icon</p>
-                        <p className="mt-1 text-sm leading-6 text-slate-500">
-                          Upload a square SVG, PNG, JPG, WEBP or GIF. Maximum size 2MB.
-                        </p>
-                      </div>
+                <CardContent className="space-y-5 p-5">
+                  <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_220px]">
+                    <div className="space-y-2">
+                      <Label>Project name</Label>
+                      <Input
+                        value={projectName}
+                        onChange={(event) => setProjectName(event.target.value)}
+                        disabled={!canUpdateProject}
+                        className="h-11 border-slate-700 bg-slate-950"
+                      />
                     </div>
 
-                    <div className="flex flex-wrap gap-2">
-                      <input
-                        id="project-logo-input"
-                        type="file"
-                        accept="image/jpeg,image/png,image/webp,image/gif,image/svg+xml"
-                        className="hidden"
-                        disabled={!canUpdateProject || uploadingProjectLogo}
-                        onChange={handleProjectLogoUpload}
+                    <div className="space-y-2">
+                      <Label>Project key</Label>
+                      <Input
+                        value={project.key}
+                        disabled
+                        className="h-11 border-slate-800 bg-slate-950 font-mono text-slate-500"
                       />
-                      <Button
-                        type="button"
-                        variant="outline"
-                        onClick={() => document.getElementById("project-logo-input")?.click()}
-                        disabled={!canUpdateProject || uploadingProjectLogo}
-                        className="h-10 border-slate-700 bg-slate-900 text-slate-100 hover:bg-slate-800"
-                      >
-                        {uploadingProjectLogo ? (
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        ) : (
-                          <Camera className="mr-2 h-4 w-4" />
-                        )}
-                        Upload icon
-                      </Button>
+                    </div>
+                  </div>
 
-                      {project.logo_url && (
+                  <div className="rounded-2xl border border-slate-800 bg-slate-950 p-4">
+                    <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="flex min-w-0 items-center gap-4">
+                        <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-blue-500/25 bg-blue-500/10 text-sm font-black text-blue-200 shadow-lg shadow-blue-950/20">
+                          {projectLogoUrl ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                              src={projectLogoUrl}
+                              alt={`${project.name} icon`}
+                              className="h-full w-full object-cover"
+                            />
+                          ) : (
+                            projectInitials
+                          )}
+                        </div>
+
+                        <div className="min-w-0">
+                          <p className="font-semibold text-white">Project icon</p>
+                          <p className="mt-1 text-sm leading-6 text-slate-500">
+                            Upload a square SVG, PNG, JPG, WEBP or GIF. Maximum size 2MB.
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex flex-wrap gap-2">
+                        <input
+                          id="project-logo-input"
+                          type="file"
+                          accept="image/jpeg,image/png,image/webp,image/gif,image/svg+xml"
+                          className="hidden"
+                          disabled={!canUpdateProject || uploadingProjectLogo}
+                          onChange={handleProjectLogoUpload}
+                        />
                         <Button
                           type="button"
                           variant="outline"
-                          onClick={handleProjectLogoDelete}
-                          disabled={!canUpdateProject || removingProjectLogo}
-                          className="h-10 border-red-500/30 bg-red-500/10 text-red-100 hover:bg-red-500/15"
+                          onClick={() => document.getElementById("project-logo-input")?.click()}
+                          disabled={!canUpdateProject || uploadingProjectLogo}
+                          className="h-10 border-slate-700 bg-slate-900 text-slate-100 hover:bg-slate-800"
                         >
-                          {removingProjectLogo ? (
+                          {uploadingProjectLogo ? (
                             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                           ) : (
-                            <Trash2 className="mr-2 h-4 w-4" />
+                            <Camera className="mr-2 h-4 w-4" />
                           )}
-                          Remove
+                          Upload icon
                         </Button>
-                      )}
+
+                        {project.logo_url && (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            onClick={handleProjectLogoDelete}
+                            disabled={!canUpdateProject || removingProjectLogo}
+                            className="h-10 border-red-500/30 bg-red-500/10 text-red-100 hover:bg-red-500/15"
+                          >
+                            {removingProjectLogo ? (
+                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            ) : (
+                              <Trash2 className="mr-2 h-4 w-4" />
+                            )}
+                            Remove
+                          </Button>
+                        )}
+                      </div>
                     </div>
                   </div>
-                </div>
 
-                <div className="space-y-2">
-                  <Label>Description</Label>
-                  <Textarea
-                    value={description}
-                    onChange={(event) => setDescription(event.target.value)}
-                    disabled={!canUpdateProject}
-                    className="min-h-28 border-slate-700 bg-slate-950"
-                    placeholder="Describe what this project is about."
-                  />
-                </div>
-
-                {canManageSettings && (
-                <div className="grid gap-4 lg:grid-cols-[260px_minmax(0,1fr)]">
                   <div className="space-y-2">
-                    <Label>Methodology</Label>
-                    <Select value={methodology} onValueChange={setMethodology}>
-                      <SelectTrigger className="h-11 border-slate-700 bg-slate-950">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent className="border-slate-800 bg-slate-900 text-slate-200">
-                        <SelectItem value="SCRUM">SCRUM</SelectItem>
-                        <SelectItem value="KANBAN">KANBAN</SelectItem>
-                        <SelectItem value="SCRUMBAN">SCRUMBAN</SelectItem>
-                      </SelectContent>
-                    </Select>
+                    <Label>Description</Label>
+                    <Textarea
+                      value={description}
+                      onChange={(event) => setDescription(event.target.value)}
+                      disabled={!canUpdateProject}
+                      className="min-h-28 border-slate-700 bg-slate-950"
+                      placeholder="Describe what this project is about."
+                    />
                   </div>
 
-                  <div className="rounded-2xl border border-slate-800 bg-slate-950 p-4">
-                    <div className="flex items-center gap-2">
-                      <CheckCircle2 className="h-4 w-4 text-emerald-300" />
-                      <p className="font-medium text-white">{methodology}</p>
-                    </div>
-                    <p className="mt-2 text-sm leading-6 text-slate-400">
-                      {METHODOLOGY_HELP[methodology]}
-                    </p>
-                  </div>
-                </div>
-                )}
-              </CardContent>
-            </Card>
-            )}
-
-            {canManageAi && (
-            <Card className="border-slate-800 bg-slate-900 text-slate-50">
-              <CardHeader className="border-b border-slate-800">
-                <CardTitle className="flex items-center gap-2 text-base">
-                  <Bot className="h-5 w-5 text-violet-300" />
-                  Project AI provider
-                </CardTitle>
-              </CardHeader>
-
-              <CardContent className="space-y-5 p-5">
-                <div className="rounded-2xl border border-violet-500/20 bg-violet-500/10 p-4">
-                  <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                    <div>
-                      <p className="font-semibold text-violet-100">
-                        Choose how this project uses AI
-                      </p>
-                      <p className="mt-2 text-sm leading-6 text-violet-100/75">
-                        Use the platform AI key or provide a project-owned provider.
-                        Custom keys are encrypted server-side and are never sent back to the browser.
-                      </p>
-                    </div>
-                    <Badge
-                      variant="outline"
-                      className="w-fit border-violet-400/30 bg-violet-500/10 text-violet-100"
-                    >
-                      {aiConfig?.mode || "PLATFORM"} · {aiConfig?.provider_name || aiConfig?.provider || "Gemini"}
-                    </Badge>
-                  </div>
-                </div>
-
-                {!isProjectOwner ? (
-                  <div className="rounded-2xl border border-slate-800 bg-slate-950 p-4">
-                    <p className="text-sm font-semibold text-slate-200">
-                      Owner-only setting
-                    </p>
-                    <p className="mt-2 text-sm leading-6 text-slate-500">
-                      Only the project owner can add or rotate AI credentials.
-                    </p>
-                  </div>
-                ) : (
-                  <>
+                  {canManageSettings && (
                     <div className="grid gap-4 lg:grid-cols-[260px_minmax(0,1fr)]">
                       <div className="space-y-2">
-                        <Label>AI mode</Label>
-                        <Select
-                          value={aiMode}
-                          onValueChange={(value) =>
-                            setAiMode(value as "PLATFORM" | "PROJECT")
-                          }
-                        >
+                        <Label>Methodology</Label>
+                        <Select value={methodology} onValueChange={setMethodology}>
                           <SelectTrigger className="h-11 border-slate-700 bg-slate-950">
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent className="border-slate-800 bg-slate-900 text-slate-200">
-                            <SelectItem value="PLATFORM">Platform AI key</SelectItem>
-                            <SelectItem value="PROJECT">Project-owned key</SelectItem>
+                            <SelectItem value="SCRUM">SCRUM</SelectItem>
+                            <SelectItem value="KANBAN">KANBAN</SelectItem>
+                            <SelectItem value="SCRUMBAN">SCRUMBAN</SelectItem>
                           </SelectContent>
                         </Select>
                       </div>
 
-                      <div className="grid gap-3 sm:grid-cols-2">
-                        <div className="rounded-2xl border border-slate-800 bg-slate-950 p-4">
-                          <p className="text-xs uppercase tracking-[0.16em] text-slate-600">
-                            Platform key
-                          </p>
-                          <p className="mt-2 text-sm font-semibold text-white">
-                            {aiConfig?.platform_configured ? "Configured" : "Not configured"}
-                          </p>
+                      <div className="rounded-2xl border border-slate-800 bg-slate-950 p-4">
+                        <div className="flex items-center gap-2">
+                          <CheckCircle2 className="h-4 w-4 text-emerald-300" />
+                          <p className="font-medium text-white">{methodology}</p>
                         </div>
-                        <div className="rounded-2xl border border-slate-800 bg-slate-950 p-4">
-                          <p className="text-xs uppercase tracking-[0.16em] text-slate-600">
-                            Project key
-                          </p>
-                          <p className="mt-2 text-sm font-semibold text-white">
-                            {aiConfig?.has_project_key ? "Stored encrypted" : "Not added"}
-                          </p>
-                        </div>
+                        <p className="mt-2 text-sm leading-6 text-slate-400">
+                          {METHODOLOGY_HELP[methodology]}
+                        </p>
                       </div>
                     </div>
+                  )}
+                </CardContent>
+              </Card>
+            )}
 
-                    {aiMode === "PROJECT" && (
-                      <div className="space-y-4">
-                        <div className="grid gap-4 lg:grid-cols-[240px_minmax(0,1fr)]">
-                          <div className="space-y-2">
-                            <Label>Provider type</Label>
-                            <Select
-                              value={aiProvider}
-                              onValueChange={(value) => {
-                                setAiProvider(value);
-                                if (value === "GEMINI") {
-                                  setAiProviderName("Gemini");
-                                  setAiBaseUrl("");
-                                  setAiModel((current) => current || "gemini-2.5-flash");
-                                } else {
-                                  setAiProviderName("Custom AI");
-                                  setAiModel((current) => current || "gpt-4o-mini");
-                                }
-                              }}
-                            >
-                              <SelectTrigger className="h-11 border-slate-700 bg-slate-950">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent className="border-slate-800 bg-slate-900 text-slate-200">
-                                <SelectItem value="GEMINI">Gemini API</SelectItem>
-                                <SelectItem value="OPENAI_COMPATIBLE">
-                                  OpenAI-compatible / custom
-                                </SelectItem>
-                              </SelectContent>
-                            </Select>
-                          </div>
+            {canManageAi && (
+              <Card className="border-slate-800 bg-slate-900 text-slate-50">
+                <CardHeader className="border-b border-slate-800">
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <Bot className="h-5 w-5 text-violet-300" />
+                    Project AI provider
+                  </CardTitle>
+                </CardHeader>
 
-                          <div className="space-y-2">
-                            <Label>Provider display name</Label>
-                            <Input
-                              value={aiProviderName}
-                              onChange={(event) => setAiProviderName(event.target.value)}
-                              placeholder="e.g. OpenRouter Production, Groq, Company AI"
-                              className="h-11 border-slate-700 bg-slate-950"
-                            />
-                          </div>
+                <CardContent className="space-y-5 p-5">
+                  <div className="rounded-2xl border border-violet-500/20 bg-violet-500/10 p-4">
+                    <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                      <div>
+                        <p className="font-semibold text-violet-100">
+                          Choose how this project uses AI
+                        </p>
+                        <p className="mt-2 text-sm leading-6 text-violet-100/75">
+                          Use the platform AI key or provide a project-owned provider.
+                          Custom keys are encrypted server-side and are never sent back to the browser.
+                        </p>
+                      </div>
+                      <Badge
+                        variant="outline"
+                        className="w-fit border-violet-400/30 bg-violet-500/10 text-violet-100"
+                      >
+                        {aiConfig?.mode || "PLATFORM"} · {aiConfig?.provider_name || aiConfig?.provider || "Gemini"}
+                      </Badge>
+                    </div>
+                  </div>
+
+                  {!isProjectOwner ? (
+                    <div className="rounded-2xl border border-slate-800 bg-slate-950 p-4">
+                      <p className="text-sm font-semibold text-slate-200">
+                        Owner-only setting
+                      </p>
+                      <p className="mt-2 text-sm leading-6 text-slate-500">
+                        Only the project owner can add or rotate AI credentials.
+                      </p>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="grid gap-4 lg:grid-cols-[260px_minmax(0,1fr)]">
+                        <div className="space-y-2">
+                          <Label>AI mode</Label>
+                          <Select
+                            value={aiMode}
+                            onValueChange={(value) =>
+                              setAiMode(value as "PLATFORM" | "PROJECT")
+                            }
+                          >
+                            <SelectTrigger className="h-11 border-slate-700 bg-slate-950">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent className="border-slate-800 bg-slate-900 text-slate-200">
+                              <SelectItem value="PLATFORM">Platform AI key</SelectItem>
+                              <SelectItem value="PROJECT">Project-owned key</SelectItem>
+                            </SelectContent>
+                          </Select>
                         </div>
 
-                        {aiProvider === "OPENAI_COMPATIBLE" && (
-                          <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_260px]">
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          <div className="rounded-2xl border border-slate-800 bg-slate-950 p-4">
+                            <p className="text-xs uppercase tracking-[0.16em] text-slate-600">
+                              Platform key
+                            </p>
+                            <p className="mt-2 text-sm font-semibold text-white">
+                              {aiConfig?.platform_configured ? "Configured" : "Not configured"}
+                            </p>
+                          </div>
+                          <div className="rounded-2xl border border-slate-800 bg-slate-950 p-4">
+                            <p className="text-xs uppercase tracking-[0.16em] text-slate-600">
+                              Project key
+                            </p>
+                            <p className="mt-2 text-sm font-semibold text-white">
+                              {aiConfig?.has_project_key ? "Stored encrypted" : "Not added"}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+
+                      {aiMode === "PROJECT" && (
+                        <div className="space-y-4">
+                          <div className="grid gap-4 lg:grid-cols-[240px_minmax(0,1fr)]">
                             <div className="space-y-2">
-                              <Label>Base URL</Label>
+                              <Label>Provider type</Label>
+                              <Select
+                                value={aiProvider}
+                                onValueChange={(value) => {
+                                  setAiProvider(value);
+                                  if (value === "GEMINI") {
+                                    setAiProviderName("Gemini");
+                                    setAiBaseUrl("");
+                                    setAiModel((current) => current || "gemini-2.5-flash");
+                                  } else {
+                                    setAiProviderName("Custom AI");
+                                    setAiModel((current) => current || "gpt-4o-mini");
+                                  }
+                                }}
+                              >
+                                <SelectTrigger className="h-11 border-slate-700 bg-slate-950">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent className="border-slate-800 bg-slate-900 text-slate-200">
+                                  <SelectItem value="GEMINI">Gemini API</SelectItem>
+                                  <SelectItem value="OPENAI_COMPATIBLE">
+                                    OpenAI-compatible / custom
+                                  </SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+
+                            <div className="space-y-2">
+                              <Label>Provider display name</Label>
                               <Input
-                                value={aiBaseUrl}
-                                onChange={(event) => setAiBaseUrl(event.target.value)}
-                                placeholder="https://api.openai.com/v1 or https://openrouter.ai/api/v1"
-                                className="h-11 border-slate-700 bg-slate-950 font-mono text-sm"
+                                value={aiProviderName}
+                                onChange={(event) => setAiProviderName(event.target.value)}
+                                placeholder="e.g. OpenRouter Production, Groq, Company AI"
+                                className="h-11 border-slate-700 bg-slate-950"
                               />
                             </div>
+                          </div>
+
+                          {aiProvider === "OPENAI_COMPATIBLE" && (
+                            <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_260px]">
+                              <div className="space-y-2">
+                                <Label>Base URL</Label>
+                                <Input
+                                  value={aiBaseUrl}
+                                  onChange={(event) => setAiBaseUrl(event.target.value)}
+                                  placeholder="https://api.openai.com/v1 or https://openrouter.ai/api/v1"
+                                  className="h-11 border-slate-700 bg-slate-950 font-mono text-sm"
+                                />
+                              </div>
+                              <div className="space-y-2">
+                                <Label>Model</Label>
+                                <Input
+                                  value={aiModel}
+                                  onChange={(event) => setAiModel(event.target.value)}
+                                  placeholder="gpt-4o-mini"
+                                  className="h-11 border-slate-700 bg-slate-950 font-mono text-sm"
+                                />
+                              </div>
+                            </div>
+                          )}
+
+                          {aiProvider === "GEMINI" && (
                             <div className="space-y-2">
                               <Label>Model</Label>
                               <Input
                                 value={aiModel}
                                 onChange={(event) => setAiModel(event.target.value)}
-                                placeholder="gpt-4o-mini"
+                                placeholder="gemini-2.5-flash"
                                 className="h-11 border-slate-700 bg-slate-950 font-mono text-sm"
                               />
                             </div>
-                          </div>
-                        )}
+                          )}
 
-                        {aiProvider === "GEMINI" && (
                           <div className="space-y-2">
-                            <Label>Model</Label>
+                            <Label>API key</Label>
                             <Input
-                              value={aiModel}
-                              onChange={(event) => setAiModel(event.target.value)}
-                              placeholder="gemini-2.5-flash"
-                              className="h-11 border-slate-700 bg-slate-950 font-mono text-sm"
+                              type="password"
+                              value={aiApiKey}
+                              onChange={(event) => setAiApiKey(event.target.value)}
+                              placeholder={
+                                aiConfig?.has_project_key
+                                  ? "Leave empty to keep existing encrypted key"
+                                  : "Paste provider API key"
+                              }
+                              className="h-11 border-slate-700 bg-slate-950 font-mono"
                             />
+                            <p className="text-xs leading-5 text-slate-500">
+                              The key is encrypted before storage. For custom providers, use an OpenAI-compatible chat completions endpoint.
+                            </p>
                           </div>
-                        )}
-
-                        <div className="space-y-2">
-                          <Label>API key</Label>
-                          <Input
-                            type="password"
-                            value={aiApiKey}
-                            onChange={(event) => setAiApiKey(event.target.value)}
-                            placeholder={
-                              aiConfig?.has_project_key
-                                ? "Leave empty to keep existing encrypted key"
-                                : "Paste provider API key"
-                            }
-                            className="h-11 border-slate-700 bg-slate-950 font-mono"
-                          />
-                          <p className="text-xs leading-5 text-slate-500">
-                            The key is encrypted before storage. For custom providers, use an OpenAI-compatible chat completions endpoint.
-                          </p>
                         </div>
-                      </div>
-                    )}
+                      )}
 
-                    <div className="flex flex-wrap gap-3">
-                      <Button
-                        type="button"
-                        onClick={handleSaveAiSettings}
-                        disabled={savingAiSettings}
-                        className="h-11 bg-violet-600 text-white hover:bg-violet-500"
-                      >
-                        {savingAiSettings ? (
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        ) : (
-                          <Save className="mr-2 h-4 w-4" />
+                      <div className="flex flex-wrap gap-3">
+                        <Button
+                          type="button"
+                          onClick={handleSaveAiSettings}
+                          disabled={savingAiSettings}
+                          className="h-11 bg-violet-600 text-white hover:bg-violet-500"
+                        >
+                          {savingAiSettings ? (
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          ) : (
+                            <Save className="mr-2 h-4 w-4" />
+                          )}
+                          Save AI settings
+                        </Button>
+
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={handleTestAiSettings}
+                          disabled={testingAiSettings}
+                          className="h-11 border-slate-700 bg-slate-950 text-slate-200 hover:bg-slate-800"
+                        >
+                          {testingAiSettings ? (
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          ) : (
+                            <CheckCircle2 className="mr-2 h-4 w-4" />
+                          )}
+                          Test provider
+                        </Button>
+
+                        {aiConfig?.has_project_key && (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            onClick={handleClearProjectAiKey}
+                            disabled={savingAiSettings}
+                            className="h-11 border-red-500/30 bg-red-500/10 text-red-100 hover:bg-red-500/15"
+                          >
+                            <Trash2 className="mr-2 h-4 w-4" />
+                            Remove project key
+                          </Button>
                         )}
-                        Save AI settings
-                      </Button>
+                      </div>
+                    </>
+                  )}
+                </CardContent>
+              </Card>
+            )}
 
+            {canManageGithub && (
+              <Card className="border-slate-800 bg-slate-900 text-slate-50">
+                <CardHeader className="border-b border-slate-800">
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <Github className="h-5 w-5 text-slate-200" />
+                    Repository integration
+                  </CardTitle>
+                </CardHeader>
+
+                <CardContent className="space-y-5 p-5">
+                  <div className="flex flex-col gap-4 rounded-2xl border border-slate-800 bg-slate-950 p-4 lg:flex-row lg:items-start lg:justify-between">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Badge className={githubStatusTone(githubIntegration?.setup_status)}>
+                          {githubIntegration?.setup_status?.replaceAll("_", " ") || "NOT CONFIGURED"}
+                        </Badge>
+                        {githubIntegration?.configured && (
+                          <Badge className="border-blue-500/30 bg-blue-500/10 text-blue-200">
+                            One-time setup complete
+                          </Badge>
+                        )}
+                      </div>
+                      <p className="mt-3 text-sm leading-6 text-slate-400">
+                        {githubIntegration?.configured
+                          ? "Project-level GitHub settings live here. DevOps focuses on events, pull requests and operational visibility."
+                          : "Connect a GitHub repository once. After this, SDLC Hub can link commits and pull requests to task keys."}
+                      </p>
+                    </div>
+
+                    <div className="flex flex-wrap gap-2">
                       <Button
                         type="button"
                         variant="outline"
-                        onClick={handleTestAiSettings}
-                        disabled={testingAiSettings}
-                        className="h-11 border-slate-700 bg-slate-950 text-slate-200 hover:bg-slate-800"
+                        onClick={handleTestGithubSettings}
+                        disabled={testingGithubSettings || !githubIntegration?.configured}
+                        className="h-11 border-slate-700 bg-slate-900 text-slate-200 hover:bg-slate-800"
                       >
-                        {testingAiSettings ? (
+                        {testingGithubSettings ? (
                           <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                         ) : (
                           <CheckCircle2 className="mr-2 h-4 w-4" />
                         )}
-                        Test provider
+                        Check status
                       </Button>
 
-                      {aiConfig?.has_project_key && (
-                        <Button
-                          type="button"
-                          variant="outline"
-                          onClick={handleClearProjectAiKey}
-                          disabled={savingAiSettings}
-                          className="h-11 border-red-500/30 bg-red-500/10 text-red-100 hover:bg-red-500/15"
-                        >
-                          <Trash2 className="mr-2 h-4 w-4" />
-                          Remove project key
-                        </Button>
-                      )}
-                    </div>
-                  </>
-                )}
-              </CardContent>
-            </Card>
-            )}
-
-            {canManageGithub && (
-            <Card className="border-slate-800 bg-slate-900 text-slate-50">
-              <CardHeader className="border-b border-slate-800">
-                <CardTitle className="flex items-center gap-2 text-base">
-                  <Github className="h-5 w-5 text-slate-200" />
-                  Repository integration
-                </CardTitle>
-              </CardHeader>
-
-              <CardContent className="space-y-5 p-5">
-                <div className="flex flex-col gap-4 rounded-2xl border border-slate-800 bg-slate-950 p-4 lg:flex-row lg:items-start lg:justify-between">
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Badge className={githubStatusTone(githubIntegration?.setup_status)}>
-                        {githubIntegration?.setup_status?.replaceAll("_", " ") || "NOT CONFIGURED"}
-                      </Badge>
-                      {githubIntegration?.configured && (
-                        <Badge className="border-blue-500/30 bg-blue-500/10 text-blue-200">
-                          One-time setup complete
-                        </Badge>
-                      )}
-                    </div>
-                    <p className="mt-3 text-sm leading-6 text-slate-400">
-                      {githubIntegration?.configured
-                        ? "Project-level GitHub settings live here. DevOps focuses on events, pull requests and operational visibility."
-                        : "Connect a GitHub repository once. After this, SDLC Hub can link commits and pull requests to task keys."}
-                    </p>
-                  </div>
-
-                  <div className="flex flex-wrap gap-2">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={handleTestGithubSettings}
-                      disabled={testingGithubSettings || !githubIntegration?.configured}
-                      className="h-11 border-slate-700 bg-slate-900 text-slate-200 hover:bg-slate-800"
-                    >
-                      {testingGithubSettings ? (
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      ) : (
-                        <CheckCircle2 className="mr-2 h-4 w-4" />
-                      )}
-                      Check status
-                    </Button>
-
-                    <Button
-                      type="button"
-                      onClick={() => router.push("/dashboard/devops")}
-                      className="h-11 shrink-0 bg-slate-100 text-slate-950 hover:bg-white"
-                    >
-                      <PlugZap className="mr-2 h-4 w-4" />
-                      Open DevOps
-                    </Button>
-                  </div>
-                </div>
-
-                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                  <div className="min-w-0 rounded-2xl border border-slate-800 bg-slate-950 p-4">
-                    <p className="text-xs uppercase tracking-[0.18em] text-slate-600">Repository</p>
-                    <p className="mt-2 truncate font-semibold text-white">
-                      {githubIntegration?.repository_full_name || "Not connected"}
-                    </p>
-                    {githubIntegration?.repository_url && (
-                      <a
-                        href={githubIntegration.repository_url}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="mt-2 inline-flex items-center text-xs text-blue-300 hover:text-blue-200"
-                      >
-                        Open on GitHub
-                        <ExternalLink className="ml-1 h-3 w-3" />
-                      </a>
-                    )}
-                  </div>
-
-                  <div className="rounded-2xl border border-slate-800 bg-slate-950 p-4">
-                    <p className="text-xs uppercase tracking-[0.18em] text-slate-600">Default branch</p>
-                    <p className="mt-2 font-semibold text-white">
-                      {githubIntegration?.default_branch || "main"}
-                    </p>
-                    <p className="mt-1 text-xs text-slate-600">
-                      Last delivery {formatSettingsDate(githubIntegration?.last_delivery_at)}
-                    </p>
-                  </div>
-
-                  <div className="min-w-0 rounded-2xl border border-slate-800 bg-slate-950 p-4">
-                    <p className="text-xs uppercase tracking-[0.18em] text-slate-600">Webhook</p>
-                    <p className="mt-2 truncate font-mono text-sm font-semibold text-white">
-                      {githubIntegration?.webhook_url || githubIntegration?.webhook_endpoint_path || "/github/webhook"}
-                    </p>
-                    <p className="mt-1 text-xs text-slate-600">
-                      Secret {githubIntegration?.secret_configured ? githubIntegration.webhook_secret_hint || "configured" : "missing"}
-                    </p>
-                  </div>
-
-                  <div className="rounded-2xl border border-slate-800 bg-slate-950 p-4">
-                    <p className="text-xs uppercase tracking-[0.18em] text-slate-600">Automation</p>
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      <Badge className={githubIntegration?.auto_link_commits ? "border-blue-500/30 bg-blue-500/10 text-blue-200" : "border-slate-700 bg-slate-900 text-slate-400"}>
-                        Commits {githubIntegration?.auto_link_commits ? "on" : "off"}
-                      </Badge>
-                      <Badge className={githubIntegration?.auto_transition_prs ? "border-purple-500/30 bg-purple-500/10 text-purple-200" : "border-slate-700 bg-slate-900 text-slate-400"}>
-                        PRs {githubIntegration?.auto_transition_prs ? "on" : "off"}
-                      </Badge>
-                    </div>
-                  </div>
-                </div>
-
-                {!canManageGithub ? (
-                  <div className="rounded-2xl border border-slate-800 bg-slate-950 p-4">
-                    <p className="text-sm font-semibold text-slate-200">Owner-only repository settings</p>
-                    <p className="mt-2 text-sm leading-6 text-slate-500">
-                      You can inspect the current connection, but only the project owner can change repository, webhook and automation settings.
-                    </p>
-                  </div>
-                ) : (
-                  <div className="space-y-5 rounded-3xl border border-slate-800 bg-slate-950/70 p-5">
-                    <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_220px]">
-                      <div className="space-y-2">
-                        <Label>Repository</Label>
-                        <Input
-                          value={githubRepositoryFullName}
-                          onChange={(event) => {
-                            const value = event.target.value;
-                            setGithubRepositoryFullName(value);
-                            if (!githubRepositoryUrl) {
-                              setGithubRepositoryUrl(githubRepoUrlFromFullName(value));
-                            }
-                          }}
-                          placeholder="owner/repository"
-                          className="h-11 border-slate-700 bg-slate-900 font-mono text-sm"
-                        />
-                      </div>
-
-                      <div className="space-y-2">
-                        <Label>Default branch</Label>
-                        <Input
-                          value={githubDefaultBranch}
-                          onChange={(event) => setGithubDefaultBranch(event.target.value)}
-                          placeholder="main"
-                          className="h-11 border-slate-700 bg-slate-900 font-mono text-sm"
-                        />
-                      </div>
-                    </div>
-
-                    <div className="grid gap-4 lg:grid-cols-2">
-                      <div className="space-y-2">
-                        <Label>Repository URL</Label>
-                        <Input
-                          value={githubRepositoryUrl}
-                          onChange={(event) => setGithubRepositoryUrl(event.target.value)}
-                          placeholder="https://github.com/owner/repository"
-                          className="h-11 border-slate-700 bg-slate-900 font-mono text-sm"
-                        />
-                      </div>
-
-                      <div className="space-y-2">
-                        <Label>Public backend / ngrok URL</Label>
-                        <div className="flex gap-2">
-                          <Input
-                            value={githubPublicBaseUrl}
-                            onChange={(event) => setGithubPublicBaseUrl(event.target.value)}
-                            placeholder="https://abc123.ngrok-free.app"
-                            className="h-11 border-slate-700 bg-slate-900 font-mono text-sm"
-                          />
-                          <Button
-                            type="button"
-                            size="icon"
-                            variant="outline"
-                            onClick={copyGithubWebhook}
-                            disabled={!normalizeGithubWebhookUrl(githubPublicBaseUrl) && !githubIntegration?.webhook_url && !ngrokStatus?.webhook_url}
-                            className="h-11 w-11 shrink-0 border-slate-700 bg-slate-900 text-slate-200 hover:bg-slate-800"
-                          >
-                            <Copy className="h-4 w-4" />
-                          </Button>
-                        </div>
-                        <p className="text-xs leading-5 text-slate-500">
-                          Payload URL:{" "}
-                          <span className="font-mono text-slate-300">
-                            {normalizeGithubWebhookUrl(githubPublicBaseUrl) || githubIntegration?.webhook_url || ngrokStatus?.webhook_url || "/github/webhook"}
-                          </span>
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="grid gap-3 md:grid-cols-2">
-                      <button
-                        type="button"
-                        onClick={() => setGithubAutoLinkCommits((value) => !value)}
-                        className={
-                          githubAutoLinkCommits
-                            ? "rounded-2xl border border-blue-500/30 bg-blue-500/10 p-4 text-left transition hover:bg-blue-500/15"
-                            : "rounded-2xl border border-slate-800 bg-slate-900 p-4 text-left transition hover:border-slate-700"
-                        }
-                      >
-                        <p className="font-semibold text-white">Auto-link commits</p>
-                        <p className="mt-1 text-sm leading-6 text-slate-500">
-                          Commit messages containing task keys are posted to comments and audit logs.
-                        </p>
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => setGithubAutoTransitionPrs((value) => !value)}
-                        className={
-                          githubAutoTransitionPrs
-                            ? "rounded-2xl border border-purple-500/30 bg-purple-500/10 p-4 text-left transition hover:bg-purple-500/15"
-                            : "rounded-2xl border border-slate-800 bg-slate-900 p-4 text-left transition hover:border-slate-700"
-                        }
-                      >
-                        <p className="font-semibold text-white">PR smart transitions</p>
-                        <p className="mt-1 text-sm leading-6 text-slate-500">
-                          Pull request activity can move or suggest moving tasks through Review/Done.
-                        </p>
-                      </button>
-                    </div>
-
-                    <div className="rounded-2xl border border-slate-800 bg-slate-900 p-4">
-                      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-2">
-                            <Server className="h-4 w-4 text-emerald-300" />
-                            <p className="font-semibold text-white">ngrok setup tunnel</p>
-                          </div>
-                          <p className="mt-2 break-words text-sm leading-6 text-slate-500">
-                            {ngrokStatus?.running
-                              ? `Running at ${ngrokStatus.public_url}`
-                              : ngrokStatus?.message || "ngrok is not running."}
-                          </p>
-                        </div>
-
-                        <div className="flex flex-wrap gap-2">
-                          <Button
-                            type="button"
-                            onClick={handleStartSettingsNgrok}
-                            disabled={startingNgrok}
-                            className="h-10 bg-emerald-600 text-white hover:bg-emerald-500"
-                          >
-                            {startingNgrok ? (
-                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                            ) : (
-                              <Server className="mr-2 h-4 w-4" />
-                            )}
-                            Start
-                          </Button>
-                          <Button
-                            type="button"
-                            variant="outline"
-                            onClick={handleStopSettingsNgrok}
-                            disabled={stoppingNgrok}
-                            className="h-10 border-slate-700 bg-slate-950 text-slate-200 hover:bg-slate-800"
-                          >
-                            {stoppingNgrok ? (
-                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                            ) : (
-                              <RefreshCw className="mr-2 h-4 w-4" />
-                            )}
-                            Stop
-                          </Button>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="flex flex-wrap gap-3">
                       <Button
                         type="button"
-                        onClick={handleSaveGithubSettings}
-                        disabled={savingGithubSettings}
-                        className="h-11 bg-blue-600 text-white hover:bg-blue-500"
+                        onClick={() => router.push("/dashboard/devops")}
+                        className="h-11 shrink-0 bg-slate-100 text-slate-950 hover:bg-white"
                       >
-                        {savingGithubSettings ? (
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        ) : (
-                          <Save className="mr-2 h-4 w-4" />
-                        )}
-                        Save repository settings
+                        <PlugZap className="mr-2 h-4 w-4" />
+                        Open DevOps
                       </Button>
-
-                      {githubIntegration?.configured && (
-                        <Button
-                          type="button"
-                          variant="outline"
-                          onClick={handleDisconnectGithubSettings}
-                          disabled={disconnectingGithub}
-                          className="h-11 border-red-500/30 bg-red-500/10 text-red-100 hover:bg-red-500/15"
-                        >
-                          {disconnectingGithub ? (
-                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                          ) : (
-                            <Trash2 className="mr-2 h-4 w-4" />
-                          )}
-                          Disconnect repository
-                        </Button>
-                      )}
                     </div>
                   </div>
-                )}
-              </CardContent>
-            </Card>
+
+                  <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                    <div className="min-w-0 rounded-2xl border border-slate-800 bg-slate-950 p-4">
+                      <p className="text-xs uppercase tracking-[0.18em] text-slate-600">Repository</p>
+                      <p className="mt-2 truncate font-semibold text-white">
+                        {githubIntegration?.repository_full_name || "Not connected"}
+                      </p>
+                      {githubIntegration?.repository_url && (
+                        <a
+                          href={githubIntegration.repository_url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="mt-2 inline-flex items-center text-xs text-blue-300 hover:text-blue-200"
+                        >
+                          Open on GitHub
+                          <ExternalLink className="ml-1 h-3 w-3" />
+                        </a>
+                      )}
+                    </div>
+
+                    <div className="rounded-2xl border border-slate-800 bg-slate-950 p-4">
+                      <p className="text-xs uppercase tracking-[0.18em] text-slate-600">Default branch</p>
+                      <p className="mt-2 font-semibold text-white">
+                        {githubIntegration?.default_branch || "main"}
+                      </p>
+                      <p className="mt-1 text-xs text-slate-600">
+                        Last delivery {formatSettingsDate(githubIntegration?.last_delivery_at)}
+                      </p>
+                    </div>
+
+                    <div className="min-w-0 rounded-2xl border border-slate-800 bg-slate-950 p-4">
+                      <p className="text-xs uppercase tracking-[0.18em] text-slate-600">Webhook</p>
+                      <p className="mt-2 truncate font-mono text-sm font-semibold text-white">
+                        {githubIntegration?.webhook_url || githubIntegration?.webhook_endpoint_path || "/github/webhook"}
+                      </p>
+                      <p className="mt-1 text-xs text-slate-600">
+                        Secret {githubIntegration?.secret_configured ? githubIntegration.webhook_secret_hint || "configured" : "missing"}
+                      </p>
+                    </div>
+
+                    <div className="rounded-2xl border border-slate-800 bg-slate-950 p-4">
+                      <p className="text-xs uppercase tracking-[0.18em] text-slate-600">Automation</p>
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        <Badge className={githubIntegration?.auto_link_commits ? "border-blue-500/30 bg-blue-500/10 text-blue-200" : "border-slate-700 bg-slate-900 text-slate-400"}>
+                          Commits {githubIntegration?.auto_link_commits ? "on" : "off"}
+                        </Badge>
+                        <Badge className={githubIntegration?.auto_transition_prs ? "border-purple-500/30 bg-purple-500/10 text-purple-200" : "border-slate-700 bg-slate-900 text-slate-400"}>
+                          PRs {githubIntegration?.auto_transition_prs ? "on" : "off"}
+                        </Badge>
+                      </div>
+                    </div>
+                  </div>
+
+                  {!canManageGithub ? (
+                    <div className="rounded-2xl border border-slate-800 bg-slate-950 p-4">
+                      <p className="text-sm font-semibold text-slate-200">Owner-only repository settings</p>
+                      <p className="mt-2 text-sm leading-6 text-slate-500">
+                        You can inspect the current connection, but only the project owner can change repository, webhook and automation settings.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-5 rounded-3xl border border-slate-800 bg-slate-950/70 p-5">
+                      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_220px]">
+                        <div className="space-y-2">
+                          <Label>Repository</Label>
+                          <Input
+                            value={githubRepositoryFullName}
+                            onChange={(event) => {
+                              const value = event.target.value;
+                              setGithubRepositoryFullName(value);
+                              if (!githubRepositoryUrl) {
+                                setGithubRepositoryUrl(githubRepoUrlFromFullName(value));
+                              }
+                            }}
+                            placeholder="owner/repository"
+                            className="h-11 border-slate-700 bg-slate-900 font-mono text-sm"
+                          />
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label>Default branch</Label>
+                          <Input
+                            value={githubDefaultBranch}
+                            onChange={(event) => setGithubDefaultBranch(event.target.value)}
+                            placeholder="main"
+                            className="h-11 border-slate-700 bg-slate-900 font-mono text-sm"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="grid gap-4 lg:grid-cols-2">
+                        <div className="space-y-2">
+                          <Label>Repository URL</Label>
+                          <Input
+                            value={githubRepositoryUrl}
+                            onChange={(event) => setGithubRepositoryUrl(event.target.value)}
+                            placeholder="https://github.com/owner/repository"
+                            className="h-11 border-slate-700 bg-slate-900 font-mono text-sm"
+                          />
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label>Public backend / ngrok URL</Label>
+                          <div className="flex gap-2">
+                            <Input
+                              value={githubPublicBaseUrl}
+                              onChange={(event) => setGithubPublicBaseUrl(event.target.value)}
+                              placeholder="https://abc123.ngrok-free.app"
+                              className="h-11 border-slate-700 bg-slate-900 font-mono text-sm"
+                            />
+                            <Button
+                              type="button"
+                              size="icon"
+                              variant="outline"
+                              onClick={copyGithubWebhook}
+                              disabled={!normalizeGithubWebhookUrl(githubPublicBaseUrl) && !githubIntegration?.webhook_url && !ngrokStatus?.webhook_url}
+                              className="h-11 w-11 shrink-0 border-slate-700 bg-slate-900 text-slate-200 hover:bg-slate-800"
+                            >
+                              <Copy className="h-4 w-4" />
+                            </Button>
+                          </div>
+                          <p className="text-xs leading-5 text-slate-500">
+                            Payload URL:{" "}
+                            <span className="font-mono text-slate-300">
+                              {normalizeGithubWebhookUrl(githubPublicBaseUrl) || githubIntegration?.webhook_url || ngrokStatus?.webhook_url || "/github/webhook"}
+                            </span>
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="grid gap-3 md:grid-cols-2">
+                        <button
+                          type="button"
+                          onClick={() => setGithubAutoLinkCommits((value) => !value)}
+                          className={
+                            githubAutoLinkCommits
+                              ? "rounded-2xl border border-blue-500/30 bg-blue-500/10 p-4 text-left transition hover:bg-blue-500/15"
+                              : "rounded-2xl border border-slate-800 bg-slate-900 p-4 text-left transition hover:border-slate-700"
+                          }
+                        >
+                          <p className="font-semibold text-white">Auto-link commits</p>
+                          <p className="mt-1 text-sm leading-6 text-slate-500">
+                            Commit messages containing task keys are posted to comments and audit logs.
+                          </p>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => setGithubAutoTransitionPrs((value) => !value)}
+                          className={
+                            githubAutoTransitionPrs
+                              ? "rounded-2xl border border-purple-500/30 bg-purple-500/10 p-4 text-left transition hover:bg-purple-500/15"
+                              : "rounded-2xl border border-slate-800 bg-slate-900 p-4 text-left transition hover:border-slate-700"
+                          }
+                        >
+                          <p className="font-semibold text-white">PR smart transitions</p>
+                          <p className="mt-1 text-sm leading-6 text-slate-500">
+                            Pull request activity can move or suggest moving tasks through Review/Done.
+                          </p>
+                        </button>
+                      </div>
+
+                      <div className="rounded-2xl border border-slate-800 bg-slate-900 p-4">
+                        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2">
+                              <Server className="h-4 w-4 text-emerald-300" />
+                              <p className="font-semibold text-white">ngrok setup tunnel</p>
+                            </div>
+                            <p className="mt-2 break-words text-sm leading-6 text-slate-500">
+                              {ngrokStatus?.running
+                                ? `Running at ${ngrokStatus.public_url}`
+                                : ngrokStatus?.message || "ngrok is not running."}
+                            </p>
+                          </div>
+
+                          <div className="flex flex-wrap gap-2">
+                            <Button
+                              type="button"
+                              onClick={handleStartSettingsNgrok}
+                              disabled={startingNgrok}
+                              className="h-10 bg-emerald-600 text-white hover:bg-emerald-500"
+                            >
+                              {startingNgrok ? (
+                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                              ) : (
+                                <Server className="mr-2 h-4 w-4" />
+                              )}
+                              Start
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              onClick={handleStopSettingsNgrok}
+                              disabled={stoppingNgrok}
+                              className="h-10 border-slate-700 bg-slate-950 text-slate-200 hover:bg-slate-800"
+                            >
+                              {stoppingNgrok ? (
+                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                              ) : (
+                                <RefreshCw className="mr-2 h-4 w-4" />
+                              )}
+                              Stop
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex flex-wrap gap-3">
+                        <Button
+                          type="button"
+                          onClick={handleSaveGithubSettings}
+                          disabled={savingGithubSettings}
+                          className="h-11 bg-blue-600 text-white hover:bg-blue-500"
+                        >
+                          {savingGithubSettings ? (
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          ) : (
+                            <Save className="mr-2 h-4 w-4" />
+                          )}
+                          Save repository settings
+                        </Button>
+
+                        {githubIntegration?.configured && (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            onClick={handleDisconnectGithubSettings}
+                            disabled={disconnectingGithub}
+                            className="h-11 border-red-500/30 bg-red-500/10 text-red-100 hover:bg-red-500/15"
+                          >
+                            {disconnectingGithub ? (
+                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            ) : (
+                              <Trash2 className="mr-2 h-4 w-4" />
+                            )}
+                            Disconnect repository
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
             )}
 
             {canManageSettings && (
-            <Card className="border-slate-800 bg-slate-900 text-slate-50">
+              <Card className="border-slate-800 bg-slate-900 text-slate-50">
                 <CardHeader className="border-b border-slate-800">
                   <CardTitle className="flex items-center gap-2 text-base">
                     <Workflow className="h-5 w-5 text-cyan-300" />
@@ -1911,112 +1911,111 @@ export default function SettingsPage() {
             )}
 
             {canManageRoles && (
-            <Card className="border-slate-800 bg-slate-900 text-slate-50">
-              <CardHeader className="border-b border-slate-800">
-                <CardTitle className="flex items-center gap-2 text-base">
-                  <Shield className="h-5 w-5 text-purple-300" />
-                  Role permissions
-                </CardTitle>
-              </CardHeader>
+              <Card className="border-slate-800 bg-slate-900 text-slate-50">
+                <CardHeader className="border-b border-slate-800">
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <Shield className="h-5 w-5 text-purple-300" />
+                    Role permissions
+                  </CardTitle>
+                </CardHeader>
 
-              <CardContent className="space-y-5 p-5">
-                <div className="grid gap-4 lg:grid-cols-[260px_minmax(0,1fr)]">
-                  <div className="space-y-2">
-                    <Label>Selected role</Label>
-                    <Select value={selectedRoleId} onValueChange={setSelectedRoleId}>
-                      <SelectTrigger className="h-11 border-slate-700 bg-slate-950">
-                        <SelectValue placeholder="Select role" />
-                      </SelectTrigger>
-                      <SelectContent className="border-slate-800 bg-slate-900 text-slate-200">
-                        {roles.map((role) => (
-                          <SelectItem key={role.id} value={String(role.id)}>
-                            {role.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  {selectedRole && (
-                    <div className="rounded-2xl border border-slate-800 bg-slate-950 p-4">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <Badge variant="outline" className={roleTone(selectedRole.name)}>
-                          {selectedRole.name}
-                        </Badge>
-                        {selectedRoleLocked && (
-                          <Badge className="bg-blue-500/10 text-blue-300 hover:bg-blue-500/10">
-                            Locked
-                          </Badge>
-                        )}
-                      </div>
-                      <p className="mt-2 text-sm text-slate-500">
-                        {selectedRole.description || "No description"}
-                      </p>
-                      <p className="mt-3 text-sm text-slate-400">
-                        {selectedRoleLocked
-                          ? "Project Admin always keeps full permissions."
-                          : `${enabledPermissions(selectedRole)} permissions enabled.`}
-                      </p>
+                <CardContent className="space-y-5 p-5">
+                  <div className="grid gap-4 lg:grid-cols-[260px_minmax(0,1fr)]">
+                    <div className="space-y-2">
+                      <Label>Selected role</Label>
+                      <Select value={selectedRoleId} onValueChange={setSelectedRoleId}>
+                        <SelectTrigger className="h-11 border-slate-700 bg-slate-950">
+                          <SelectValue placeholder="Select role" />
+                        </SelectTrigger>
+                        <SelectContent className="border-slate-800 bg-slate-900 text-slate-200">
+                          {roles.map((role) => (
+                            <SelectItem key={role.id} value={String(role.id)}>
+                              {role.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     </div>
-                  )}
-                </div>
 
-                {selectedRole && (
-                  <div className="space-y-4">
-                    {PERMISSION_GROUPS.map((group) => (
-                      <div key={group.title} className="rounded-2xl border border-slate-800 bg-slate-950 p-4">
-                        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                          <h3 className="font-semibold text-white">{group.title}</h3>
-                          {methodology === "KANBAN" && group.title === "Sprints" && (
-                            <Badge className="border-slate-700 bg-slate-900 text-slate-400">
-                              Disabled by Kanban
+                    {selectedRole && (
+                      <div className="rounded-2xl border border-slate-800 bg-slate-950 p-4">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Badge variant="outline" className={roleTone(selectedRole.name)}>
+                            {selectedRole.name}
+                          </Badge>
+                          {selectedRoleLocked && (
+                            <Badge className="bg-blue-500/10 text-blue-300 hover:bg-blue-500/10">
+                              Locked
                             </Badge>
                           )}
                         </div>
-
-                        <div className="grid gap-3 md:grid-cols-2">
-                          {group.keys.map((key) => {
-                            const enabled = selectedRoleLocked || Boolean(selectedRole.permissions?.[key]);
-                            const saving = savingPermission === key;
-                            const disabledByMethodology =
-                              methodology === "KANBAN" && group.title === "Sprints";
-
-                            return (
-                              <button
-                                key={key}
-                                type="button"
-                                disabled={!canManageRoles || selectedRoleLocked || savingPermission !== null || disabledByMethodology}
-                                onClick={() => handleTogglePermission(key)}
-                                className={`flex items-center justify-between rounded-xl border p-3 text-left transition ${
-                                  enabled && !disabledByMethodology
-                                    ? "border-blue-500/30 bg-blue-500/10 text-blue-100"
-                                    : "border-slate-800 bg-slate-900 text-slate-400 hover:border-slate-700"
-                                } disabled:cursor-not-allowed disabled:opacity-75`}
-                              >
-                                <span>
-                                  <span className="block text-sm font-medium">
-                                    {PERMISSION_LABELS[key] || key}
-                                  </span>
-                                  <span className="mt-1 block font-mono text-[11px] opacity-60">
-                                    {key}
-                                  </span>
-                                </span>
-
-                                {saving ? (
-                                  <Loader2 className="h-4 w-4 animate-spin" />
-                                ) : (
-                                  <span className={`h-3 w-3 rounded-full ${enabled && !disabledByMethodology ? "bg-blue-300" : "bg-slate-700"}`} />
-                                )}
-                              </button>
-                            );
-                          })}
-                        </div>
+                        <p className="mt-2 text-sm text-slate-500">
+                          {selectedRole.description || "No description"}
+                        </p>
+                        <p className="mt-3 text-sm text-slate-400">
+                          {selectedRoleLocked
+                            ? "Project Admin always keeps full permissions."
+                            : `${enabledPermissions(selectedRole)} permissions enabled.`}
+                        </p>
                       </div>
-                    ))}
+                    )}
                   </div>
-                )}
-              </CardContent>
-            </Card>
+
+                  {selectedRole && (
+                    <div className="space-y-4">
+                      {PERMISSION_GROUPS.map((group) => (
+                        <div key={group.title} className="rounded-2xl border border-slate-800 bg-slate-950 p-4">
+                          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                            <h3 className="font-semibold text-white">{group.title}</h3>
+                            {methodology === "KANBAN" && group.title === "Sprints" && (
+                              <Badge className="border-slate-700 bg-slate-900 text-slate-400">
+                                Disabled by Kanban
+                              </Badge>
+                            )}
+                          </div>
+
+                          <div className="grid gap-3 md:grid-cols-2">
+                            {group.keys.map((key) => {
+                              const enabled = selectedRoleLocked || Boolean(selectedRole.permissions?.[key]);
+                              const saving = savingPermission === key;
+                              const disabledByMethodology =
+                                methodology === "KANBAN" && group.title === "Sprints";
+
+                              return (
+                                <button
+                                  key={key}
+                                  type="button"
+                                  disabled={!canManageRoles || selectedRoleLocked || savingPermission !== null || disabledByMethodology}
+                                  onClick={() => handleTogglePermission(key)}
+                                  className={`flex items-center justify-between rounded-xl border p-3 text-left transition ${enabled && !disabledByMethodology
+                                      ? "border-blue-500/30 bg-blue-500/10 text-blue-100"
+                                      : "border-slate-800 bg-slate-900 text-slate-400 hover:border-slate-700"
+                                    } disabled:cursor-not-allowed disabled:opacity-75`}
+                                >
+                                  <span>
+                                    <span className="block text-sm font-medium">
+                                      {PERMISSION_LABELS[key] || key}
+                                    </span>
+                                    <span className="mt-1 block font-mono text-[11px] opacity-60">
+                                      {key}
+                                    </span>
+                                  </span>
+
+                                  {saving ? (
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                  ) : (
+                                    <span className={`h-3 w-3 rounded-full ${enabled && !disabledByMethodology ? "bg-blue-300" : "bg-slate-700"}`} />
+                                  )}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
             )}
           </div>
 
@@ -2065,8 +2064,8 @@ export default function SettingsPage() {
                 <CardContent className="space-y-4 p-5">
                   <div className="rounded-2xl border border-amber-500/20 bg-slate-950/70 p-4">
                     <p className="text-sm leading-6 text-amber-100/85">
-                      Transferul schimba owner-ul proiectului. Tu ramai membru al proiectului,
-                      dar noul owner primeste controlul principal.
+                      The transfer changes the owner of the project. You remain a member of the project,
+                      but the new owner receives the ownership.
                     </p>
                   </div>
 
@@ -2133,71 +2132,71 @@ export default function SettingsPage() {
             )}
 
             {canViewProjectAudit && (
-            <Card className="border-slate-800 bg-slate-900 text-slate-50">
-              <CardHeader className="border-b border-slate-800">
-                <CardTitle className="flex items-center gap-2 text-base">
-                  <History className="h-5 w-5 text-violet-300" />
-                  Project audit trail
-                </CardTitle>
-              </CardHeader>
+              <Card className="border-slate-800 bg-slate-900 text-slate-50">
+                <CardHeader className="border-b border-slate-800">
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <History className="h-5 w-5 text-violet-300" />
+                    Project audit trail
+                  </CardTitle>
+                </CardHeader>
 
-              <CardContent className="space-y-3 p-5">
-                {auditLogs.slice(0, 8).map((log) => (
-                  <AuditLogEvent key={log.id} event={log} compact />
-                ))}
+                <CardContent className="space-y-3 p-5">
+                  {auditLogs.slice(0, 8).map((log) => (
+                    <AuditLogEvent key={log.id} event={log} compact />
+                  ))}
 
-                {auditLogs.length === 0 && (
-                  <div className="rounded-2xl border border-dashed border-slate-800 bg-slate-950 p-6 text-center">
-                    <p className="text-sm font-semibold text-slate-300">
-                      No project audit events yet
-                    </p>
-                    <p className="mt-2 text-xs leading-5 text-slate-500">
-                      Methodology, workflow, AI and project-setting changes will appear here.
-                    </p>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+                  {auditLogs.length === 0 && (
+                    <div className="rounded-2xl border border-dashed border-slate-800 bg-slate-950 p-6 text-center">
+                      <p className="text-sm font-semibold text-slate-300">
+                        No project audit events yet
+                      </p>
+                      <p className="mt-2 text-xs leading-5 text-slate-500">
+                        Methodology, workflow, AI and project-setting changes will appear here.
+                      </p>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
             )}
 
             {canDeleteProject && (
-            <Card className="border-red-950/60 bg-red-950/10 text-slate-50">
-              <CardHeader className="border-b border-red-950/50">
-                <CardTitle className="flex items-center gap-2 text-base text-red-300">
-                  <AlertTriangle className="h-5 w-5" />
-                  Danger zone
-                </CardTitle>
-              </CardHeader>
+              <Card className="border-red-950/60 bg-red-950/10 text-slate-50">
+                <CardHeader className="border-b border-red-950/50">
+                  <CardTitle className="flex items-center gap-2 text-base text-red-300">
+                    <AlertTriangle className="h-5 w-5" />
+                    Danger zone
+                  </CardTitle>
+                </CardHeader>
 
-              <CardContent className="space-y-4 p-5">
-                <p className="text-sm leading-6 text-slate-400">
-                  Deleting this project removes members, roles, invitations, sprints, tasks, subtasks, comments and audit logs.
-                </p>
+                <CardContent className="space-y-4 p-5">
+                  <p className="text-sm leading-6 text-slate-400">
+                    Deleting this project removes members, roles, invitations, sprints, tasks, subtasks, comments and audit logs.
+                  </p>
 
-                <div className="space-y-2">
-                  <Label>
-                    Type project key:{" "}
-                    <span className="font-mono text-red-300">{project.key}</span>
-                  </Label>
-                  <Input
-                    value={deleteKey}
-                    onChange={(event) => setDeleteKey(event.target.value)}
-                    placeholder={project.key}
-                    className="h-11 border-red-950/70 bg-slate-950 font-mono"
-                  />
-                </div>
+                  <div className="space-y-2">
+                    <Label>
+                      Type project key:{" "}
+                      <span className="font-mono text-red-300">{project.key}</span>
+                    </Label>
+                    <Input
+                      value={deleteKey}
+                      onChange={(event) => setDeleteKey(event.target.value)}
+                      placeholder={project.key}
+                      className="h-11 border-red-950/70 bg-slate-950 font-mono"
+                    />
+                  </div>
 
-                <Button
-                  variant="destructive"
-                  disabled={!deleteReady}
-                  onClick={() => setDeleteProjectOpen(true)}
-                  className="w-full"
-                >
-                  <Trash2 className="mr-2 h-4 w-4" />
-                  Delete project
-                </Button>
-              </CardContent>
-            </Card>
+                  <Button
+                    variant="destructive"
+                    disabled={!deleteReady}
+                    onClick={() => setDeleteProjectOpen(true)}
+                    className="w-full"
+                  >
+                    <Trash2 className="mr-2 h-4 w-4" />
+                    Delete project
+                  </Button>
+                </CardContent>
+              </Card>
             )}
           </aside>
         </section>

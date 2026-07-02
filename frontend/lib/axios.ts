@@ -1,5 +1,6 @@
 import axios from "axios";
 import { useAuthStore } from "@/store/use-auth-store";
+import { getPostLogoutRedirect } from "@/lib/logout-redirect";
 
 // Creăm instanța Axios
 const api = axios.create({
@@ -43,7 +44,7 @@ api.interceptors.response.use(
       
       // Opțional: Redirecționăm către login dacă suntem în browser
       if (typeof window !== "undefined") {
-         window.location.href = "/login";
+         window.location.href = getPostLogoutRedirect() || "/login";
       }
     }
     return Promise.reject(error);

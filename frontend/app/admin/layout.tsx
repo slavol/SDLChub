@@ -21,6 +21,7 @@ import { BrandMark } from "@/components/brand-mark";
 import { ThemeModeToggle } from "@/components/theme-mode-toggle";
 import { Button } from "@/components/ui/button";
 import { UserAvatar, resolveMediaUrl } from "@/components/user-avatar";
+import { getPostLogoutRedirect, markPostLogoutRedirect } from "@/lib/logout-redirect";
 import {
   AdminOverview,
   getAdminOverview,
@@ -119,7 +120,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         const overviewData = await getAdminOverview();
         setOverview(overviewData);
       } catch {
-        router.replace("/login");
+        router.replace(getPostLogoutRedirect() || "/login");
         return;
       } finally {
         setCheckingAccess(false);
@@ -199,9 +200,10 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   };
 
   const handleSignOut = () => {
+    markPostLogoutRedirect("/");
     clearCurrentProject();
     logout();
-    router.push("/");
+    router.replace("/");
   };
 
   if (checkingAccess) {

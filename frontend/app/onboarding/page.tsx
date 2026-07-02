@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAuthStore } from "@/store/use-auth-store";
 import { getApiErrorMessage } from "@/lib/api-error";
+import { getPostLogoutRedirect, markPostLogoutRedirect } from "@/lib/logout-redirect";
 import { joinProject } from "@/services/project";
 import { useProjectStore } from "@/store/use-project-store";
 
@@ -25,13 +26,14 @@ export default function OnboardingPage() {
   // Protecție simplă: Dacă nu e logat, îl trimitem la login
   useEffect(() => {
     if (!isAuthenticated) {
-      router.push("/login");
+      router.replace(getPostLogoutRedirect() || "/login");
     }
   }, [isAuthenticated, router]);
 
   const handleLogout = () => {
+    markPostLogoutRedirect("/");
     logout();
-    router.push("/");
+    router.replace("/");
   };
 
   const handleCreateProject = () => {

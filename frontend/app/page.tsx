@@ -7,6 +7,7 @@ import { useAuthStore } from "@/store/use-auth-store";
 import { BrandMark } from "@/components/brand-mark";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { clearPostLogoutRedirect } from "@/lib/logout-redirect";
 import {
   ArrowRight,
   GitPullRequest,
@@ -23,6 +24,8 @@ export default function Home() {
   const { isAuthenticated } = useAuthStore();
 
   useEffect(() => {
+    clearPostLogoutRedirect();
+
     if (isAuthenticated) {
       router.push("/dashboard");
     }

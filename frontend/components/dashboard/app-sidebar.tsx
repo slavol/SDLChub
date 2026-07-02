@@ -40,6 +40,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { pickWorkspaceProject } from "@/lib/project-selection";
+import { markPostLogoutRedirect } from "@/lib/logout-redirect";
 import { cn } from "@/lib/utils";
 import { useRealtimeEvent } from "@/hooks/use-realtime-event";
 import { useProjectPermissions } from "@/hooks/use-project-permissions";
@@ -276,9 +277,10 @@ export function AppSidebar({ methodology, role, projectName }: SidebarProps) {
   };
 
   const handleSignOut = () => {
+    markPostLogoutRedirect("/");
     clearCurrentProject();
     logout();
-    router.push("/");
+    router.replace("/");
   };
 
   const avatarUrl = resolveMediaUrl(user?.avatar_url);
