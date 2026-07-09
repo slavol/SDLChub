@@ -1,18 +1,11 @@
 "use client";
 
-import Link from "next/link";
-import type { ElementType } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
-  Activity,
   AlertTriangle,
-  ArrowRight,
   CalendarDays,
   CheckCircle2,
-  ChevronDown,
-  ChevronUp,
-  Clock3,
   GitPullRequest,
   KanbanSquare,
   Layers3,
@@ -23,11 +16,7 @@ import {
   Zap,
 } from "lucide-react";
 
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Skeleton } from "@/components/ui/skeleton";
-import { AuditChangeSummary, formatAuditActionLabel } from "@/components/dashboard/audit-log-event";
 import { useDebouncedRealtimeEvent } from "@/hooks/use-realtime-event";
 import { pickWorkspaceProject } from "@/lib/project-selection";
 import {
@@ -35,333 +24,23 @@ import {
   getProjectDashboard,
   Project,
   ProjectDashboardData,
-  DashboardRecentActivity,
-  DashboardRiskCard,
-  DashboardTaskSummary,
 } from "@/services/project";
 import { useAuthStore } from "@/store/use-auth-store";
 import { useProjectStore } from "@/store/use-project-store";
-
-const statusLabels: Record<string, string> = {
-  TODO: "To Do",
-  IN_PROGRESS: "In Progress",
-  REVIEW: "Review",
-  DONE: "Done",
-};
-
-const severityStyles: Record<DashboardRiskCard["severity"], string> = {
-  low: "border-emerald-500/20 bg-emerald-500/10 text-emerald-300",
-  medium: "border-amber-500/20 bg-amber-500/10 text-amber-300",
-  high: "border-rose-500/20 bg-rose-500/10 text-rose-300",
-};
-
-const statusStyles: Record<string, string> = {
-  TODO: "border-slate-700 bg-slate-800/70 text-slate-300",
-  IN_PROGRESS: "border-blue-500/25 bg-blue-500/10 text-blue-300",
-  REVIEW: "border-violet-500/25 bg-violet-500/10 text-violet-300",
-  DONE: "border-emerald-500/25 bg-emerald-500/10 text-emerald-300",
-};
-
-const priorityStyles: Record<string, string> = {
-  LOW: "border-slate-700 bg-slate-800/70 text-slate-300",
-  MEDIUM: "border-blue-500/25 bg-blue-500/10 text-blue-300",
-  HIGH: "border-orange-500/25 bg-orange-500/10 text-orange-300",
-  CRITICAL: "border-rose-500/25 bg-rose-500/10 text-rose-300",
-};
-
-type MetricTone = "blue" | "green" | "purple" | "yellow" | "red";
-
-const metricToneClass: Record<MetricTone, string> = {
-  blue: "border-blue-500/20 bg-blue-500/10 text-blue-300",
-  green: "border-emerald-500/20 bg-emerald-500/10 text-emerald-300",
-  purple: "border-violet-500/20 bg-violet-500/10 text-violet-300",
-  yellow: "border-amber-500/20 bg-amber-500/10 text-amber-300",
-  red: "border-rose-500/20 bg-rose-500/10 text-rose-300",
-};
-
-function formatRelativeTime(value?: string | null) {
-  if (!value) return "recently";
-  const date = new Date(value);
-  const diffMinutes = Math.floor((Date.now() - date.getTime()) / 60000);
-
-  if (Number.isNaN(diffMinutes)) return "recently";
-  if (diffMinutes < 1) return "just now";
-  if (diffMinutes < 60) return `${diffMinutes}m ago`;
-
-  const diffHours = Math.floor(diffMinutes / 60);
-  if (diffHours < 24) return `${diffHours}h ago`;
-
-  const diffDays = Math.floor(diffHours / 24);
-  if (diffDays < 7) return `${diffDays}d ago`;
-
-  return date.toLocaleDateString();
-}
-
-function formatShortDate(value?: string | null) {
-  if (!value) return null;
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return null;
-
-  return date.toLocaleDateString([], {
-    month: "short",
-    day: "numeric",
-  });
-}
-
-function getInitials(name?: string | null) {
-  if (!name) return "SY";
-  const parts = name.trim().split(/\s+/).filter(Boolean).slice(0, 2);
-  if (parts.length === 0) return "SY";
-  return parts.map((part) => part[0]?.toUpperCase()).join("");
-}
-
-function MetricCard({
-  title,
-  value,
-  subtext,
-  icon: Icon,
-  tone,
-}: {
-  title: string;
-  value: string;
-  subtext: string;
-  icon: ElementType;
-  tone: MetricTone;
-}) {
-  return (
-    <Card className="overflow-hidden border-slate-800 bg-slate-900/75 text-slate-50 shadow-xl shadow-slate-950/20">
-      <CardContent className="p-5">
-        <div className="flex items-start justify-between gap-4">
-          <div className="min-w-0">
-            <p className="text-sm text-slate-400">{title}</p>
-            <p className="mt-2 text-3xl font-bold tracking-tight text-white">
-              {value}
-            </p>
-            <p className="mt-2 text-xs text-slate-500">{subtext}</p>
-          </div>
-          <div className={`rounded-2xl border p-3 ${metricToneClass[tone]}`}>
-            <Icon className="h-5 w-5" />
-          </div>
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
-function SignalTile({
-  title,
-  value,
-  detail,
-  icon: Icon,
-  tone,
-}: {
-  title: string;
-  value: string;
-  detail: string;
-  icon: ElementType;
-  tone: MetricTone;
-}) {
-  return (
-    <div className="flex items-center justify-between gap-4 rounded-2xl border border-slate-800 bg-slate-900/75 p-4 shadow-sm shadow-slate-950/20 transition-colors hover:bg-slate-900">
-      <div className="min-w-0">
-        <p className="text-xs text-slate-400">{title}</p>
-        <p className="mt-1 text-xl font-bold tracking-tight text-white">{value}</p>
-        <p className="mt-1 text-[10px] text-slate-500">{detail}</p>
-      </div>
-      <div className={`rounded-xl border p-2.5 ${metricToneClass[tone]}`}>
-        <Icon className="h-4 w-4" />
-      </div>
-    </div>
-  );
-}
-
-function EmptyState({
-  title,
-  detail,
-  href,
-  action,
-}: {
-  title: string;
-  detail: string;
-  href?: string;
-  action?: string;
-}) {
-  return (
-    <div className="rounded-2xl border border-dashed border-slate-800 bg-slate-950/70 p-8 text-center">
-      <p className="font-medium text-slate-300">{title}</p>
-      <p className="mx-auto mt-1 max-w-md text-sm text-slate-500">{detail}</p>
-      {href && action && (
-        <Button className="mt-5 bg-blue-600 hover:bg-blue-700" asChild>
-          <Link href={href}>{action}</Link>
-        </Button>
-      )}
-    </div>
-  );
-}
-
-function TaskRow({ task }: { task: DashboardTaskSummary }) {
-  const assigneeName = task.assignee_name || "Unassigned";
-  const dueDate = formatShortDate(task.due_date);
-
-  return (
-    <Link
-      href={`/dashboard/tasks/${task.id}`}
-      className="group grid min-w-0 gap-4 rounded-2xl border border-slate-800 bg-slate-950/75 p-4 transition hover:border-blue-500/40 hover:bg-slate-950 md:grid-cols-[minmax(0,1fr)_auto]"
-    >
-      <div className="min-w-0">
-        <div className="mb-2 flex flex-wrap items-center gap-2">
-          <Badge
-            variant="outline"
-            className="border-slate-700 bg-slate-900 font-mono text-[10px] text-slate-300"
-          >
-            {task.key}
-          </Badge>
-          <Badge
-            variant="outline"
-            className={`border text-[10px] ${
-              statusStyles[task.status] || statusStyles.TODO
-            }`}
-          >
-            {statusLabels[task.status] || task.status}
-          </Badge>
-          <Badge
-            variant="outline"
-            className={`border text-[10px] ${
-              priorityStyles[task.priority] || priorityStyles.MEDIUM
-            }`}
-          >
-            {task.priority}
-          </Badge>
-        </div>
-        <p className="truncate text-sm font-semibold text-white group-hover:text-blue-200">
-          {task.title}
-        </p>
-        <p className="mt-1 text-xs text-slate-500">
-          {task.story_points ? `${task.story_points} story points` : "No estimate"}
-          {dueDate ? ` · due ${dueDate}` : ""}
-        </p>
-      </div>
-      <div className="flex items-center justify-end gap-3">
-        <div className="hidden h-8 w-8 items-center justify-center rounded-full border border-slate-700 bg-slate-900 text-[10px] font-bold text-slate-300 md:flex">
-          {getInitials(assigneeName)}
-        </div>
-        <ArrowRight className="h-4 w-4 text-slate-600 transition group-hover:translate-x-1 group-hover:text-blue-300" />
-      </div>
-    </Link>
-  );
-}
-
-function ActivityRow({ item }: { item: DashboardRecentActivity }) {
-  const actor = item.actor_name || "System";
-
-  return (
-    <Link
-      href={`/dashboard/tasks/${item.task_id}`}
-      className="group flex min-w-0 gap-3 overflow-hidden rounded-2xl border border-slate-800 bg-slate-950/75 p-4 transition hover:border-blue-500/35 hover:bg-slate-950"
-    >
-      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-slate-800 bg-slate-900 text-sm font-semibold text-slate-200">
-        {getInitials(actor)}
-      </div>
-      <div className="min-w-0 flex-1">
-        <div className="mb-2 flex flex-wrap items-center gap-2">
-          <Badge
-            variant="outline"
-            className="border-blue-500/20 bg-blue-500/10 text-blue-300"
-          >
-            {formatAuditActionLabel(item.action)}
-          </Badge>
-          <span className="text-xs text-slate-500">
-            {formatRelativeTime(item.created_at)}
-          </span>
-        </div>
-        <p className="truncate text-sm text-slate-300">
-          <span className="font-semibold text-white">{actor}</span> on{" "}
-          <span className="font-semibold text-blue-300">
-            {item.task_key || "TASK"}
-          </span>
-        </p>
-        <p className="mt-1 truncate text-sm font-medium text-slate-100 group-hover:text-blue-200">
-          {item.task_title || "Untitled task"}
-        </p>
-        <AuditChangeSummary event={item} />
-      </div>
-      <div className="flex shrink-0 items-center">
-        <ArrowRight className="h-4 w-4 text-slate-600 transition group-hover:translate-x-1 group-hover:text-blue-300" />
-      </div>
-    </Link>
-  );
-}
-
-function DashboardPageSkeleton() {
-  return (
-    <div className="mx-auto w-full max-w-7xl space-y-7 px-4 py-5 text-slate-50 sm:px-6 md:p-8">
-      <section className="overflow-hidden rounded-3xl border border-slate-800 bg-slate-900/80 shadow-2xl shadow-slate-950/30">
-        <div className="border-b border-slate-800 bg-slate-950/45 px-6 py-5">
-          <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
-            <div className="space-y-3">
-              <div className="flex gap-2">
-                <Skeleton className="h-6 w-16 rounded-full" />
-                <Skeleton className="h-6 w-24 rounded-full" />
-                <Skeleton className="h-6 w-24 rounded-full" />
-              </div>
-              <Skeleton className="h-11 w-72 max-w-full" />
-              <Skeleton className="h-5 w-[34rem] max-w-full" />
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <Skeleton className="h-10 w-28 rounded-xl" />
-              <Skeleton className="h-10 w-28 rounded-xl" />
-              <Skeleton className="h-10 w-36 rounded-xl" />
-            </div>
-          </div>
-        </div>
-
-        <div className="grid gap-4 p-5 md:grid-cols-2 xl:grid-cols-4">
-          {Array.from({ length: 4 }).map((_, index) => (
-            <Skeleton key={index} className="h-36 rounded-2xl" />
-          ))}
-        </div>
-      </section>
-
-      <section className="rounded-3xl border border-slate-800 bg-slate-900/80">
-        <div className="border-b border-slate-800 p-5">
-          <Skeleton className="h-7 w-44" />
-          <Skeleton className="mt-2 h-4 w-72 max-w-full" />
-        </div>
-        <div className="grid gap-4 p-5 md:grid-cols-2 xl:grid-cols-3">
-          {Array.from({ length: 6 }).map((_, index) => (
-            <Skeleton key={index} className="h-24 rounded-2xl" />
-          ))}
-        </div>
-      </section>
-
-      <section className="grid gap-6 xl:grid-cols-[minmax(0,1.15fr)_minmax(22rem,0.85fr)]">
-        <Card className="border-slate-800 bg-slate-900/80 text-slate-50">
-          <CardHeader className="border-b border-slate-800/80">
-            <Skeleton className="h-7 w-48" />
-            <Skeleton className="h-4 w-64 max-w-full" />
-          </CardHeader>
-          <CardContent className="space-y-4 p-5">
-            {Array.from({ length: 4 }).map((_, index) => (
-              <Skeleton key={index} className="h-12 rounded-xl" />
-            ))}
-          </CardContent>
-        </Card>
-
-        <Card className="border-slate-800 bg-slate-900/80 text-slate-50">
-          <CardHeader className="border-b border-slate-800/80">
-            <Skeleton className="h-7 w-32" />
-            <Skeleton className="h-4 w-56 max-w-full" />
-          </CardHeader>
-          <CardContent className="space-y-3 p-5">
-            {Array.from({ length: 4 }).map((_, index) => (
-              <Skeleton key={index} className="h-24 rounded-2xl" />
-            ))}
-          </CardContent>
-        </Card>
-      </section>
-    </div>
-  );
-}
+import { DashboardPageSkeleton } from "./dashboard-components";
+import {
+  DashboardActivityCard,
+  DashboardHero,
+  DeliverySignalsCard,
+  FlowStatusCard,
+  MyActiveTasksCard,
+  RiskRadarCard,
+  WorkDistributionCard,
+} from "./dashboard-sections";
+import type {
+  DashboardMetricCardConfig,
+  DashboardSignalConfig,
+} from "./dashboard-utils";
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -372,9 +51,10 @@ export default function DashboardPage() {
   const [dashboard, setDashboard] = useState<ProjectDashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   
-  // State pentru Activitate (închis by default)
+  // Sectiunea de activitate ramane inchisa initial ca dashboard-ul sa fie aerisit.
   const [isActivityExpanded, setIsActivityExpanded] = useState(false);
 
+  // Pagina ramane containerul de date: alege proiectul, incarca agregatele si le paseaza componentelor vizuale.
   const loadDashboard = useCallback(
     async (showLoader = true) => {
       if (showLoader) setLoading(true);
@@ -412,6 +92,7 @@ export default function DashboardPage() {
     loadDashboard();
   }, [loadDashboard]);
 
+  // Evenimentele realtime pot veni in rafale; debounce-ul evita refresh-uri dese ale dashboard-ului.
   useDebouncedRealtimeEvent(
     () => loadDashboard(false),
     [project?.id, loadDashboard],
@@ -462,7 +143,8 @@ export default function DashboardPage() {
       )
     : 0;
 
-  const metricCards = useMemo(
+  // Cardurile sunt configurate ca date pentru a pastra JSX-ul de randare simplu si reutilizabil.
+  const metricCards = useMemo<DashboardMetricCardConfig[]>(
     () => [
       {
         title: isScrumLike ? "Velocity Signal" : "Throughput",
@@ -515,7 +197,7 @@ export default function DashboardPage() {
     ]
   );
 
-  const deliverySignals = [
+  const deliverySignals: DashboardSignalConfig[] = [
     {
       title: "Overdue",
       value: String(metrics.overdue_tasks || 0),
@@ -586,423 +268,43 @@ export default function DashboardPage() {
 
   return (
     <div className="mx-auto w-full max-w-7xl space-y-7 px-4 py-5 text-slate-50 sm:px-6 md:p-8">
-      <section className="overflow-hidden rounded-3xl border border-slate-800 bg-slate-900/80 shadow-2xl shadow-slate-950/30">
-        <div className="border-b border-slate-800 bg-slate-950/45 px-6 py-5">
-          <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
-            <div className="min-w-0">
-              <div className="mb-3 flex flex-wrap items-center gap-2">
-                <Badge className="bg-blue-600 text-white">{project.key}</Badge>
-                <Badge
-                  variant="outline"
-                  className="border-slate-700 bg-slate-950/70 text-slate-300"
-                >
-                  {project.methodology}
-                </Badge>
-                <Badge
-                  variant="outline"
-                  className="border-emerald-500/20 bg-emerald-500/10 text-emerald-300"
-                >
-                  {metrics.team_health_score}% health
-                </Badge>
-              </div>
-              <h1 className="truncate text-3xl font-semibold tracking-tight text-white md:text-4xl">
-                {project.name}
-              </h1>
-              <p className="mt-2 max-w-2xl text-sm text-slate-400">
-                Delivery overview, personal work queue, project risks and recent team activity.
-              </p>
-            </div>
-
-            <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
-              <Button
-                variant="outline"
-                className="w-full border-slate-700 bg-slate-950/60 text-slate-200 hover:bg-slate-900 sm:w-auto"
-                asChild
-              >
-                <Link href="/dashboard/activity">
-                  <Activity className="mr-2 h-4 w-4" />
-                  Activity
-                </Link>
-              </Button>
-              <Button
-                variant="outline"
-                className="w-full border-slate-700 bg-slate-950/60 text-slate-200 hover:bg-slate-900 sm:w-auto"
-                asChild
-              >
-                <Link href="/dashboard/calendar">
-                  <CalendarDays className="mr-2 h-4 w-4" />
-                  Calendar
-                </Link>
-              </Button>
-              <Button className="w-full bg-blue-600 hover:bg-blue-700 sm:w-auto" asChild>
-                <Link href="/dashboard/board">
-                  <KanbanSquare className="mr-2 h-4 w-4" />
-                  Open Board
-                </Link>
-              </Button>
-            </div>
-          </div>
-        </div>
-
-        <div className="grid gap-4 p-5 md:grid-cols-2 xl:grid-cols-4">
-          {metricCards.map((metric) => (
-            <MetricCard
-              key={metric.title}
-              title={metric.title}
-              value={metric.value}
-              subtext={metric.subtext}
-              icon={metric.icon}
-              tone={metric.tone}
-            />
-          ))}
-        </div>
-      </section>
+      <DashboardHero
+        project={project}
+        healthScore={metrics.team_health_score}
+        metricCards={metricCards}
+      />
 
       <div className="space-y-6">
         <div className="space-y-6">
-          <Card className="border-slate-800 bg-slate-900/80 text-slate-50 shadow-xl shadow-slate-950/20">
-            <CardHeader className="border-b border-slate-800/80">
-              <div className="flex items-center justify-between gap-3">
-                <CardTitle className="flex items-center gap-2">
-                  <CalendarDays className="h-5 w-5 text-blue-400" />
-                  Delivery Signals
-                </CardTitle>
-                <Button variant="ghost" className="text-slate-400 hover:text-white" asChild>
-                  <Link href="/dashboard/calendar">Calendar</Link>
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent className="grid gap-4 p-5 sm:grid-cols-2 lg:grid-cols-3">
-              {deliverySignals.map((signal) => (
-                <SignalTile
-                  key={signal.title}
-                  title={signal.title}
-                  value={signal.value}
-                  detail={signal.detail}
-                  icon={signal.icon}
-                  tone={signal.tone}
-                />
-              ))}
-            </CardContent>
-          </Card>
+          <DeliverySignalsCard signals={deliverySignals} />
 
-          <Card className="border-slate-800 bg-slate-900/80 text-slate-50 shadow-xl shadow-slate-950/20">
-            <CardHeader className="flex flex-col gap-4 border-b border-slate-800/80 sm:flex-row sm:items-center sm:justify-between">
-              <div className="min-w-0">
-                <CardTitle className="flex items-center gap-2">
-                  <Layers3 className="h-5 w-5 text-blue-400" />
-                  Work Distribution
-                </CardTitle>
-                <p className="mt-1 text-sm text-slate-500">
-                  Current status spread across the project.
-                </p>
-              </div>
-              {isScrumLike && (
-                <Button variant="ghost" className="text-slate-400 hover:text-white" asChild>
-                  <Link href="/dashboard/backlog">Backlog</Link>
-                </Button>
-              )}
-            </CardHeader>
-            <CardContent className="grid min-w-0 gap-5 p-5 md:grid-cols-[minmax(0,1fr)_260px]">
-              <div className="space-y-4">
-                {["TODO", "IN_PROGRESS", "REVIEW", "DONE"].map((status) => {
-                  const count = statusDistribution[status] || 0;
-                  const percent = totalTasks
-                    ? Math.round((count / totalTasks) * 100)
-                    : 0;
+          <WorkDistributionCard
+            isScrumLike={isScrumLike}
+            statusDistribution={statusDistribution}
+            totalTasks={totalTasks}
+            reviewCount={reviewCount}
+            inProgressCount={inProgressCount}
+          />
 
-                  return (
-                    <div key={status} className="space-y-2">
-                      <div className="flex justify-between text-sm">
-                        <span className="text-slate-300">{statusLabels[status]}</span>
-                        <span className="text-slate-500">
-                          {count} · {percent}%
-                        </span>
-                      </div>
-                      <div className="h-2.5 overflow-hidden rounded-full bg-slate-800">
-                        <div
-                          className="h-full rounded-full bg-blue-500"
-                          style={{ width: `${percent}%` }}
-                        />
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-
-              <div className="grid grid-cols-2 gap-3 md:grid-cols-1">
-                <div className="rounded-2xl border border-slate-800 bg-slate-950/75 p-4">
-                  <p className="text-sm text-slate-400">Review queue</p>
-                  <p className="mt-2 text-2xl font-semibold text-white">
-                    {reviewCount}
-                  </p>
-                </div>
-                <div className="rounded-2xl border border-slate-800 bg-slate-950/75 p-4">
-                  <p className="text-sm text-slate-400">In progress</p>
-                  <p className="mt-2 text-2xl font-semibold text-white">
-                    {inProgressCount}
-                  </p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="border-slate-800 bg-slate-900/80 text-slate-50 shadow-xl shadow-slate-950/20">
-            <CardHeader className="flex flex-col gap-4 border-b border-slate-800/80 sm:flex-row sm:items-center sm:justify-between">
-              <div className="min-w-0">
-                <CardTitle className="flex items-center gap-2">
-                  <Zap className="h-5 w-5 text-amber-300" />
-                  My Active Tasks
-                </CardTitle>
-                <p className="mt-1 text-sm text-slate-500">
-                  Focus queue for your current account.
-                </p>
-              </div>
-              <Button variant="ghost" className="w-full text-slate-400 hover:text-white sm:w-auto" asChild>
-                <Link href="/dashboard/board">View board</Link>
-              </Button>
-            </CardHeader>
-            <CardContent className="space-y-3 p-5">
-              {dashboard.my_active_tasks.map((task) => (
-                <TaskRow key={task.id} task={task} />
-              ))}
-
-              {dashboard.my_active_tasks.length === 0 && (
-                <EmptyState
-                  title="No active tasks assigned to you"
-                  detail="Your personal queue is clear. Assign a task from the board when work is ready."
-                  href="/dashboard/board"
-                  action="Open Board"
-                />
-              )}
-            </CardContent>
-          </Card>
+          <MyActiveTasksCard tasks={dashboard.my_active_tasks} />
         </div>
 
         <aside className="grid min-w-0 h-fit gap-6 lg:grid-cols-2 xl:grid-cols-3">
-          <Card className="border-slate-800 bg-slate-900/80 text-slate-50 shadow-xl shadow-slate-950/20">
-            <CardHeader className="border-b border-slate-800/80">
-              <CardTitle className="flex items-center gap-2">
-                <Clock3 className="h-5 w-5 text-blue-400" />
-                {isScrumLike ? "Active Sprint" : "Flow Status"}
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-5">
-              {isScrumLike ? (
-                dashboard.active_sprint ? (
-                  <div className="space-y-5">
-                    <div>
-                      <h3 className="text-xl font-semibold text-white">
-                        {dashboard.active_sprint.name}
-                      </h3>
-                      <p className="mt-1 text-sm text-slate-500">
-                        {dashboard.active_sprint.goal || "No sprint goal set."}
-                      </p>
-                    </div>
+          <FlowStatusCard
+            dashboard={dashboard}
+            isScrumLike={isScrumLike}
+            todoCount={todoCount}
+            inProgressCount={inProgressCount}
+            reviewCount={reviewCount}
+          />
 
-                    <div className="grid grid-cols-2 gap-3">
-                      <div className="rounded-2xl border border-slate-800 bg-slate-950/75 p-4">
-                        <p className="text-sm text-slate-400">Tasks</p>
-                        <p className="mt-2 text-2xl font-semibold text-white">
-                          {dashboard.active_sprint.done_tasks}/
-                          {dashboard.active_sprint.total_tasks}
-                        </p>
-                      </div>
-                      <div className="rounded-2xl border border-slate-800 bg-slate-950/75 p-4">
-                        <p className="text-sm text-slate-400">Progress</p>
-                        <p className="mt-2 text-2xl font-semibold text-white">
-                          {dashboard.active_sprint.progress_percent}%
-                        </p>
-                      </div>
-                    </div>
+          <RiskRadarCard dashboard={dashboard} />
 
-                    <div className="h-2.5 overflow-hidden rounded-full bg-slate-800">
-                      <div
-                        className="h-full rounded-full bg-emerald-500"
-                        style={{
-                          width: `${dashboard.active_sprint.progress_percent}%`,
-                        }}
-                      />
-                    </div>
-
-                    <Button className="w-full bg-blue-600 hover:bg-blue-700" asChild>
-                      <Link href="/dashboard/board">Open Sprint Board</Link>
-                    </Button>
-                  </div>
-                ) : (
-                  <EmptyState
-                    title="No active sprint"
-                    detail="Start a sprint from the backlog when planning is ready."
-                    href="/dashboard/backlog"
-                    action="Open Backlog"
-                  />
-                )
-              ) : (
-                <div className="grid gap-3">
-                  <div className="rounded-2xl border border-slate-800 bg-slate-950/75 p-4">
-                    <div className="mb-3 flex items-center justify-between">
-                      <p className="text-sm text-slate-400">Flow load</p>
-                      <KanbanSquare className="h-4 w-4 text-blue-400" />
-                    </div>
-                    <p className="text-2xl font-semibold text-white">
-                      {todoCount + inProgressCount + reviewCount}
-                    </p>
-                    <p className="mt-1 text-xs text-slate-500">
-                      active items across the board
-                    </p>
-                  </div>
-                  <div className="rounded-2xl border border-slate-800 bg-slate-950/75 p-4">
-                    <div className="mb-3 flex items-center justify-between">
-                      <p className="text-sm text-slate-400">Review load</p>
-                      <GitPullRequest className="h-4 w-4 text-amber-300" />
-                    </div>
-                    <p className="text-2xl font-semibold text-white">{reviewCount}</p>
-                    <p className="mt-1 text-xs text-slate-500">
-                      items waiting for review
-                    </p>
-                  </div>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          <Card className="overflow-hidden border-slate-800 bg-slate-900/80 text-slate-50 shadow-xl shadow-slate-950/20 lg:col-span-2 xl:col-span-2">
-            <CardHeader className="border-b border-slate-800/80 bg-slate-950/25">
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <CardTitle className="flex items-center gap-2">
-                    <AlertTriangle className="h-5 w-5 text-amber-300" />
-                    AI Risk Radar
-                  </CardTitle>
-                  <p className="mt-1 text-sm text-slate-500">
-                    Delivery, deadline and methodology signals.
-                  </p>
-                </div>
-                <Badge
-                  variant="outline"
-                  className="border-amber-500/20 bg-amber-500/10 text-amber-200"
-                >
-                  {dashboard.risk_cards.length} signals
-                </Badge>
-              </div>
-            </CardHeader>
-            <CardContent className="p-5">
-              <div className="grid gap-3 md:grid-cols-2">
-                {dashboard.risk_cards.map((risk) => (
-                  <div
-                    key={`${risk.title}-${risk.value}`}
-                    className="group flex min-w-0 gap-3 rounded-2xl border border-slate-800 bg-slate-950/75 p-4 transition-colors hover:border-slate-700 hover:bg-slate-950"
-                  >
-                    <div className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full bg-amber-400 shadow-[0_0_18px_rgba(251,191,36,0.35)]" />
-                    <div className="min-w-0 flex-1">
-                      <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                        <div className="min-w-0">
-                          <p className="truncate text-sm font-semibold text-white">
-                            {risk.title}
-                          </p>
-                          {(risk.status || risk.priority || risk.assignee_name) && (
-                            <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                              {risk.status && (
-                                <Badge
-                                  variant="outline"
-                                  className={statusStyles[risk.status] || "border-slate-700 text-slate-300"}
-                                >
-                                  {statusLabels[risk.status] || risk.status}
-                                </Badge>
-                              )}
-                              {risk.priority && (
-                                <Badge
-                                  variant="outline"
-                                  className={priorityStyles[risk.priority] || "border-slate-700 text-slate-300"}
-                                >
-                                  {risk.priority}
-                                </Badge>
-                              )}
-                              {risk.assignee_name && (
-                                <span className="truncate text-xs text-slate-500">
-                                  {risk.assignee_name}
-                                </span>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                        <div className="flex shrink-0 items-center gap-2">
-                          <Badge variant="outline" className={severityStyles[risk.severity]}>
-                            {risk.value}
-                          </Badge>
-                          {risk.task_id && (
-                            <Link
-                              href={`/dashboard/tasks/${risk.task_id}`}
-                              className="rounded-full border border-slate-800 p-1.5 text-slate-500 transition-colors hover:border-blue-500/40 hover:text-blue-300"
-                              aria-label={`Open ${risk.task_key || "task"}`}
-                            >
-                              <ArrowRight className="h-3.5 w-3.5" />
-                            </Link>
-                          )}
-                        </div>
-                      </div>
-                      <p className="mt-2 break-words text-sm leading-5 text-slate-400">
-                        {risk.detail}
-                      </p>
-                      {risk.category && (
-                        <p className="mt-2 text-[10px] uppercase tracking-[0.18em] text-slate-600">
-                          {risk.category} signal
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="overflow-hidden border-slate-800 bg-slate-900/80 text-slate-50 shadow-xl shadow-slate-950/20 lg:col-span-2 xl:col-span-3">
-            <div 
-              className="flex cursor-pointer items-center justify-between border-b border-slate-800/80 bg-slate-950/25 p-5 transition-colors hover:bg-slate-900"
-              onClick={() => setIsActivityExpanded(!isActivityExpanded)}
-            >
-              <div>
-                <CardTitle className="flex items-center gap-2 text-lg font-semibold leading-none tracking-tight">
-                  <Activity className="h-5 w-5 text-cyan-300" />
-                  Activity
-                </CardTitle>
-                <p className="mt-1 text-sm text-slate-500">
-                  Latest team changes and audit entries.
-                </p>
-              </div>
-              <div className="flex items-center gap-2">
-                <Button variant="ghost" className="hidden h-8 px-2 text-xs text-slate-400 hover:text-white sm:flex" asChild onClick={(e) => e.stopPropagation()}>
-                  <Link href="/dashboard/activity">View all</Link>
-                </Button>
-                {isActivityExpanded ? (
-                  <ChevronUp className="h-5 w-5 text-slate-400" />
-                ) : (
-                  <ChevronDown className="h-5 w-5 text-slate-400" />
-                )}
-              </div>
-            </div>
-
-            {isActivityExpanded && (
-              <>
-                <CardContent className="p-5">
-                  {dashboard.recent_activity.length > 0 ? (
-                    <div className="flex flex-col gap-3">
-                      {dashboard.recent_activity.slice(0, 6).map((item) => (
-                        <ActivityRow key={`${item.id}-${item.task_id}`} item={item} />
-                      ))}
-                    </div>
-                  ) : (
-                    <EmptyState
-                      title="No activity yet"
-                      detail="Updates will appear here."
-                      href="/dashboard/board"
-                      action="Open Board"
-                    />
-                  )}
-                </CardContent>
-              </>
-            )}
-          </Card>
+          <DashboardActivityCard
+            dashboard={dashboard}
+            isExpanded={isActivityExpanded}
+            onToggle={() => setIsActivityExpanded((current) => !current)}
+          />
         </aside>
       </div>
     </div>

@@ -19,7 +19,7 @@ class Project(Base):
     workflow_config = Column(Text, nullable=True)
     is_archived = Column(Boolean, default=False, nullable=False)
     ai_provider_mode = Column(String, default="PLATFORM", nullable=False)
-    ai_provider = Column(String, default="GEMINI", nullable=False)
+    ai_provider = Column(String, default="OLLAMA", nullable=False)
     ai_provider_name = Column(String, nullable=True)
     ai_base_url = Column(String, nullable=True)
     ai_model = Column(String, nullable=True)
@@ -55,7 +55,7 @@ class ProjectMember(Base):
     user = relationship("User", back_populates="memberships")
     project = relationship("Project", back_populates="members")
     role = relationship("Role")
-    team = relationship("ProjectTeam", back_populates="members")
+    team = relationship("ProjectTeam", back_populates="members", foreign_keys=[team_id])
 
 class Role(Base):
     __tablename__ = "roles"
@@ -77,6 +77,7 @@ class ProjectTeam(Base):
     id = Column(Integer, primary_key=True, index=True)
     project_id = Column(Integer, ForeignKey("projects.id"))
     parent_id = Column(Integer, ForeignKey("project_teams.id"), nullable=True)
+    manager_membership_id = Column(Integer, ForeignKey("project_members.id", ondelete="SET NULL"), nullable=True)
     name = Column(String)
     description = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
@@ -85,7 +86,8 @@ class ProjectTeam(Base):
     project = relationship("Project", back_populates="teams")
     parent = relationship("ProjectTeam", remote_side=[id], back_populates="children")
     children = relationship("ProjectTeam", back_populates="parent")
-    members = relationship("ProjectMember", back_populates="team")
+    manager = relationship("ProjectMember", foreign_keys=[manager_membership_id], post_update=True)
+    members = relationship("ProjectMember", back_populates="team", foreign_keys="ProjectMember.team_id")
     tasks = relationship("Task", back_populates="team")
 
 class Invitation(Base):

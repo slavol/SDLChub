@@ -1,73 +1,14 @@
 "use client";
 
-import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-  ArrowLeft,
-  ArrowRight,
-  CalendarClock,
-  CheckCircle2,
-  Circle,
-  ClipboardList,
-  ExternalLink,
-  Flag,
-  Gauge,
-  GitCommitHorizontal,
-  Github,
-  GitPullRequest,
-  History,
-  Loader2,
-  MessageSquare,
-  MoreHorizontal,
-  Pencil,
-  Plus,
-  Save,
-  Sparkles,
-  Trash2,
-  UserRound,
-  X,
-} from "lucide-react";
 import { toast } from "sonner";
 
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Progress } from "@/components/ui/progress";
-import { RichTextEditor } from "@/components/ui/rich-text-editor";
-import { Skeleton } from "@/components/ui/skeleton";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
-import { UserAvatar } from "@/components/user-avatar";
-import { AuditLogEvent } from "@/components/dashboard/audit-log-event";
 import { useProjectPermissions } from "@/hooks/use-project-permissions";
 import { sendRealtimeMessage, useRealtimeEvent } from "@/hooks/use-realtime-event";
-import { formatAiSource, isAiFallback } from "@/lib/ai-source";
+import { isAiFallback } from "@/lib/ai-source";
 import { getApiErrorMessage } from "@/lib/api-error";
-import { cn } from "@/lib/utils";
 import {
   getProjectDetail,
   getProjectMembers,
@@ -89,8 +30,6 @@ import {
   RefinedTaskSpec,
   TaskComment,
   TaskDetail,
-  TaskPriority,
-  TaskStatus,
   updateSubtask,
   updateTask,
   updateTaskComment,
@@ -98,159 +37,23 @@ import {
 import { getTaskGitHubEvents, GitHubEventItem } from "@/services/github";
 import { useAuthStore } from "@/store/use-auth-store";
 import { useProjectStore } from "@/store/use-project-store";
-
-const priorityOptions = Object.values(TaskPriority);
-const statusOptions = Object.values(TaskStatus);
-
-type TypingUser = {
-  user_id: number;
-  full_name?: string | null;
-  avatar_url?: string | null;
-  last_seen: number;
-};
-
-const COMMENT_TYPING_TTL_MS = 4500;
-const COMMENT_TYPING_THROTTLE_MS = 1200;
-const COMMENT_TYPING_STOP_DELAY_MS = 1800;
-
-const statusLabels: Record<TaskStatus, string> = {
-  [TaskStatus.TODO]: "To Do",
-  [TaskStatus.IN_PROGRESS]: "In Progress",
-  [TaskStatus.REVIEW]: "Review",
-  [TaskStatus.DONE]: "Done",
-};
-
-const statusClass: Record<TaskStatus, string> = {
-  [TaskStatus.TODO]: "border-slate-700 bg-slate-800/70 text-slate-300",
-  [TaskStatus.IN_PROGRESS]: "border-blue-500/25 bg-blue-500/10 text-blue-300",
-  [TaskStatus.REVIEW]: "border-violet-500/25 bg-violet-500/10 text-violet-300",
-  [TaskStatus.DONE]: "border-emerald-500/25 bg-emerald-500/10 text-emerald-300",
-};
-
-const priorityClass: Record<TaskPriority, string> = {
-  [TaskPriority.LOW]: "border-slate-700 bg-slate-800/70 text-slate-300",
-  [TaskPriority.MEDIUM]: "border-blue-500/25 bg-blue-500/10 text-blue-300",
-  [TaskPriority.HIGH]: "border-orange-500/25 bg-orange-500/10 text-orange-300",
-  [TaskPriority.CRITICAL]: "border-rose-500/25 bg-rose-500/10 text-rose-300",
-};
-
-function githubEventTone(event: GitHubEventItem) {
-  if (event.event_type === "pull_request") return "border-purple-500/25 bg-purple-500/10 text-purple-200";
-  if (event.event_type === "push") return "border-blue-500/25 bg-blue-500/10 text-blue-200";
-  return "border-slate-700 bg-slate-900 text-slate-300";
-}
-
-function GithubEventIcon({ event }: { event: GitHubEventItem }) {
-  if (event.event_type === "pull_request") return <GitPullRequest className="h-4 w-4" />;
-  if (event.event_type === "push") return <GitCommitHorizontal className="h-4 w-4" />;
-  return <Github className="h-4 w-4" />;
-}
-
-function shortSha(value?: string | null) {
-  if (!value) return null;
-  return value.slice(0, 7);
-}
-
-function formatDate(value?: string | null) {
-  if (!value) return "-";
-
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "-";
-
-  return date.toLocaleString([], {
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
-
-function toDateInputValue(value?: string | null) {
-  if (!value) return "";
-
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "";
-
-  return date.toISOString().slice(0, 10);
-}
-
-function filterTaskGitHubEvents(
-  events: GitHubEventItem[],
-  task: TaskDetail
-) {
-  const taskKey = task.key.toUpperCase();
-
-  return events.filter((event) => {
-    const eventTaskId = Number(event.task_id || 0);
-    const eventTaskKey = (event.task_key || "").toUpperCase();
-    const eventSummary = (event.summary || "").toUpperCase();
-
-    return (
-      eventTaskId === task.id ||
-      eventTaskKey === taskKey ||
-      eventSummary.includes(taskKey)
-    );
-  });
-}
-
-function TaskDetailSkeleton() {
-  return (
-    <div className="mx-auto w-full max-w-7xl space-y-6 px-4 py-5 text-slate-50 sm:px-6 md:p-8">
-      <section className="overflow-hidden rounded-3xl border border-slate-800 bg-slate-900/80 shadow-2xl shadow-slate-950/30">
-        <div className="flex flex-col gap-5 border-b border-slate-800 bg-slate-950/45 p-5 lg:flex-row lg:items-start lg:justify-between">
-          <div className="min-w-0 space-y-3">
-            <Skeleton className="h-9 w-28 rounded-xl" />
-            <div className="flex gap-2">
-              <Skeleton className="h-6 w-16 rounded-full" />
-              <Skeleton className="h-6 w-24 rounded-full" />
-              <Skeleton className="h-6 w-24 rounded-full" />
-            </div>
-            <Skeleton className="h-10 w-[34rem] max-w-full" />
-            <Skeleton className="h-5 w-[26rem] max-w-full" />
-          </div>
-          <div className="flex gap-2">
-            <Skeleton className="h-10 w-28 rounded-xl" />
-            <Skeleton className="h-10 w-32 rounded-xl" />
-          </div>
-        </div>
-      </section>
-
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_24rem]">
-        <div className="space-y-6">
-          {Array.from({ length: 3 }).map((_, index) => (
-            <Card key={index} className="border-slate-800 bg-slate-900/80 text-slate-50">
-              <CardHeader className="border-b border-slate-800/80">
-                <Skeleton className="h-6 w-44" />
-                <Skeleton className="h-4 w-64 max-w-full" />
-              </CardHeader>
-              <CardContent className="space-y-4 p-5">
-                <Skeleton className="h-24 rounded-2xl" />
-                <Skeleton className="h-16 rounded-2xl" />
-                <Skeleton className="h-16 rounded-2xl" />
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-
-        <aside className="space-y-6">
-          <Card className="border-slate-800 bg-slate-900/80 text-slate-50">
-            <CardHeader className="border-b border-slate-800/80">
-              <Skeleton className="h-6 w-28" />
-            </CardHeader>
-            <CardContent className="space-y-4 p-5">
-              {Array.from({ length: 6 }).map((_, index) => (
-                <div key={index} className="space-y-2">
-                  <Skeleton className="h-4 w-24" />
-                  <Skeleton className="h-10 rounded-xl" />
-                </div>
-              ))}
-            </CardContent>
-          </Card>
-        </aside>
-      </div>
-    </div>
-  );
-}
+import { IssueDefinitionCard, type IssueAiStatusMessage } from "./issue-definition-card";
+import { TaskCommentsCard } from "./task-comments-card";
+import { DevelopmentLinksCard } from "./development-links-card";
+import { TaskAuditLogCard } from "./task-audit-log-card";
+import { TaskDetailHeader } from "./task-detail-header";
+import { TaskDetailMetrics } from "./task-detail-metrics";
+import { TaskDetailSkeleton } from "./task-detail-skeleton";
+import { TaskGovernanceDialogs } from "./task-governance-dialogs";
+import { TaskPropertiesPanel } from "./task-properties-panel";
+import { TaskSubtasksCard } from "./task-subtasks-card";
+import {
+  COMMENT_TYPING_STOP_DELAY_MS,
+  COMMENT_TYPING_THROTTLE_MS,
+  COMMENT_TYPING_TTL_MS,
+  TypingUser,
+  filterTaskGitHubEvents,
+} from "./task-detail-utils";
 
 export default function TaskDetailPage() {
   const params = useParams<{ taskId: string }>();
@@ -289,15 +92,13 @@ export default function TaskDetailPage() {
   const [aiWorking, setAiWorking] = useState(false);
   const [aiSuggestedSubtasks, setAiSuggestedSubtasks] = useState<string[]>([]);
   const [lastRefinedSpec, setLastRefinedSpec] = useState<RefinedTaskSpec | null>(null);
-  const [aiStatusMessage, setAiStatusMessage] = useState<{
-    tone: "success" | "fallback";
-    title: string;
-    detail: string;
-    source?: string;
-  } | null>(null);
+  const [aiStatusMessage, setAiStatusMessage] = useState<IssueAiStatusMessage | null>(null);
 
   const supportsStoryPoints = project?.methodology !== "KANBAN";
   const { can } = useProjectPermissions(task?.project_id || project?.id || currentProject?.id);
+
+  // Permisiunile controleaza simultan afisarea butoanelor si protectia din
+  // handler-ele API, astfel incat UI-ul si backend-ul raman aliniate.
   const canUpdateTask = can("TASK_UPDATE");
   const canAssignTask = can("TASK_ASSIGN");
   const canMoveTask = can("TASK_MOVE");
@@ -306,6 +107,8 @@ export default function TaskDetailPage() {
   const canUseAi = can("AI_USE");
   const canSaveTask = canUpdateTask || canAssignTask || canMoveTask;
 
+  // Valorile derivate raman in pagina-container, iar componentele extrase
+  // primesc doar date gata de afisat.
   const completedSubtasks = useMemo(
     () => task?.subtasks.filter((subtask) => subtask.is_done).length || 0,
     [task?.subtasks]
@@ -317,6 +120,8 @@ export default function TaskDetailPage() {
 
   const assigneeName = task?.assignee_name || "Unassigned";
 
+  // Incarcarea principala strange task-ul si datele auxiliare necesare paginii:
+  // membri, echipe, proiect curent si evenimente GitHub legate de task.
   const loadTask = useCallback(async (showLoader = true) => {
     if (!taskId) return;
 
@@ -363,6 +168,8 @@ export default function TaskDetailPage() {
       return;
     }
 
+    // Comentariile sunt sincronizate incremental prin websocket ca sa nu refacem
+    // tot request-ul de task la fiecare mesaj nou.
     if (message.type === "comment.created" && changedTaskId === taskId) {
       const incomingComment = message.payload?.comment as TaskComment | undefined;
       if (!incomingComment?.id) return;
@@ -423,6 +230,8 @@ export default function TaskDetailPage() {
       return;
     }
 
+    // Indicatorul de typing este tinut doar local si expira automat daca nu mai
+    // primim semnale proaspete de la celalalt browser.
     if (message.type === "comment.typing" && changedTaskId === taskId) {
       const typingUserId = Number(message.payload?.user_id || 0);
       if (!typingUserId || typingUserId === currentUser?.id) return;
@@ -526,6 +335,8 @@ export default function TaskDetailPage() {
 
     if (!task || !canComment) return;
 
+    // Limitam frecventa mesajelor de typing; altfel un input rapid ar trimite
+    // un eveniment websocket la fiecare tasta.
     const now = Date.now();
     if (now - lastTypingSentAtRef.current > COMMENT_TYPING_THROTTLE_MS) {
       lastTypingSentAtRef.current = now;
@@ -594,7 +405,7 @@ export default function TaskDetailPage() {
           ? "Spec saved with local fallback"
           : "Spec refined and saved",
         detail: isAiFallback(refined.source)
-          ? "Gemini was unavailable or returned an invalid response, so SDLC Hub used a structured local template."
+          ? "The configured AI provider was unavailable or returned an invalid response, so SDLC Hub used a structured local template."
           : "The issue description was updated in the audit trail and synced to the team.",
         source: refined.source,
       });
@@ -869,1047 +680,144 @@ export default function TaskDetailPage() {
     );
   }
 
-  const developmentLinksCard = (
-    <Card className="border-slate-800 bg-slate-900/75 text-slate-50 shadow-xl shadow-slate-950/20">
-      <CardHeader className="border-b border-slate-800/80">
-        <CardTitle className="flex items-center gap-2">
-          <Github className="h-5 w-5 text-slate-200" />
-          Development links
-        </CardTitle>
-        <p className="text-sm text-slate-500">
-          GitHub commits and pull requests linked through task keys.
-        </p>
-      </CardHeader>
-      <CardContent className="space-y-3 p-4 sm:p-5">
-        {githubEvents.map((event) => (
-          <div
-            key={event.id}
-            className="rounded-2xl border border-slate-800 bg-slate-950/75 p-4 transition hover:border-blue-500/25"
-          >
-            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-              <div className="min-w-0">
-                <div className="mb-3 flex flex-wrap items-center gap-2">
-                  <Badge className={githubEventTone(event)}>
-                    <span className="mr-1.5 inline-flex">
-                      <GithubEventIcon event={event} />
-                    </span>
-                    {event.event_type === "pull_request"
-                      ? "Pull request"
-                      : event.event_type === "push"
-                        ? "Commit"
-                        : event.event_type}
-                  </Badge>
-                  {event.action && (
-                    <Badge variant="outline" className="border-slate-700 bg-slate-900 text-slate-300">
-                      {event.action}
-                    </Badge>
-                  )}
-                  {event.pull_request_number && (
-                    <Badge variant="outline" className="border-purple-500/25 bg-purple-500/10 text-purple-200">
-                      PR #{event.pull_request_number}
-                    </Badge>
-                  )}
-                  {shortSha(event.commit_sha) && (
-                    <Badge variant="outline" className="border-blue-500/25 bg-blue-500/10 font-mono text-blue-200">
-                      {shortSha(event.commit_sha)}
-                    </Badge>
-                  )}
-                </div>
-                <p className="break-words font-semibold text-white">
-                  {event.summary || "GitHub activity linked to this task"}
-                </p>
-                <p className="mt-2 text-sm leading-6 text-slate-500">
-                  {event.repository || "Repository unknown"} · {event.sender_login || "unknown sender"} · {formatDate(event.created_at)}
-                </p>
-              </div>
-
-              {event.url && (
-                <Button
-                  asChild
-                  variant="outline"
-                  size="sm"
-                  className="shrink-0 border-slate-700 bg-slate-900 text-slate-200 hover:bg-slate-800"
-                >
-                  <a href={event.url} target="_blank" rel="noreferrer">
-                    <ExternalLink className="mr-2 h-4 w-4" />
-                    Open GitHub
-                  </a>
-                </Button>
-              )}
-            </div>
-          </div>
-        ))}
-
-        {githubEvents.length === 0 && (
-          <div className="rounded-2xl border border-dashed border-slate-800 bg-slate-950/60 p-8 text-center">
-            <Github className="mx-auto mb-3 h-8 w-8 text-slate-600" />
-            <p className="text-sm font-medium text-slate-400">
-              No linked GitHub activity yet
-            </p>
-            <p className="mt-1 text-xs leading-5 text-slate-600">
-              Include {task.key} in a commit message, PR title, PR body or branch name.
-            </p>
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  );
-
   return (
     <div className="mx-auto w-full max-w-[1500px] space-y-7 px-4 py-5 text-slate-50 sm:px-5 md:p-7 xl:p-8">
       <section className="overflow-hidden rounded-3xl border border-slate-800 bg-slate-900/80 shadow-2xl shadow-slate-950/30">
-        <div className="border-b border-slate-800 bg-slate-950/45 px-6 py-5">
-          <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
-            <div className="min-w-0 flex-1">
-              <Link
-                href="/dashboard/board"
-                className="mb-4 inline-flex items-center text-sm text-slate-400 transition hover:text-white"
-              >
-                <ArrowLeft className="mr-2 h-4 w-4" />
-                Back to board
-              </Link>
-
-              <div className="mb-3 flex flex-wrap items-center gap-2">
-                <Badge className="bg-blue-600 text-white">{task.key}</Badge>
-                <Badge
-                  variant="outline"
-                  className={cn("border", statusClass[task.status])}
-                >
-                  {statusLabels[task.status]}
-                </Badge>
-                <Badge
-                  variant="outline"
-                  className={cn("border", priorityClass[task.priority])}
-                >
-                  {task.priority}
-                </Badge>
-                <Badge
-                  variant="outline"
-                  className="border-slate-700 bg-slate-950/70 text-slate-300"
-                >
-                  {project?.methodology || "Project"}
-                </Badge>
-                {task.team_name && (
-                  <Badge
-                    variant="outline"
-                    className="border-cyan-500/25 bg-cyan-500/10 text-cyan-200"
-                  >
-                    {task.team_name}
-                  </Badge>
-                )}
-              </div>
-
-              <h1 className="break-words text-2xl font-semibold tracking-tight text-white sm:text-3xl md:text-4xl">
-                {task.title}
-              </h1>
-              <p className="mt-2 text-sm text-slate-500">
-                Created {formatDate(task.created_at)} · {completedSubtasks}/
-                {task.subtasks.length} subtasks complete
-              </p>
-            </div>
-
-            <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row lg:shrink-0">
-              <Button
-                onClick={handleSave}
-                disabled={saving || !canSaveTask}
-                className="h-11 w-full bg-blue-600 hover:bg-blue-700 sm:w-auto"
-              >
-                {saving ? (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                ) : (
-                  <Save className="mr-2 h-4 w-4" />
-                )}
-                Save changes
-              </Button>
-              {canUseAi && canUpdateTask && (
-                <Button
-                  variant="outline"
-                  onClick={handleRefineWithAi}
-                  disabled={aiWorking}
-                  className="h-11 w-full border-slate-700 bg-slate-950/70 text-slate-200 hover:bg-slate-900 sm:w-auto"
-                >
-                  {aiWorking ? (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  ) : (
-                    <Sparkles className="mr-2 h-4 w-4" />
-                  )}
-                  Refine & save
-                </Button>
-              )}
-              {canDeleteTask && (
-                <Button
-                  variant="outline"
-                  onClick={() => setDeleteTaskOpen(true)}
-                  className="h-11 w-full border-rose-500/30 bg-rose-950/20 text-rose-200 hover:bg-rose-950/40 hover:text-rose-100 sm:w-auto"
-                >
-                  <Trash2 className="mr-2 h-4 w-4" />
-                  Delete
-                </Button>
-              )}
-            </div>
-          </div>
-        </div>
-
-        <div className="grid gap-4 p-5 sm:grid-cols-2 xl:grid-cols-5">
-          <div className="min-w-0 rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
-            <ClipboardList className="mb-3 h-5 w-5 text-blue-300" />
-            <p className="text-sm text-slate-500">Status</p>
-            <p className="mt-1 text-lg font-semibold text-white">
-              {statusLabels[task.status]}
-            </p>
-          </div>
-          <div className="min-w-0 rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
-            <Flag className="mb-3 h-5 w-5 text-orange-300" />
-            <p className="text-sm text-slate-500">Priority</p>
-            <p className="mt-1 text-lg font-semibold text-white">
-              {task.priority}
-            </p>
-          </div>
-          <div className="min-w-0 rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
-            <Gauge className="mb-3 h-5 w-5 text-emerald-300" />
-            <p className="text-sm text-slate-500">Estimate</p>
-            <p className="mt-1 text-lg font-semibold text-white">
-              {supportsStoryPoints
-                ? task.story_points
-                  ? `${task.story_points} pts`
-                  : "No estimate"
-              : "Disabled"}
-            </p>
-          </div>
-          <div className="min-w-0 rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
-            <CalendarClock className="mb-3 h-5 w-5 text-amber-300" />
-            <p className="text-sm text-slate-500">Target Date</p>
-            <p className="mt-1 text-lg font-semibold text-white">
-              {task.due_date ? formatDate(task.due_date) : "No date"}
-            </p>
-          </div>
-          <div className="min-w-0 rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
-            <UserRound className="mb-3 h-5 w-5 text-violet-300" />
-            <p className="text-sm text-slate-500">Assignee</p>
-            <div className="mt-2 flex min-w-0 items-center gap-2">
-              <UserAvatar
-                name={assigneeName}
-                src={task.assignee_avatar_url}
-                className="h-8 w-8"
-                fallbackClassName="bg-violet-500/10 text-[10px] text-violet-200"
-              />
-              <p className="truncate text-lg font-semibold text-white">
-                {assigneeName}
-              </p>
-            </div>
-          </div>
-        </div>
+        <TaskDetailHeader
+          task={task}
+          project={project}
+          completedSubtasks={completedSubtasks}
+          canSaveTask={canSaveTask}
+          canUseAi={canUseAi}
+          canUpdateTask={canUpdateTask}
+          canDeleteTask={canDeleteTask}
+          saving={saving}
+          aiWorking={aiWorking}
+          onSave={handleSave}
+          onRefineWithAi={handleRefineWithAi}
+          onRequestDelete={() => setDeleteTaskOpen(true)}
+        />
+        <TaskDetailMetrics
+          task={task}
+          supportsStoryPoints={supportsStoryPoints}
+          assigneeName={assigneeName}
+        />
       </section>
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_340px] 2xl:grid-cols-[minmax(0,1fr)_380px]">
         <main className="min-w-0 space-y-6">
-          <Card className="border-slate-800 bg-slate-900/75 text-slate-50 shadow-xl shadow-slate-950/20">
-            <CardHeader className="border-b border-slate-800/80">
-              <CardTitle className="flex items-center gap-2">
-                <ClipboardList className="h-5 w-5 text-blue-400" />
-                Issue Definition
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-5 p-4 sm:p-5">
-              <div className="space-y-2">
-                <Label>Title</Label>
-                <Input
-                  value={task.title}
-                  onChange={(event) => patchLocalTask({ title: event.target.value })}
-                  disabled={!canUpdateTask}
-                  className="h-12 border-slate-700 bg-slate-950 text-base font-semibold text-white"
-                />
-              </div>
+          <IssueDefinitionCard
+            task={task}
+            canUseAi={canUseAi}
+            canUpdateTask={canUpdateTask}
+            aiWorking={aiWorking}
+            aiStatusMessage={aiStatusMessage}
+            patchLocalTask={patchLocalTask}
+            onRefineWithAi={handleRefineWithAi}
+          />
 
-              <div className="space-y-2">
-                <div className="flex items-center justify-between gap-3">
-                  <Label>Description</Label>
-                  {canUseAi && canUpdateTask && (
-                    <button
-                      type="button"
-                      onClick={handleRefineWithAi}
-                      disabled={aiWorking}
-                      className="inline-flex items-center text-xs text-emerald-400 transition hover:text-emerald-300 disabled:opacity-50"
-                    >
-                      {aiWorking ? (
-                        <Loader2 className="mr-1 h-3 w-3 animate-spin" />
-                      ) : (
-                        <Sparkles className="mr-1 h-3 w-3" />
-                      )}
-                      Refine & save
-                    </button>
-                  )}
-                </div>
-                <RichTextEditor
-                  value={task.description || ""}
-                  onChange={(value) => patchLocalTask({ description: value })}
-                  disabled={!canUpdateTask}
-                  placeholder="User story, acceptance criteria, technical notes..."
-                  editorClassName="[&_.ProseMirror]:min-h-[260px]"
-                />
-                {aiStatusMessage && (
-                  <div
-                    className={cn(
-                      "rounded-2xl border p-4 text-sm",
-                      aiStatusMessage.tone === "fallback"
-                        ? "border-amber-500/25 bg-amber-500/10 text-amber-50"
-                        : "border-emerald-500/20 bg-emerald-500/10 text-emerald-50"
-                    )}
-                  >
-                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                      <p className="font-semibold">{aiStatusMessage.title}</p>
-                      {aiStatusMessage.source && (
-                        <Badge
-                          variant="outline"
-                          className={cn(
-                            "w-fit border text-xs",
-                            aiStatusMessage.tone === "fallback"
-                              ? "border-amber-400/30 bg-amber-500/10 text-amber-100"
-                              : "border-emerald-400/30 bg-emerald-500/10 text-emerald-100"
-                          )}
-                        >
-                          {formatAiSource(aiStatusMessage.source)}
-                        </Badge>
-                      )}
-                    </div>
-                    <p className="mt-2 leading-6 opacity-80">{aiStatusMessage.detail}</p>
-                  </div>
-                )}
-              </div>
-            </CardContent>
-          </Card>
+          <TaskSubtasksCard
+            subtasks={task.subtasks}
+            completedSubtasks={completedSubtasks}
+            subtaskProgress={subtaskProgress}
+            aiSuggestedSubtasks={aiSuggestedSubtasks}
+            lastRefinedSpec={lastRefinedSpec}
+            aiWorking={aiWorking}
+            canUpdateTask={canUpdateTask}
+            newSubtaskTitle={newSubtaskTitle}
+            editingSubtaskId={editingSubtaskId}
+            editingSubtaskTitle={editingSubtaskTitle}
+            onNewSubtaskTitleChange={setNewSubtaskTitle}
+            onEditingSubtaskTitleChange={setEditingSubtaskTitle}
+            onCancelSubtaskEdit={() => {
+              setEditingSubtaskId(null);
+              setEditingSubtaskTitle("");
+            }}
+            onApplyAiSubtasks={handleApplyAiSubtasks}
+            onAddSubtask={handleAddSubtask}
+            onStartEditSubtask={handleStartEditSubtask}
+            onSaveSubtaskEdit={handleSaveSubtaskEdit}
+            onRequestDeleteSubtask={setSubtaskToDelete}
+            onToggleSubtask={handleToggleSubtask}
+          />
 
-          <Card className="border-slate-800 bg-slate-900/75 text-slate-50 shadow-xl shadow-slate-950/20">
-            <CardHeader className="flex flex-col gap-3 border-b border-slate-800/80 md:flex-row md:items-center md:justify-between">
-              <div className="min-w-0">
-                <CardTitle className="flex items-center gap-2">
-                  <CheckCircle2 className="h-5 w-5 text-emerald-400" />
-                  Subtasks
-                </CardTitle>
-                <p className="mt-1 text-sm text-slate-500">
-                  Subtask progress for this issue.
-                </p>
-              </div>
-              <div className="grid gap-2 sm:flex sm:flex-wrap sm:items-center">
-                <Badge className="bg-slate-800 text-slate-300">
-                  {completedSubtasks}/{task.subtasks.length} done
-                </Badge>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-5 p-4 sm:p-5">
-              {aiSuggestedSubtasks.length > 0 && (
-                <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 p-4">
-                  <div className="mb-3 flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
-                    <div>
-                      <p className="text-sm font-semibold text-emerald-100">
-                        AI suggested subtasks
-                      </p>
-                      <p className="mt-1 text-xs text-emerald-100/70">
-                        Create these as real subtasks.
-                        {lastRefinedSpec?.source ? ` Source: ${formatAiSource(lastRefinedSpec.source)}.` : ""}
-                      </p>
-                    </div>
-                    <Button
-                      type="button"
-                      size="sm"
-                      onClick={handleApplyAiSubtasks}
-                      disabled={aiWorking || !canUpdateTask}
-                      className="bg-emerald-600 hover:bg-emerald-700"
-                    >
-                      {aiWorking ? (
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      ) : (
-                        <Plus className="mr-2 h-4 w-4" />
-                      )}
-                      Create subtasks
-                    </Button>
-                  </div>
-                  <div className="grid gap-2 md:grid-cols-2">
-                    {aiSuggestedSubtasks.slice(0, 8).map((subtask) => (
-                      <div key={subtask} className="break-words rounded-xl border border-emerald-400/15 bg-slate-950/50 px-3 py-2 text-xs text-emerald-50/85">
-                        {subtask}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
+          <TaskCommentsCard
+            comments={task.comments}
+            currentUserId={currentUser?.id}
+            canComment={canComment}
+            typingUsers={typingUsers}
+            newComment={newComment}
+            editingCommentId={editingCommentId}
+            editingCommentBody={editingCommentBody}
+            onDraftChange={handleCommentDraftChange}
+            onStopTyping={() => sendCommentTyping(false)}
+            onAddComment={handleAddComment}
+            onStartEditComment={handleStartEditComment}
+            onEditingCommentBodyChange={setEditingCommentBody}
+            onCancelCommentEdit={() => {
+              setEditingCommentId(null);
+              setEditingCommentBody("");
+            }}
+            onSaveCommentEdit={handleSaveCommentEdit}
+            onRequestDeleteComment={setCommentToDelete}
+          />
 
-              <div className="space-y-2">
-                <Progress
-                  value={subtaskProgress}
-                  className="h-2 bg-slate-800 [&>div]:bg-emerald-500"
-                />
-                <p className="text-xs text-slate-500">
-                  {subtaskProgress}% complete
-                </p>
-              </div>
+          <DevelopmentLinksCard events={githubEvents} taskKey={task.key} />
 
-              <div className="space-y-2">
-                {task.subtasks.map((subtask) => (
-                  <div
-                    key={subtask.id}
-                    className="min-w-0 rounded-2xl border border-slate-800 bg-slate-950/75 p-4 transition hover:border-blue-500/30 hover:bg-slate-950"
-                  >
-                    {editingSubtaskId === subtask.id ? (
-                      <div className="space-y-3">
-                        <Input
-                          value={editingSubtaskTitle}
-                          onChange={(event) => setEditingSubtaskTitle(event.target.value)}
-                          disabled={!canUpdateTask}
-                          className="h-11 border-slate-700 bg-slate-900"
-                        />
-                        <div className="flex flex-col justify-end gap-2 sm:flex-row">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="text-slate-400 hover:text-white"
-                            onClick={() => {
-                              setEditingSubtaskId(null);
-                              setEditingSubtaskTitle("");
-                            }}
-                          >
-                            <X className="mr-2 h-4 w-4" />
-                            Cancel
-                          </Button>
-                          <Button
-                            size="sm"
-                            className="bg-blue-600 hover:bg-blue-700"
-                            onClick={handleSaveSubtaskEdit}
-                            disabled={!canUpdateTask || !editingSubtaskTitle.trim()}
-                          >
-                            <Save className="mr-2 h-4 w-4" />
-                            Save
-                          </Button>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="flex items-start gap-3">
-                        <button
-                          type="button"
-                          onClick={() => handleToggleSubtask(subtask.id, subtask.is_done)}
-                          disabled={!canUpdateTask}
-                          className="mt-0.5 shrink-0 text-left disabled:cursor-not-allowed disabled:opacity-60"
-                          aria-label={subtask.is_done ? "Mark subtask as not done" : "Mark subtask as done"}
-                        >
-                          {subtask.is_done ? (
-                            <CheckCircle2 className="h-5 w-5 text-emerald-400" />
-                          ) : (
-                            <Circle className="h-5 w-5 text-slate-500" />
-                          )}
-                        </button>
-                        <div className="min-w-0 flex-1">
-                          <button
-                            type="button"
-                            onClick={() => handleToggleSubtask(subtask.id, subtask.is_done)}
-                            disabled={!canUpdateTask}
-                            className="block w-full text-left disabled:cursor-not-allowed"
-                          >
-                            <span
-                              className={
-                                subtask.is_done
-                                  ? "text-slate-500 line-through"
-                                  : "text-slate-200"
-                              }
-                            >
-                              {subtask.title}
-                            </span>
-                          </button>
-                          <p className="mt-1 text-xs text-slate-600">
-                            Added by {subtask.created_by_name || "Unknown user"}
-                          </p>
-                        </div>
-                        {canUpdateTask && (
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-8 w-8 text-slate-500 hover:bg-slate-900 hover:text-white"
-                              >
-                                <MoreHorizontal className="h-4 w-4" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent
-                              align="end"
-                              className="border-slate-800 bg-slate-950 text-slate-200"
-                            >
-                              <DropdownMenuItem
-                                className="cursor-pointer hover:bg-slate-900"
-                                onClick={() => handleStartEditSubtask(subtask.id, subtask.title)}
-                              >
-                                <Pencil className="h-4 w-4" />
-                                Edit
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                variant="destructive"
-                                className="cursor-pointer"
-                                onClick={() => setSubtaskToDelete(subtask.id)}
-                              >
-                                <Trash2 className="h-4 w-4" />
-                                Delete
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                ))}
-
-                {task.subtasks.length === 0 && (
-                  <div className="rounded-2xl border border-dashed border-slate-800 bg-slate-950/60 p-8 text-center">
-                    <p className="text-sm font-medium text-slate-400">
-                      No subtasks yet
-                    </p>
-                    <p className="mt-1 text-xs text-slate-600">
-                      Break the issue into implementation steps.
-                    </p>
-                  </div>
-                )}
-              </div>
-
-              <div className="flex flex-col gap-2 sm:flex-row">
-                <Input
-                  value={newSubtaskTitle}
-                  onChange={(event) => setNewSubtaskTitle(event.target.value)}
-                  onKeyDown={(event) =>
-                    event.key === "Enter" && handleAddSubtask()
-                  }
-                  placeholder="Add a subtask..."
-                  disabled={!canUpdateTask}
-                  className="h-11 border-slate-700 bg-slate-950"
-                />
-                <Button onClick={handleAddSubtask} disabled={!canUpdateTask} className="w-full bg-blue-600 hover:bg-blue-700 sm:w-11">
-                  <Plus className="h-4 w-4" />
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="border-slate-800 bg-slate-900/75 text-slate-50 shadow-xl shadow-slate-950/20">
-            <CardHeader className="border-b border-slate-800/80">
-              <CardTitle className="flex items-center gap-2">
-                <MessageSquare className="h-5 w-5 text-cyan-300" />
-                Comments
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-5 p-4 sm:p-5">
-              <div className="space-y-3">
-                {task.comments.map((comment) => (
-                  <div
-                    key={comment.id}
-                    className="min-w-0 rounded-2xl border border-slate-800 bg-slate-950/75 p-4"
-                  >
-                    <div className="mb-3 flex items-start gap-3">
-                      <UserAvatar
-                        name={comment.author_name}
-                        src={comment.author_avatar_url}
-                        className="h-9 w-9"
-                        fallbackClassName="bg-blue-500/10 text-[10px] text-blue-200"
-                      />
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-semibold text-slate-100">
-                          {comment.author_name || "Unknown user"}
-                        </p>
-                        <p className="text-xs text-slate-600">
-                          {formatDate(comment.created_at)}
-                          {comment.updated_at &&
-                          comment.updated_at !== comment.created_at
-                            ? " · edited"
-                            : ""}
-                        </p>
-                      </div>
-                      {currentUser?.id === comment.author_id && canComment && (
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-8 w-8 text-slate-500 hover:bg-slate-900 hover:text-white"
-                            >
-                              <MoreHorizontal className="h-4 w-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent
-                            align="end"
-                            className="border-slate-800 bg-slate-950 text-slate-200"
-                          >
-                            <DropdownMenuItem
-                              className="cursor-pointer hover:bg-slate-900"
-                              onClick={() =>
-                                handleStartEditComment(comment.id, comment.body)
-                              }
-                            >
-                              <Pencil className="h-4 w-4" />
-                              Edit
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              variant="destructive"
-                              className="cursor-pointer"
-                              onClick={() => setCommentToDelete(comment.id)}
-                            >
-                              <Trash2 className="h-4 w-4" />
-                              Delete
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      )}
-                    </div>
-
-                    {editingCommentId === comment.id ? (
-                      <div className="space-y-3">
-                        <Textarea
-                          value={editingCommentBody}
-                          onChange={(event) =>
-                            setEditingCommentBody(event.target.value)
-                          }
-                          disabled={!canComment}
-                          className="min-h-24 border-slate-700 bg-slate-900"
-                        />
-                        <div className="flex justify-end gap-2">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="text-slate-400 hover:text-white"
-                            onClick={() => {
-                              setEditingCommentId(null);
-                              setEditingCommentBody("");
-                            }}
-                          >
-                            <X className="mr-2 h-4 w-4" />
-                            Cancel
-                          </Button>
-                          <Button
-                            size="sm"
-                            className="bg-blue-600 hover:bg-blue-700"
-                            onClick={handleSaveCommentEdit}
-                            disabled={!canComment}
-                          >
-                            <Save className="mr-2 h-4 w-4" />
-                            Save
-                          </Button>
-                        </div>
-                      </div>
-                    ) : (
-                      <p className="whitespace-pre-wrap break-words text-sm leading-6 text-slate-300">
-                        {comment.body}
-                      </p>
-                    )}
-                  </div>
-                ))}
-
-                {typingUsers.length > 0 && (
-                  <div className="flex items-center gap-3 rounded-2xl border border-cyan-500/20 bg-cyan-500/10 px-4 py-3 text-sm text-cyan-100">
-                    <div className="flex -space-x-2">
-                      {typingUsers.slice(0, 3).map((user) => (
-                        <UserAvatar
-                          key={user.user_id}
-                          name={user.full_name}
-                          src={user.avatar_url}
-                          className="h-7 w-7 border border-slate-950"
-                          fallbackClassName="bg-cyan-500/10 text-[10px] text-cyan-100"
-                        />
-                      ))}
-                    </div>
-                    <span>
-                      {typingUsers.length === 1
-                        ? `${typingUsers[0].full_name || "A teammate"} is typing...`
-                        : `${typingUsers.length} teammates are typing...`}
-                    </span>
-                  </div>
-                )}
-
-                {task.comments.length === 0 && (
-                  <div className="rounded-2xl border border-dashed border-slate-800 bg-slate-950/60 p-8 text-center">
-                    <p className="text-sm font-medium text-slate-400">
-                      No comments yet
-                    </p>
-                    <p className="mt-1 text-xs text-slate-600">
-                      Start the discussion on this issue.
-                    </p>
-                  </div>
-                )}
-              </div>
-
-              <div className="space-y-3">
-                <Textarea
-                  value={newComment}
-                  onChange={(event) => handleCommentDraftChange(event.target.value)}
-                  onBlur={() => sendCommentTyping(false)}
-                  placeholder="Add a comment..."
-                  disabled={!canComment}
-                  className="min-h-28 border-slate-700 bg-slate-950"
-                />
-                <Button
-                  onClick={handleAddComment}
-                  disabled={!canComment}
-                  className="w-full bg-blue-600 hover:bg-blue-700"
-                >
-                  Add comment
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-
-          {developmentLinksCard}
-
-          <Card className="border-slate-800 bg-slate-900/75 text-slate-50 shadow-xl shadow-slate-950/20">
-            <CardHeader className="border-b border-slate-800/80">
-              <CardTitle className="flex items-center gap-2">
-                <History className="h-5 w-5 text-violet-300" />
-                Audit Log
-              </CardTitle>
-              <p className="text-sm text-slate-500">
-                Immutable activity trail for this issue.
-              </p>
-            </CardHeader>
-            <CardContent className="space-y-3 p-4 sm:p-5">
-              {[...task.audit_logs].reverse().map((log) => (
-                <AuditLogEvent key={log.id} event={log} />
-              ))}
-
-              {task.audit_logs.length === 0 && (
-                <div className="rounded-2xl border border-dashed border-slate-800 bg-slate-950/60 p-8 text-center">
-                  <p className="text-sm font-medium text-slate-400">
-                    No audit events yet
-                  </p>
-                  <p className="mt-1 text-xs text-slate-600">
-                    Changes will appear here as the issue evolves.
-                  </p>
-                </div>
-              )}
-            </CardContent>
-          </Card>
+          <TaskAuditLogCard logs={task.audit_logs} />
         </main>
 
-        <aside className="xl:self-start">
-          <div className="space-y-4 xl:sticky xl:top-6">
-            <Card className="border-slate-800 bg-slate-900/75 text-slate-50 shadow-xl shadow-slate-950/20">
-              <CardHeader className="border-b border-slate-800/80">
-                <CardTitle className="text-base">Properties</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4 p-5">
-                <div className="space-y-2">
-                  <Label>Status</Label>
-                  <Select
-                    value={task.status}
-                    onValueChange={(value) =>
-                      patchLocalTask({ status: value as TaskStatus })
-                    }
-                    disabled={!canMoveTask}
-                  >
-                    <SelectTrigger className="h-11 border-slate-700 bg-slate-950">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent className="border-slate-800 bg-slate-950 text-slate-200">
-                      {statusOptions.map((status) => (
-                        <SelectItem key={status} value={status}>
-                          {statusLabels[status]}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-              <div className="space-y-2">
-                <Label>Priority</Label>
-                <Select
-                  value={task.priority}
-                  onValueChange={(value) =>
-                    patchLocalTask({ priority: value as TaskPriority })
-                  }
-                  disabled={!canUpdateTask}
-                >
-                  <SelectTrigger className="h-11 border-slate-700 bg-slate-950">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent className="border-slate-800 bg-slate-950 text-slate-200">
-                    {priorityOptions.map((priority) => (
-                      <SelectItem key={priority} value={priority}>
-                        {priority}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {supportsStoryPoints ? (
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between gap-3">
-                    <Label>Story Points</Label>
-                    {canUseAi && canUpdateTask && (
-                      <button
-                        type="button"
-                        onClick={handleEstimateWithAi}
-                        disabled={aiWorking}
-                        className="inline-flex items-center text-xs text-blue-300 transition hover:text-blue-200 disabled:opacity-50"
-                      >
-                        {aiWorking ? (
-                          <Loader2 className="mr-1 h-3 w-3 animate-spin" />
-                        ) : (
-                          <Sparkles className="mr-1 h-3 w-3" />
-                        )}
-                        Estimate
-                      </button>
-                    )}
-                  </div>
-                  <Input
-                    type="number"
-                    min="0"
-                    max="100"
-                    value={task.story_points ?? ""}
-                    onChange={(event) =>
-                      patchLocalTask({
-                        story_points: event.target.value
-                          ? Number(event.target.value)
-                          : null,
-                      })
-                    }
-                    disabled={!canUpdateTask}
-                    className="h-11 border-slate-700 bg-slate-950"
-                  />
-                  {canUpdateTask && task.story_points !== null && task.story_points !== undefined && (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => setInvalidateEstimateOpen(true)}
-                      className="h-10 w-full border-amber-500/25 bg-amber-500/10 text-amber-100 hover:bg-amber-500/15"
-                    >
-                      <Gauge className="mr-2 h-4 w-4" />
-                      Invalidate estimate
-                    </Button>
-                  )}
-                </div>
-              ) : (
-                <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
-                  <p className="text-sm font-medium text-slate-300">
-                    Story Points disabled
-                  </p>
-                  <p className="mt-1 text-xs text-slate-500">
-                    Kanban work is tracked by flow, not sprint estimation.
-                  </p>
-                </div>
-              )}
-
-              <div className="space-y-2">
-                <Label>Target Date</Label>
-                <Input
-                  type="date"
-                  value={toDateInputValue(task.due_date)}
-                  onChange={(event) =>
-                    patchLocalTask({
-                      due_date: event.target.value
-                        ? `${event.target.value}T23:59:00`
-                        : null,
-                    })
-                  }
-                  disabled={!canUpdateTask}
-                  className="h-11 border-slate-700 bg-slate-950"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label>Assignee</Label>
-                <Select
-                  value={task.assignee_id ? String(task.assignee_id) : "unassigned"}
-                  onValueChange={handleAssigneeChange}
-                  disabled={!canAssignTask}
-                >
-                  <SelectTrigger className="h-11 border-slate-700 bg-slate-950">
-                    <SelectValue placeholder="Unassigned" />
-                  </SelectTrigger>
-                  <SelectContent className="border-slate-800 bg-slate-950 text-slate-200">
-                    <SelectItem value="unassigned">Unassigned</SelectItem>
-                    {members.map((member) => (
-                      <SelectItem
-                        key={member.membership_id}
-                        value={String(member.user.id)}
-                      >
-                        <div className="flex items-center gap-2">
-                          <UserAvatar
-                            name={member.user.full_name}
-                            email={member.user.email}
-                            src={member.user.avatar_url}
-                            className="h-5 w-5"
-                            fallbackClassName="bg-blue-900 text-[9px] text-blue-100"
-                          />
-                          {member.user.full_name || member.user.email}
-                        </div>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <Label>Delivery Team</Label>
-                <Select
-                  value={task.team_id ? String(task.team_id) : "none"}
-                  onValueChange={handleTeamChange}
-                  disabled={!canAssignTask}
-                >
-                  <SelectTrigger className="h-11 border-slate-700 bg-slate-950">
-                    <SelectValue placeholder="No team" />
-                  </SelectTrigger>
-                  <SelectContent className="border-slate-800 bg-slate-950 text-slate-200">
-                    <SelectItem value="none">No team</SelectItem>
-                    {teams.map((team) => (
-                      <SelectItem key={team.id} value={String(team.id)}>
-                        {team.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Button
-            variant="outline"
-            className="w-full border-slate-700 bg-slate-950/60 text-slate-200 hover:bg-slate-900"
-            asChild
-          >
-            <Link href="/dashboard/board">
-              Open on board
-              <ArrowRight className="ml-2 h-4 w-4" />
-            </Link>
-          </Button>
-          </div>
-        </aside>
+        <TaskPropertiesPanel
+          task={task}
+          members={members}
+          teams={teams}
+          supportsStoryPoints={supportsStoryPoints}
+          canMoveTask={canMoveTask}
+          canUpdateTask={canUpdateTask}
+          canUseAi={canUseAi}
+          canAssignTask={canAssignTask}
+          aiWorking={aiWorking}
+          patchLocalTask={patchLocalTask}
+          onEstimateWithAi={handleEstimateWithAi}
+          onInvalidateEstimate={() => setInvalidateEstimateOpen(true)}
+          onAssigneeChange={handleAssigneeChange}
+          onTeamChange={handleTeamChange}
+        />
       </div>
 
-      <Dialog
-        open={invalidateEstimateOpen}
-        onOpenChange={(open) => {
+      <TaskGovernanceDialogs
+        task={task}
+        invalidateEstimateOpen={invalidateEstimateOpen}
+        deleteTaskOpen={deleteTaskOpen}
+        subtaskDeleteOpen={subtaskToDelete !== null}
+        commentDeleteOpen={commentToDelete !== null}
+        invalidateEstimateReason={invalidateEstimateReason}
+        deleteTaskReason={deleteTaskReason}
+        deleteTaskConfirmKey={deleteTaskConfirmKey}
+        invalidatingEstimate={invalidatingEstimate}
+        deletingTask={deletingTask}
+        deletingSubtask={deletingSubtask}
+        deletingComment={deletingComment}
+        onInvalidateEstimateOpenChange={(open) => {
           setInvalidateEstimateOpen(open);
           if (!open) setInvalidateEstimateReason("");
         }}
-      >
-        <DialogContent className="border-slate-800 bg-slate-950 text-slate-50 sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Invalidate estimate</DialogTitle>
-            <DialogDescription className="text-slate-400">
-              This clears the current story points and writes a dedicated governance event in the task audit log.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-2">
-            <Label>Reason</Label>
-            <Textarea
-              value={invalidateEstimateReason}
-              onChange={(event) => setInvalidateEstimateReason(event.target.value)}
-              placeholder="Example: scope changed after API review, previous estimate is no longer valid."
-              className="min-h-28 border-slate-700 bg-slate-900"
-            />
-          </div>
-          <DialogFooter>
-            <Button
-              variant="ghost"
-              className="text-slate-400 hover:text-white"
-              disabled={invalidatingEstimate}
-              onClick={() => setInvalidateEstimateOpen(false)}
-            >
-              Cancel
-            </Button>
-            <Button
-              className="bg-amber-600 hover:bg-amber-700"
-              disabled={invalidatingEstimate || invalidateEstimateReason.trim().length < 8}
-              onClick={handleInvalidateEstimate}
-            >
-              {invalidatingEstimate && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Invalidate
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog
-        open={deleteTaskOpen}
-        onOpenChange={(open) => {
+        onDeleteTaskOpenChange={(open) => {
           setDeleteTaskOpen(open);
           if (!open) {
             setDeleteTaskReason("");
             setDeleteTaskConfirmKey("");
           }
         }}
-      >
-        <DialogContent className="border-slate-800 bg-slate-950 text-slate-50 sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Delete {task.key}?</DialogTitle>
-            <DialogDescription className="text-slate-400">
-              This action is governance protected. The task will be removed from the workspace and the deletion reason will remain in the project audit log.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="rounded-2xl border border-rose-500/20 bg-rose-950/20 p-4">
-              <p className="text-sm font-semibold text-rose-100">{task.title}</p>
-              <p className="mt-1 text-xs leading-5 text-rose-200/70">
-                Type <span className="font-mono text-rose-100">{task.key}</span> below to confirm deletion.
-              </p>
-            </div>
-            <div className="space-y-2">
-              <Label>Deletion reason</Label>
-              <Textarea
-                value={deleteTaskReason}
-                onChange={(event) => setDeleteTaskReason(event.target.value)}
-                placeholder="Explain why this task is being deleted."
-                className="min-h-28 border-slate-700 bg-slate-900"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Confirmation key</Label>
-              <Input
-                value={deleteTaskConfirmKey}
-                onChange={(event) => setDeleteTaskConfirmKey(event.target.value)}
-                placeholder={task.key}
-                className="h-11 border-slate-700 bg-slate-900 font-mono"
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button
-              variant="ghost"
-              className="text-slate-400 hover:text-white"
-              disabled={deletingTask}
-              onClick={() => setDeleteTaskOpen(false)}
-            >
-              Cancel
-            </Button>
-            <Button
-              className="bg-rose-600 hover:bg-rose-700"
-              disabled={
-                deletingTask ||
-                deleteTaskReason.trim().length < 8 ||
-                deleteTaskConfirmKey.trim().toUpperCase() !== task.key.toUpperCase()
-              }
-              onClick={handleDeleteTask}
-            >
-              {deletingTask && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Delete Task
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <ConfirmDialog
-        open={subtaskToDelete !== null}
-        onOpenChange={(open) => !open && setSubtaskToDelete(null)}
-        title="Delete subtask?"
-        description="This removes the subtask from the issue. The task audit trail will keep the deletion event."
-        confirmLabel="Delete Subtask"
-        destructive
-        loading={deletingSubtask}
-        onConfirm={handleDeleteSubtask}
-      />
-
-      <ConfirmDialog
-        open={commentToDelete !== null}
-        onOpenChange={(open) => !open && setCommentToDelete(null)}
-        title="Delete comment?"
-        description="This removes the comment from the issue discussion. The audit trail will still record the action."
-        confirmLabel="Delete Comment"
-        destructive
-        loading={deletingComment}
-        onConfirm={handleDeleteComment}
+        onSubtaskDeleteOpenChange={(open) => !open && setSubtaskToDelete(null)}
+        onCommentDeleteOpenChange={(open) => !open && setCommentToDelete(null)}
+        onInvalidateEstimateReasonChange={setInvalidateEstimateReason}
+        onDeleteTaskReasonChange={setDeleteTaskReason}
+        onDeleteTaskConfirmKeyChange={setDeleteTaskConfirmKey}
+        onConfirmInvalidateEstimate={handleInvalidateEstimate}
+        onConfirmDeleteTask={handleDeleteTask}
+        onConfirmDeleteSubtask={handleDeleteSubtask}
+        onConfirmDeleteComment={handleDeleteComment}
       />
     </div>
   );

@@ -223,7 +223,7 @@ def read_admin_overview(
         "errors_last_24h": db.query(HttpErrorLog)
         .filter(HttpErrorLog.created_at >= since)
         .count(),
-        "ai_configured": bool(settings.gemini_api_key),
+        "ai_configured": bool(settings.local_ai_base_url and settings.local_ai_model),
         "ai_requests": db.query(AiUsageLog).count(),
         "ai_requests_24h": db.query(AiUsageLog)
         .filter(AiUsageLog.created_at >= since)
@@ -691,7 +691,7 @@ def export_platform_pdf(
     metric_row("Support queue", f"{overview['open_tickets']} open / {critical_tickets} critical")
     metric_row("Server errors 24h", overview["errors_last_24h"])
     metric_row("AI requests", f"{overview['ai_requests']} total / {overview['ai_requests_24h']} in 24h")
-    metric_row("AI configured", "Yes" if settings.gemini_api_key else "No")
+    metric_row("AI configured", "Yes" if settings.local_ai_base_url and settings.local_ai_model else "No")
 
     pdf.ln(7)
     section("2. Project registry")

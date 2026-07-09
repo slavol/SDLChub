@@ -6,7 +6,6 @@ import {
   AlertTriangle,
   ArrowRight,
   Bot,
-  Camera,
   CheckCircle2,
   Copy,
   Crown,
@@ -16,17 +15,14 @@ import {
   GitBranch,
   Github,
   History,
-  KeyRound,
   Loader2,
   Lock,
   PlugZap,
   RefreshCw,
   Save,
   Server,
-  Settings,
   Shield,
   Trash2,
-  Users,
   Workflow,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -52,9 +48,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
 import { AuditLogEvent } from "@/components/dashboard/audit-log-event";
-import { resolveMediaUrl } from "@/components/user-avatar";
 import { getApiErrorMessage } from "@/lib/api-error";
 import { hasProjectPermission } from "@/lib/project-permissions";
 import { pickWorkspaceProject } from "@/lib/project-selection";
@@ -70,8 +64,8 @@ import {
   MethodologyTransitionPreview,
   Project,
   ProjectAuditLog,
-  ProjectMember,
   ProjectWorkflowColumn,
+  ProjectMember,
   ProjectRoleWithPermissions,
   ProjectAiConfig,
   deleteProjectLogo,
@@ -97,140 +91,28 @@ import {
   testProjectGitHubIntegration,
   upsertProjectGitHubIntegration,
 } from "@/services/github";
-
-const PERMISSION_GROUPS = [
-  {
-    title: "Project",
-    keys: ["PROJECT_UPDATE", "PROJECT_DELETE", "SETTINGS_MANAGE"],
-  },
-  {
-    title: "Team",
-    keys: ["MEMBER_INVITE", "MEMBER_REMOVE", "ROLE_MANAGE", "TEAM_MANAGE"],
-  },
-  {
-    title: "Tasks",
-    keys: ["TASK_CREATE", "TASK_UPDATE", "TASK_DELETE", "TASK_ASSIGN", "TASK_MOVE", "TASK_COMMENT"],
-  },
-  {
-    title: "Sprints",
-    keys: ["SPRINT_CREATE", "SPRINT_UPDATE", "SPRINT_START", "SPRINT_CLOSE", "SPRINT_DELETE"],
-  },
-  {
-    title: "Calendar",
-    keys: ["CALENDAR_CREATE", "CALENDAR_UPDATE", "CALENDAR_DELETE"],
-  },
-  {
-    title: "AI & Reports",
-    keys: ["AI_USE", "REPORT_VIEW"],
-  },
-];
-
-const PERMISSION_LABELS: Record<string, string> = {
-  PROJECT_UPDATE: "Update project",
-  PROJECT_DELETE: "Delete project",
-  SETTINGS_MANAGE: "Manage settings",
-  MEMBER_INVITE: "Invite members",
-  MEMBER_REMOVE: "Remove members",
-  ROLE_MANAGE: "Manage roles",
-  TEAM_MANAGE: "Manage teams",
-  TASK_CREATE: "Create tasks",
-  TASK_UPDATE: "Update tasks",
-  TASK_DELETE: "Delete tasks",
-  TASK_ASSIGN: "Assign tasks",
-  TASK_MOVE: "Move tasks",
-  TASK_COMMENT: "Comment on tasks",
-  SPRINT_CREATE: "Create sprints",
-  SPRINT_UPDATE: "Edit sprints",
-  SPRINT_START: "Start sprints",
-  SPRINT_CLOSE: "Close sprints",
-  SPRINT_DELETE: "Delete sprints",
-  CALENDAR_CREATE: "Create calendar events",
-  CALENDAR_UPDATE: "Edit calendar events",
-  CALENDAR_DELETE: "Delete calendar events",
-  AI_USE: "Use AI",
-  REPORT_VIEW: "View reports",
-};
-
-const METHODOLOGY_HELP: Record<string, string> = {
-  SCRUM: "Best for sprint planning, backlog grooming and regular delivery cycles.",
-  KANBAN: "Best for continuous work, support, maintenance and flow-based delivery.",
-  SCRUMBAN: "Best when you want Scrum planning with Kanban-style flexibility.",
-};
-
-const WIP_LIMIT_COLUMNS = [
-  { key: "TODO", label: "To Do", helper: "Intake lane", color: "bg-slate-500" },
-  { key: "IN_PROGRESS", label: "In Progress", helper: "Active implementation", color: "bg-blue-500" },
-  { key: "REVIEW", label: "Review", helper: "Code review / QA", color: "bg-purple-500" },
-  { key: "DONE", label: "Done", helper: "Usually unlimited", color: "bg-green-500" },
-];
-
-const DEFAULT_BOARD_COLUMNS: ProjectWorkflowColumn[] = WIP_LIMIT_COLUMNS.map((column, index) => ({
-  key: column.key,
-  label: column.label,
-  enabled: true,
-  order: index,
-  color: column.color,
-}));
-
-const DEFAULT_WIP_LIMITS: Record<string, number | null> = {
-  TODO: null,
-  IN_PROGRESS: 3,
-  REVIEW: 2,
-  DONE: null,
-};
-
-function enabledPermissions(role: ProjectRoleWithPermissions) {
-  return Object.values(role.permissions || {}).filter(Boolean).length;
-}
-
-function roleTone(roleName: string) {
-  if (roleName === "Project Admin") return "border-blue-500/30 bg-blue-500/10 text-blue-300";
-  if (roleName.includes("Manager") || roleName.includes("Owner")) return "border-purple-500/30 bg-purple-500/10 text-purple-300";
-  if (roleName.includes("Lead") || roleName.includes("Master")) return "border-emerald-500/30 bg-emerald-500/10 text-emerald-300";
-  return "border-slate-700 bg-slate-800 text-slate-300";
-}
-
-function githubStatusTone(status?: string) {
-  if (status === "CONNECTED") return "border-emerald-500/30 bg-emerald-500/10 text-emerald-200";
-  if (status === "ERROR") return "border-red-500/30 bg-red-500/10 text-red-200";
-  if (status === "WAITING_FOR_PING") return "border-amber-500/30 bg-amber-500/10 text-amber-200";
-  return "border-slate-700 bg-slate-800 text-slate-300";
-}
-
-function normalizeGithubWebhookUrl(value: string) {
-  const trimmed = value.trim().replace(/\/+$/, "");
-  if (!trimmed) return "";
-  if (trimmed.endsWith("/github/webhook")) return trimmed;
-  return `${trimmed}/github/webhook`;
-}
-
-function githubRepoUrlFromFullName(value: string) {
-  const repo = value
-    .trim()
-    .replace(/^https?:\/\/github\.com\//, "")
-    .replace(/\.git$/, "")
-    .replace(/^\/+|\/+$/g, "");
-  return repo.includes("/") ? `https://github.com/${repo}` : "";
-}
-
-function formatSettingsDate(value?: string | null) {
-  if (!value) return "-";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "-";
-  return date.toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
-}
-
-function getProjectInitials(name?: string | null, key?: string | null) {
-  if (key) return key.slice(0, 2).toUpperCase();
-  if (!name) return "PR";
-
-  return name
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0]?.toUpperCase())
-    .join("") || "PR";
-}
+import {
+  SettingsHero,
+  SettingsLoadingState,
+  SettingsSummaryCards,
+  SettingsUnavailableState,
+} from "./settings-components";
+import { SettingsGeneralCard } from "./settings-general-card";
+import {
+  DEFAULT_BOARD_COLUMNS,
+  DEFAULT_WIP_LIMITS,
+  PERMISSION_GROUPS,
+  PERMISSION_LABELS,
+  WIP_LIMIT_COLUMNS,
+} from "./settings-constants";
+import {
+  enabledPermissions,
+  formatSettingsDate,
+  githubRepoUrlFromFullName,
+  githubStatusTone,
+  normalizeGithubWebhookUrl,
+  roleTone,
+} from "./settings-utils";
 
 export default function SettingsPage() {
   const router = useRouter();
@@ -267,8 +149,8 @@ export default function SettingsPage() {
   const [savingWorkflow, setSavingWorkflow] = useState(false);
   const [aiConfig, setAiConfig] = useState<ProjectAiConfig | null>(null);
   const [aiMode, setAiMode] = useState<"PLATFORM" | "PROJECT">("PLATFORM");
-  const [aiProvider, setAiProvider] = useState("GEMINI");
-  const [aiProviderName, setAiProviderName] = useState("Gemini");
+  const [aiProvider, setAiProvider] = useState("OLLAMA");
+  const [aiProviderName, setAiProviderName] = useState("Qwen local (Ollama)");
   const [aiBaseUrl, setAiBaseUrl] = useState("");
   const [aiModel, setAiModel] = useState("");
   const [aiApiKey, setAiApiKey] = useState("");
@@ -442,8 +324,8 @@ export default function SettingsPage() {
       );
       setAiConfig(freshProject.ai_config || null);
       setAiMode((freshProject.ai_config?.mode as "PLATFORM" | "PROJECT") || "PLATFORM");
-      setAiProvider(freshProject.ai_config?.provider || "GEMINI");
-      setAiProviderName(freshProject.ai_config?.provider_name || "Gemini");
+      setAiProvider(freshProject.ai_config?.provider || "OLLAMA");
+      setAiProviderName(freshProject.ai_config?.provider_name || "Qwen local (Ollama)");
       setAiBaseUrl(freshProject.ai_config?.base_url || "");
       setAiModel(freshProject.ai_config?.model || "");
       setAiApiKey("");
@@ -452,8 +334,8 @@ export default function SettingsPage() {
         const remoteAiSettings = await getProjectAiSettings(freshProject.id);
         setAiConfig(remoteAiSettings);
         setAiMode(remoteAiSettings.mode);
-        setAiProvider(remoteAiSettings.provider || "GEMINI");
-        setAiProviderName(remoteAiSettings.provider_name || "Gemini");
+        setAiProvider(remoteAiSettings.provider || "OLLAMA");
+        setAiProviderName(remoteAiSettings.provider_name || "Qwen local (Ollama)");
         setAiBaseUrl(remoteAiSettings.base_url || "");
         setAiModel(remoteAiSettings.model || "");
       }
@@ -681,20 +563,29 @@ export default function SettingsPage() {
   const handleSaveAiSettings = async () => {
     if (!project || !isProjectOwner) return;
 
+    const selectedProvider = aiMode === "PLATFORM" ? "OLLAMA" : aiProvider;
+    const usesBaseUrl = selectedProvider === "OPENAI_COMPATIBLE";
+
     setSavingAiSettings(true);
     try {
       const updated = await updateProjectAiSettings(project.id, {
         mode: aiMode,
-        provider: aiProvider,
-        provider_name: aiProviderName.trim() || aiProvider,
-        base_url: aiProvider === "OPENAI_COMPATIBLE" ? aiBaseUrl.trim() : undefined,
+        provider: selectedProvider,
+        provider_name:
+          aiMode === "PLATFORM"
+            ? "Qwen local (Ollama)"
+            : aiProviderName.trim() || selectedProvider,
+        base_url: usesBaseUrl ? aiBaseUrl.trim() : undefined,
         model: aiModel.trim() || undefined,
-        api_key: aiApiKey.trim() || undefined,
+        // Project-owned keys are write-only: after save we clear the input and rely on
+        // `has_project_key` from the API instead of ever rendering the secret again.
+        api_key: selectedProvider === "OLLAMA" ? undefined : aiApiKey.trim() || undefined,
+        clear_api_key: selectedProvider === "OLLAMA",
       });
 
       setAiConfig(updated);
-      setAiProvider(updated.provider || "GEMINI");
-      setAiProviderName(updated.provider_name || "Gemini");
+      setAiProvider(updated.provider || "OLLAMA");
+      setAiProviderName(updated.provider_name || "Qwen local (Ollama)");
       setAiBaseUrl(updated.base_url || "");
       setAiModel(updated.model || "");
       setProject((current) =>
@@ -718,16 +609,15 @@ export default function SettingsPage() {
     try {
       const updated = await updateProjectAiSettings(project.id, {
         mode: "PLATFORM",
-        provider: aiProvider,
-        provider_name: aiProviderName.trim() || aiProvider,
-        base_url: aiProvider === "OPENAI_COMPATIBLE" ? aiBaseUrl.trim() : undefined,
-        model: aiModel.trim() || undefined,
+        provider: "OLLAMA",
+        provider_name: "Qwen local (Ollama)",
+        model: "qwen2.5-coder:7b",
         clear_api_key: true,
       });
       setAiMode(updated.mode);
       setAiConfig(updated);
-      setAiProvider(updated.provider || "GEMINI");
-      setAiProviderName(updated.provider_name || "Gemini");
+      setAiProvider(updated.provider || "OLLAMA");
+      setAiProviderName(updated.provider_name || "Qwen local (Ollama)");
       setAiBaseUrl(updated.base_url || "");
       setAiModel(updated.model || "");
       setAiApiKey("");
@@ -771,6 +661,8 @@ export default function SettingsPage() {
     }
 
     const webhookUrl = normalizeGithubWebhookUrl(githubPublicBaseUrl);
+    // Demo placeholders must not be persisted because GitHub would silently send
+    // webhooks to an unusable URL and make the integration look broken.
     if (
       githubPublicBaseUrl.includes("<ngrok-domain>") ||
       githubPublicBaseUrl.includes("abc123") ||
@@ -909,6 +801,8 @@ export default function SettingsPage() {
 
     setSavingPermission(key);
 
+    // Keep the permissions UI snappy, but reload from the server if validation fails
+    // because methodology-specific rules may normalize the payload.
     setRoles((current) =>
       current.map((role) =>
         role.id === selectedRole.id ? { ...role, permissions: nextPermissions } : role
@@ -970,11 +864,7 @@ export default function SettingsPage() {
   };
 
   if (loading) {
-    return (
-      <div className="flex h-full items-center justify-center bg-slate-950 text-blue-500">
-        <Loader2 className="h-10 w-10 animate-spin" />
-      </div>
-    );
+    return <SettingsLoadingState />;
   }
 
   if (!project) {
@@ -982,268 +872,58 @@ export default function SettingsPage() {
   }
 
   if (!canAccessSettingsPage) {
-    return (
-      <div className="mx-auto max-w-3xl p-8 text-slate-50">
-        <Card className="border-slate-800 bg-slate-900 text-slate-50">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Lock className="h-5 w-5 text-amber-300" />
-              Settings unavailable
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-slate-400">
-              You do not have project settings permissions. Ask a Project Admin for access to the
-              specific settings area you need.
-            </p>
-          </CardContent>
-        </Card>
-      </div>
-    );
+    return <SettingsUnavailableState />;
   }
 
   const deleteReady = deleteKey.trim().toUpperCase() === project.key;
   const selectedRoleLocked = selectedRole?.name === "Project Admin";
-  const projectLogoUrl = resolveMediaUrl(project.logo_url);
-  const projectInitials = getProjectInitials(projectName || project.name, project.key);
   const ownershipTransferReady =
     canTransferOwnership &&
     Boolean(selectedOwnershipMember) &&
     ownershipConfirmKey.trim().toUpperCase() === project.key;
+  const canSaveProject = canUpdateProject || canManageSettings;
+  const projectSaveLabel =
+    methodology !== project.methodology && canManageSettings ? "Review change" : "Save changes";
+  const accessLabel = isProjectOwner ? "Owner" : myRoleName;
 
   return (
     <div className="min-h-full bg-slate-950 text-slate-50">
       <div className="mx-auto w-full max-w-7xl space-y-6 px-4 py-5 sm:px-6 lg:p-8">
-        <section className="rounded-3xl border border-slate-800 bg-slate-900 p-6 shadow-2xl shadow-black/20">
-          <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
-            <div className="min-w-0">
-              <div className="flex flex-wrap gap-2">
-                <Badge className="bg-blue-500/10 text-blue-300 hover:bg-blue-500/10">
-                  {project.key}
-                </Badge>
-                <Badge className="bg-purple-500/10 text-purple-300 hover:bg-purple-500/10">
-                  {project.methodology}
-                </Badge>
-                {isProjectOwner && (
-                  <Badge className="bg-amber-500/10 text-amber-300 hover:bg-amber-500/10">
-                    <Crown className="mr-1 h-3 w-3" />
-                    Owner
-                  </Badge>
-                )}
-              </div>
+        <SettingsHero
+          project={project}
+          isProjectOwner={isProjectOwner}
+          canSaveProject={canSaveProject}
+          savingProject={savingProject}
+          loadingTransition={loadingTransition}
+          saveLabel={projectSaveLabel}
+          onSave={handleSaveProject}
+        />
 
-              <h1 className="mt-4 break-words text-2xl font-black tracking-tight text-white sm:text-3xl md:text-4xl">
-                Project settings
-              </h1>
-              <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-400">
-                Manage project identity, methodology, permissions and destructive actions.
-              </p>
-            </div>
-
-            {(canUpdateProject || canManageSettings) && (
-              <Button
-                onClick={handleSaveProject}
-                disabled={savingProject || loadingTransition}
-                className="h-11 w-full bg-blue-600 px-5 text-white hover:bg-blue-700 sm:w-auto"
-              >
-                {savingProject || loadingTransition ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
-                {methodology !== project.methodology && canManageSettings ? "Review change" : "Save changes"}
-              </Button>
-            )}
-          </div>
-        </section>
-
-        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <Card className="min-w-0 border-slate-800 bg-slate-900 text-slate-50">
-            <CardContent className="flex items-center gap-4 p-5">
-              <div className="rounded-2xl bg-blue-500/10 p-3 text-blue-300">
-                <Workflow className="h-5 w-5" />
-              </div>
-              <div className="min-w-0">
-                <p className="text-sm text-slate-400">Methodology</p>
-                <p className="truncate text-xl font-bold">{methodology}</p>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="min-w-0 border-slate-800 bg-slate-900 text-slate-50">
-            <CardContent className="flex items-center gap-4 p-5">
-              <div className="rounded-2xl bg-purple-500/10 p-3 text-purple-300">
-                <Shield className="h-5 w-5" />
-              </div>
-              <div>
-                <p className="text-sm text-slate-400">Roles</p>
-                <p className="text-xl font-bold">{roles.length}</p>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="min-w-0 border-slate-800 bg-slate-900 text-slate-50">
-            <CardContent className="flex items-center gap-4 p-5">
-              <div className="rounded-2xl bg-emerald-500/10 p-3 text-emerald-300">
-                <Users className="h-5 w-5" />
-              </div>
-              <div>
-                <p className="text-sm text-slate-400">Members</p>
-                <p className="text-xl font-bold">{memberCount}</p>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="min-w-0 border-slate-800 bg-slate-900 text-slate-50">
-            <CardContent className="flex items-center gap-4 p-5">
-              <div className="rounded-2xl bg-amber-500/10 p-3 text-amber-300">
-                <KeyRound className="h-5 w-5" />
-              </div>
-              <div className="min-w-0">
-                <p className="text-sm text-slate-400">Your access</p>
-                <p className="truncate text-lg font-bold">{isProjectOwner ? "Owner" : myRoleName}</p>
-              </div>
-            </CardContent>
-          </Card>
-        </section>
+        <SettingsSummaryCards
+          methodology={methodology}
+          rolesCount={roles.length}
+          memberCount={memberCount}
+          accessLabel={accessLabel}
+        />
 
         <section className="grid min-w-0 gap-6 xl:grid-cols-[minmax(0,1fr)_420px]">
           <div className="space-y-6">
             {(canUpdateProject || canManageSettings) && (
-              <Card className="border-slate-800 bg-slate-900 text-slate-50">
-                <CardHeader className="border-b border-slate-800">
-                  <CardTitle className="flex items-center gap-2 text-base">
-                    <Settings className="h-5 w-5 text-blue-300" />
-                    General
-                  </CardTitle>
-                </CardHeader>
-
-                <CardContent className="space-y-5 p-5">
-                  <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_220px]">
-                    <div className="space-y-2">
-                      <Label>Project name</Label>
-                      <Input
-                        value={projectName}
-                        onChange={(event) => setProjectName(event.target.value)}
-                        disabled={!canUpdateProject}
-                        className="h-11 border-slate-700 bg-slate-950"
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label>Project key</Label>
-                      <Input
-                        value={project.key}
-                        disabled
-                        className="h-11 border-slate-800 bg-slate-950 font-mono text-slate-500"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="rounded-2xl border border-slate-800 bg-slate-950 p-4">
-                    <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                      <div className="flex min-w-0 items-center gap-4">
-                        <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-blue-500/25 bg-blue-500/10 text-sm font-black text-blue-200 shadow-lg shadow-blue-950/20">
-                          {projectLogoUrl ? (
-                            // eslint-disable-next-line @next/next/no-img-element
-                            <img
-                              src={projectLogoUrl}
-                              alt={`${project.name} icon`}
-                              className="h-full w-full object-cover"
-                            />
-                          ) : (
-                            projectInitials
-                          )}
-                        </div>
-
-                        <div className="min-w-0">
-                          <p className="font-semibold text-white">Project icon</p>
-                          <p className="mt-1 text-sm leading-6 text-slate-500">
-                            Upload a square SVG, PNG, JPG, WEBP or GIF. Maximum size 2MB.
-                          </p>
-                        </div>
-                      </div>
-
-                      <div className="flex flex-wrap gap-2">
-                        <input
-                          id="project-logo-input"
-                          type="file"
-                          accept="image/jpeg,image/png,image/webp,image/gif,image/svg+xml"
-                          className="hidden"
-                          disabled={!canUpdateProject || uploadingProjectLogo}
-                          onChange={handleProjectLogoUpload}
-                        />
-                        <Button
-                          type="button"
-                          variant="outline"
-                          onClick={() => document.getElementById("project-logo-input")?.click()}
-                          disabled={!canUpdateProject || uploadingProjectLogo}
-                          className="h-10 border-slate-700 bg-slate-900 text-slate-100 hover:bg-slate-800"
-                        >
-                          {uploadingProjectLogo ? (
-                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                          ) : (
-                            <Camera className="mr-2 h-4 w-4" />
-                          )}
-                          Upload icon
-                        </Button>
-
-                        {project.logo_url && (
-                          <Button
-                            type="button"
-                            variant="outline"
-                            onClick={handleProjectLogoDelete}
-                            disabled={!canUpdateProject || removingProjectLogo}
-                            className="h-10 border-red-500/30 bg-red-500/10 text-red-100 hover:bg-red-500/15"
-                          >
-                            {removingProjectLogo ? (
-                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                            ) : (
-                              <Trash2 className="mr-2 h-4 w-4" />
-                            )}
-                            Remove
-                          </Button>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label>Description</Label>
-                    <Textarea
-                      value={description}
-                      onChange={(event) => setDescription(event.target.value)}
-                      disabled={!canUpdateProject}
-                      className="min-h-28 border-slate-700 bg-slate-950"
-                      placeholder="Describe what this project is about."
-                    />
-                  </div>
-
-                  {canManageSettings && (
-                    <div className="grid gap-4 lg:grid-cols-[260px_minmax(0,1fr)]">
-                      <div className="space-y-2">
-                        <Label>Methodology</Label>
-                        <Select value={methodology} onValueChange={setMethodology}>
-                          <SelectTrigger className="h-11 border-slate-700 bg-slate-950">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent className="border-slate-800 bg-slate-900 text-slate-200">
-                            <SelectItem value="SCRUM">SCRUM</SelectItem>
-                            <SelectItem value="KANBAN">KANBAN</SelectItem>
-                            <SelectItem value="SCRUMBAN">SCRUMBAN</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-
-                      <div className="rounded-2xl border border-slate-800 bg-slate-950 p-4">
-                        <div className="flex items-center gap-2">
-                          <CheckCircle2 className="h-4 w-4 text-emerald-300" />
-                          <p className="font-medium text-white">{methodology}</p>
-                        </div>
-                        <p className="mt-2 text-sm leading-6 text-slate-400">
-                          {METHODOLOGY_HELP[methodology]}
-                        </p>
-                      </div>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
+              <SettingsGeneralCard
+                project={project}
+                projectName={projectName}
+                description={description}
+                methodology={methodology}
+                canUpdateProject={canUpdateProject}
+                canManageSettings={canManageSettings}
+                uploadingProjectLogo={uploadingProjectLogo}
+                removingProjectLogo={removingProjectLogo}
+                onProjectNameChange={setProjectName}
+                onDescriptionChange={setDescription}
+                onMethodologyChange={setMethodology}
+                onProjectLogoUpload={handleProjectLogoUpload}
+                onProjectLogoDelete={handleProjectLogoDelete}
+              />
             )}
 
             {canManageAi && (
@@ -1263,15 +943,15 @@ export default function SettingsPage() {
                           Choose how this project uses AI
                         </p>
                         <p className="mt-2 text-sm leading-6 text-violet-100/75">
-                          Use the platform AI key or provide a project-owned provider.
-                          Custom keys are encrypted server-side and are never sent back to the browser.
+                          Use the local Ollama model running through Tailscale, or configure a custom provider only when this project needs one.
+                          Use Test provider to verify that the Ollama endpoint is reachable. Custom API keys are encrypted server-side and are never sent back to the browser.
                         </p>
                       </div>
                       <Badge
                         variant="outline"
                         className="w-fit border-violet-400/30 bg-violet-500/10 text-violet-100"
                       >
-                        {aiConfig?.mode || "PLATFORM"} · {aiConfig?.provider_name || aiConfig?.provider || "Gemini"}
+                        {aiConfig?.mode || "PLATFORM"} · {aiConfig?.provider_name || aiConfig?.provider || "Qwen local (Ollama)"}
                       </Badge>
                     </div>
                   </div>
@@ -1292,16 +972,29 @@ export default function SettingsPage() {
                           <Label>AI mode</Label>
                           <Select
                             value={aiMode}
-                            onValueChange={(value) =>
-                              setAiMode(value as "PLATFORM" | "PROJECT")
-                            }
+                            onValueChange={(value) => {
+                              const nextMode = value as "PLATFORM" | "PROJECT";
+                              setAiMode(nextMode);
+                              if (nextMode === "PLATFORM") {
+                                setAiProvider("OLLAMA");
+                                setAiProviderName("Qwen local (Ollama)");
+                                setAiBaseUrl("");
+                                setAiModel("qwen2.5-coder:7b");
+                                setAiApiKey("");
+                              } else if (aiProvider === "OLLAMA") {
+                                setAiProvider("OPENAI_COMPATIBLE");
+                                setAiProviderName("Custom AI");
+                                setAiBaseUrl("");
+                                setAiModel("gpt-4o-mini");
+                              }
+                            }}
                           >
                             <SelectTrigger className="h-11 border-slate-700 bg-slate-950">
                               <SelectValue />
                             </SelectTrigger>
                             <SelectContent className="border-slate-800 bg-slate-900 text-slate-200">
-                              <SelectItem value="PLATFORM">Platform AI key</SelectItem>
-                              <SelectItem value="PROJECT">Project-owned key</SelectItem>
+                              <SelectItem value="PLATFORM">Local AI</SelectItem>
+                              <SelectItem value="PROJECT">Custom project AI</SelectItem>
                             </SelectContent>
                           </Select>
                         </div>
@@ -1309,15 +1002,15 @@ export default function SettingsPage() {
                         <div className="grid gap-3 sm:grid-cols-2">
                           <div className="rounded-2xl border border-slate-800 bg-slate-950 p-4">
                             <p className="text-xs uppercase tracking-[0.16em] text-slate-600">
-                              Platform key
+                              Local provider
                             </p>
                             <p className="mt-2 text-sm font-semibold text-white">
-                              {aiConfig?.platform_configured ? "Configured" : "Not configured"}
+                              {aiConfig?.platform_configured ? "Endpoint set" : "Not configured"}
                             </p>
                           </div>
                           <div className="rounded-2xl border border-slate-800 bg-slate-950 p-4">
                             <p className="text-xs uppercase tracking-[0.16em] text-slate-600">
-                              Project key
+                              Custom key
                             </p>
                             <p className="mt-2 text-sm font-semibold text-white">
                               {aiConfig?.has_project_key ? "Stored encrypted" : "Not added"}
@@ -1335,21 +1028,14 @@ export default function SettingsPage() {
                                 value={aiProvider}
                                 onValueChange={(value) => {
                                   setAiProvider(value);
-                                  if (value === "GEMINI") {
-                                    setAiProviderName("Gemini");
-                                    setAiBaseUrl("");
-                                    setAiModel((current) => current || "gemini-2.5-flash");
-                                  } else {
-                                    setAiProviderName("Custom AI");
-                                    setAiModel((current) => current || "gpt-4o-mini");
-                                  }
+                                  setAiProviderName("Custom AI");
+                                  setAiModel((current) => current || "gpt-4o-mini");
                                 }}
                               >
                                 <SelectTrigger className="h-11 border-slate-700 bg-slate-950">
                                   <SelectValue />
                                 </SelectTrigger>
                                 <SelectContent className="border-slate-800 bg-slate-900 text-slate-200">
-                                  <SelectItem value="GEMINI">Gemini API</SelectItem>
                                   <SelectItem value="OPENAI_COMPATIBLE">
                                     OpenAI-compatible / custom
                                   </SelectItem>
@@ -1388,18 +1074,6 @@ export default function SettingsPage() {
                                   className="h-11 border-slate-700 bg-slate-950 font-mono text-sm"
                                 />
                               </div>
-                            </div>
-                          )}
-
-                          {aiProvider === "GEMINI" && (
-                            <div className="space-y-2">
-                              <Label>Model</Label>
-                              <Input
-                                value={aiModel}
-                                onChange={(event) => setAiModel(event.target.value)}
-                                placeholder="gemini-2.5-flash"
-                                className="h-11 border-slate-700 bg-slate-950 font-mono text-sm"
-                              />
                             </div>
                           )}
 

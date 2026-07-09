@@ -4,7 +4,10 @@ export function isAiFallback(source?: string | null) {
 
 export function formatAiSource(source?: string | null) {
   if (!source) return "AI";
-  if (source === "gemini") return "Gemini";
+  if (source === "local_ollama" || source.startsWith("platform_ollama")) {
+    const [, rawName] = source.match(/^platform_ollama:(.+)$/) || [];
+    return rawName || "Local AI";
+  }
   if (source === "fallback") return "Local fallback";
   if (source === "fallback_after_error") return "Fallback after provider error";
 

@@ -82,7 +82,7 @@ class AiUsageLog(Base):
     user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     project_id = Column(Integer, ForeignKey("projects.id"), nullable=True)
     feature = Column(String, nullable=False)
-    provider = Column(String, default="gemini", nullable=False)
+    provider = Column(String, default="local_ollama", nullable=False)
     source = Column(String, nullable=True)
     status = Column(String, default="SUCCESS", nullable=False)
     detail = Column(Text, nullable=True)

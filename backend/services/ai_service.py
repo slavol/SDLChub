@@ -1,43 +1,41 @@
 import json
-import os
 import re
+from functools import lru_cache
+from pathlib import Path
+
 import httpx
-from google import genai
-from google.genai import types
-from dotenv import load_dotenv
 
 from backend.config import get_settings
 
-# Încărcăm variabilele
-load_dotenv()
-
-# Configurare Client (Singleton la nivel de modul)
 settings = get_settings()
-api_key = settings.gemini_api_key or os.getenv("GOOGLE_API_KEY")
-client = None
 
-if api_key:
-    try:
-        client = genai.Client(api_key=api_key)
-    except Exception as e:
-        print(f"⚠️ Error initializing Gemini Client: {e}")
-else:
-    print("⚠️ GEMINI_API_KEY/GOOGLE_API_KEY not found. AI features will use fallback responses.")
-
-
-DEFAULT_GEMINI_MODEL = "gemini-2.5-flash"
+# Platform AI is local-first. It points to the Ollama server reachable over Tailscale
+# so the same project can run from the desktop or laptop without changing code.
 DEFAULT_OPENAI_COMPATIBLE_MODEL = "gpt-4o-mini"
+DEFAULT_OLLAMA_MODEL = settings.local_ai_model or "qwen2.5-coder:7b"
+DEFAULT_OLLAMA_BASE_URL = settings.local_ai_base_url or "http://100.121.227.11:11434"
+DEFAULT_OLLAMA_PROVIDER_NAME = settings.local_ai_provider_name or "Qwen local (Ollama)"
+DEFAULT_OLLAMA_AUTO_DETECT = settings.local_ai_auto_detect
+DEFAULT_OLLAMA_CONNECT_TIMEOUT = settings.local_ai_connect_timeout_seconds or 5
+DEFAULT_OLLAMA_READ_TIMEOUT = settings.local_ai_read_timeout_seconds or 120
 
 
-def _build_client(selected_api_key: str | None = None):
-    if selected_api_key:
-        try:
-            return genai.Client(api_key=selected_api_key)
-        except Exception as exc:
-            print(f"⚠️ Error initializing project Gemini Client: {exc}")
-            return None
+class AIProviderError(RuntimeError):
+    pass
 
-    return client
+
+class AIProviderConnectionError(AIProviderError):
+    pass
+
+
+def platform_ai_config() -> dict:
+    return {
+        "provider": "OLLAMA",
+        "provider_name": DEFAULT_OLLAMA_PROVIDER_NAME,
+        "base_url": DEFAULT_OLLAMA_BASE_URL,
+        "model": DEFAULT_OLLAMA_MODEL,
+        "api_key": None,
+    }
 
 
 def _normalize_openai_base_url(value: str | None) -> str:
@@ -47,10 +45,161 @@ def _normalize_openai_base_url(value: str | None) -> str:
     return f"{base_url}/chat/completions"
 
 
+def _normalize_ollama_base_url(value: str | None) -> str:
+    base_url = (value or DEFAULT_OLLAMA_BASE_URL).strip().rstrip("/")
+    if base_url.endswith("/api/generate"):
+        return base_url.removesuffix("/api/generate")
+    if base_url.endswith("/api"):
+        return base_url.removesuffix("/api")
+    return base_url
+
+
+def _normalize_ollama_generate_url(value: str | None) -> str:
+    return f"{_normalize_ollama_base_url(value)}/api/generate"
+
+
+def _normalize_ollama_tags_url(value: str | None) -> str:
+    return f"{_normalize_ollama_base_url(value)}/api/tags"
+
+
+def _is_wsl() -> bool:
+    try:
+        return "microsoft" in Path("/proc/sys/kernel/osrelease").read_text().lower()
+    except OSError:
+        return False
+
+
+def _wsl_windows_host_base_url() -> str | None:
+    try:
+        resolv_conf = Path("/etc/resolv.conf").read_text()
+    except OSError:
+        return None
+
+    match = re.search(r"^nameserver\s+(\S+)", resolv_conf, flags=re.MULTILINE)
+    if not match:
+        return None
+
+    return f"http://{match.group(1)}:11434"
+
+
+def _ollama_candidate_base_urls(value: str | None) -> list[str]:
+    configured = (value or DEFAULT_OLLAMA_BASE_URL or "").strip()
+    candidates: list[str] = []
+
+    # In WSL, Ollama installed on Windows is usually reachable through the Windows
+    # host gateway from /etc/resolv.conf, not through 127.0.0.1 inside Linux.
+    if DEFAULT_OLLAMA_AUTO_DETECT and _is_wsl():
+        windows_host_url = _wsl_windows_host_base_url()
+        if windows_host_url:
+            candidates.append(windows_host_url)
+
+    if configured and configured.lower() not in {"auto", "ollama"}:
+        candidates.append(configured)
+
+    if DEFAULT_OLLAMA_AUTO_DETECT:
+        candidates.extend([
+            "http://127.0.0.1:11434",
+            "http://localhost:11434",
+            "http://100.121.227.11:11434",
+        ])
+
+    normalized: list[str] = []
+    for candidate in candidates:
+        base_url = _normalize_ollama_base_url(candidate)
+        if base_url not in normalized:
+            normalized.append(base_url)
+
+    return normalized or [_normalize_ollama_base_url(configured or DEFAULT_OLLAMA_BASE_URL)]
+
+
+def _ollama_timeout(*, read_timeout: float | None = None) -> httpx.Timeout:
+    return httpx.Timeout(
+        connect=DEFAULT_OLLAMA_CONNECT_TIMEOUT,
+        read=read_timeout or DEFAULT_OLLAMA_READ_TIMEOUT,
+        write=10,
+        pool=10,
+    )
+
+
+def _friendly_provider_error(provider: str, url: str, exc: httpx.RequestError) -> AIProviderConnectionError:
+    if isinstance(exc, httpx.ConnectTimeout):
+        message = (
+            f"{provider} is not reachable at {url}. Connection timed out. "
+            "Check that Ollama is running, Tailscale is connected, port 11434 is allowed, "
+            "and Ollama is listening on the Tailscale interface with OLLAMA_HOST=0.0.0.0:11434."
+        )
+    elif isinstance(exc, httpx.ReadTimeout):
+        message = (
+            f"{provider} accepted the connection at {url}, but generation timed out. "
+            "The model may still be loading or the machine may be overloaded."
+        )
+    else:
+        message = f"{provider} request failed at {url}: {exc}"
+
+    return AIProviderConnectionError(message)
+
+
+def _raise_for_provider_status(provider: str, response: httpx.Response) -> None:
+    try:
+        response.raise_for_status()
+    except httpx.HTTPStatusError as exc:
+        detail = response.text.strip()[:300] or response.reason_phrase
+        raise AIProviderError(
+            f"{provider} returned HTTP {response.status_code}: {detail}"
+        ) from exc
+
+
+def _ollama_model_names(payload: dict) -> list[str]:
+    models = payload.get("models", [])
+    if not isinstance(models, list):
+        return []
+
+    names = []
+    for item in models:
+        if isinstance(item, dict) and item.get("name"):
+            names.append(str(item["name"]))
+    return names
+
+
+@lru_cache(maxsize=16)
+def _select_ollama_base_url(base_url: str | None, model: str | None) -> str:
+    errors: list[str] = []
+    selected_model = model or DEFAULT_OLLAMA_MODEL
+
+    for candidate in _ollama_candidate_base_urls(base_url):
+        tags_url = _normalize_ollama_tags_url(candidate)
+        try:
+            response = httpx.get(tags_url, timeout=_ollama_timeout(read_timeout=10))
+            _raise_for_provider_status("Ollama", response)
+        except httpx.RequestError as exc:
+            errors.append(str(_friendly_provider_error("Ollama", tags_url, exc)))
+            continue
+        except AIProviderError as exc:
+            errors.append(str(exc))
+            continue
+
+        available_models = _ollama_model_names(response.json())
+        if selected_model and selected_model not in available_models:
+            visible = ", ".join(available_models[:8]) or "no models returned"
+            raise AIProviderError(
+                f"Ollama is reachable at {candidate}, but model '{selected_model}' is not installed. "
+                f"Available models: {visible}."
+            )
+
+        return candidate
+
+    diagnostic = " | ".join(errors[:4]) or "No Ollama candidates were tested."
+    raise AIProviderConnectionError(
+        "Ollama is not reachable from WSL. "
+        f"Tested: {', '.join(_ollama_candidate_base_urls(base_url))}. "
+        f"Details: {diagnostic}"
+    )
+
+
 def _provider_source(ai_config: dict | None) -> str:
     if not ai_config:
-        return "gemini"
-    provider = ai_config.get("provider", "GEMINI").lower()
+        return f"platform_ollama:{DEFAULT_OLLAMA_PROVIDER_NAME}"
+    provider = ai_config.get("provider", "OLLAMA").lower()
     provider_name = ai_config.get("provider_name") or provider
     return f"project_{provider}:{provider_name}"
 
@@ -61,59 +210,87 @@ def _generate_text(
     ai_config: dict | None = None,
     temperature: float = 0.25,
 ) -> str:
-    provider = (ai_config or {}).get("provider", "GEMINI")
-    selected_api_key = (ai_config or {}).get("api_key")
-    model = (ai_config or {}).get("model")
+    active_config = ai_config or platform_ai_config()
+    provider = str(active_config.get("provider", "OLLAMA")).upper()
+    selected_api_key = active_config.get("api_key")
+    model = active_config.get("model")
 
     if provider == "OPENAI_COMPATIBLE":
+        # Custom hosted providers need a project-owned key. The encrypted value is
+        # decrypted only on the backend and is never sent back to the browser.
         if not selected_api_key:
             raise ValueError("Project AI key is missing.")
 
-        response = httpx.post(
-            _normalize_openai_base_url((ai_config or {}).get("base_url")),
-            headers={
-                "Authorization": f"Bearer {selected_api_key}",
-                "Content-Type": "application/json",
-            },
-            json={
-                "model": model or DEFAULT_OPENAI_COMPATIBLE_MODEL,
-                "messages": [
-                    {
-                        "role": "system",
-                        "content": "You are a concise senior software delivery assistant.",
-                    },
-                    {"role": "user", "content": prompt},
-                ],
-                "temperature": temperature,
-            },
-            timeout=30,
-        )
-        response.raise_for_status()
+        url = _normalize_openai_base_url(active_config.get("base_url"))
+        try:
+            response = httpx.post(
+                url,
+                headers={
+                    "Authorization": f"Bearer {selected_api_key}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": model or DEFAULT_OPENAI_COMPATIBLE_MODEL,
+                    "messages": [
+                        {
+                            "role": "system",
+                            "content": "You are a concise senior software delivery assistant.",
+                        },
+                        {"role": "user", "content": prompt},
+                    ],
+                    "temperature": temperature,
+                },
+                timeout=30,
+            )
+            _raise_for_provider_status("OpenAI-compatible provider", response)
+        except httpx.RequestError as exc:
+            raise _friendly_provider_error("OpenAI-compatible provider", url, exc) from exc
+
         payload = response.json()
         return str(payload["choices"][0]["message"]["content"])
 
-    active_client = _build_client(selected_api_key)
-    if not active_client:
-        raise ValueError("AI client is not configured.")
+    if provider == "OLLAMA":
+        # Ollama does not need an API key, so project-owned local providers can be
+        # configured with only base_url + model.
+        selected_base_url = _select_ollama_base_url(active_config.get("base_url"), model)
+        url = _normalize_ollama_generate_url(selected_base_url)
+        try:
+            response = httpx.post(
+                url,
+                json={
+                    "model": model or DEFAULT_OLLAMA_MODEL,
+                    "prompt": prompt,
+                    "stream": False,
+                    "options": {"temperature": temperature},
+                },
+                timeout=_ollama_timeout(),
+            )
+            _raise_for_provider_status("Ollama", response)
+        except httpx.RequestError as exc:
+            raise _friendly_provider_error("Ollama", url, exc) from exc
 
-    response = active_client.models.generate_content(
-        model=model or DEFAULT_GEMINI_MODEL,
-        contents=prompt,
-        config=types.GenerateContentConfig(temperature=temperature),
-    )
-    return response.text or ""
+        payload = response.json()
+        return str(payload.get("response") or "")
+
+    raise ValueError(f"Unsupported AI provider: {provider}")
 
 
 def resolve_project_ai_config(project) -> dict | None:
+    """Return project-owned AI settings or None when the platform Ollama config should be used."""
     if not project or getattr(project, "ai_provider_mode", "PLATFORM") != "PROJECT":
         return None
 
     from backend.utils.secret_crypto import decrypt_secret
 
     return {
-        "provider": getattr(project, "ai_provider", None) or "GEMINI",
-        "provider_name": getattr(project, "ai_provider_name", None) or getattr(project, "ai_provider", None) or "Gemini",
-        "api_key": decrypt_secret(getattr(project, "ai_api_key_encrypted", None)) or "__INVALID_PROJECT_AI_KEY__",
+        "provider": getattr(project, "ai_provider", None) or "OLLAMA",
+        "provider_name": getattr(project, "ai_provider_name", None) or getattr(project, "ai_provider", None) or DEFAULT_OLLAMA_PROVIDER_NAME,
+        "api_key": decrypt_secret(getattr(project, "ai_api_key_encrypted", None))
+        or (
+            None
+            if (getattr(project, "ai_provider", None) or "OLLAMA").upper() == "OLLAMA"
+            else "__INVALID_PROJECT_AI_KEY__"
+        ),
         "base_url": getattr(project, "ai_base_url", None),
         "model": getattr(project, "ai_model", None),
     }
@@ -127,7 +304,7 @@ def resolve_project_ai_api_key(project) -> str | None:
 def test_ai_provider(
     *,
     provider: str,
-    api_key: str,
+    api_key: str | None = None,
     base_url: str | None = None,
     model: str | None = None,
 ) -> bool:
@@ -146,7 +323,7 @@ def test_ai_provider(
 
 
 def test_ai_api_key(api_key: str) -> bool:
-    return test_ai_provider(provider="GEMINI", api_key=api_key)
+    return test_ai_provider(provider="OPENAI_COMPATIBLE", api_key=api_key)
 
 
 def _fallback_acceptance_criteria(title: str) -> list[str]:
@@ -175,6 +352,8 @@ def _fallback_story_points(title: str, description: str | None = None) -> dict:
     text = f"{title} {description or ''}".lower()
     score = 3
 
+    # Offline scoring keeps the product usable when the local model is down,
+    # but it intentionally stays conservative and explainable.
     complexity_keywords = {
         2: ["integration", "webhook", "permission", "audit", "migration", "realtime", "websocket"],
         3: ["ai", "calendar", "report", "export", "dashboard", "workflow"],
@@ -226,7 +405,7 @@ def _fallback_refined_spec(
         f"so that the team can deliver the workflow reliably."
     )
     technical_notes = (
-        f"Fallback generated without Gemini context. Priority: {priority}. Context: {context}."
+        f"Fallback generated without local AI context. Priority: {priority}. Context: {context}."
     )
     markdown = (
         f"### User Story\n"
@@ -364,9 +543,7 @@ def generate_task_metadata(
     api_key: str | None = None,
     ai_config: dict | None = None,
 ) -> str:
-    """
-    Serviciu care apelează Gemini pentru a genera descrierea task-ului.
-    """
+    """Generate a task description using the configured local or project AI provider."""
     prompt = f"""
     Role: Senior Technical Product Manager.
     Task: Write a concise task description for: "{title}".
@@ -389,7 +566,7 @@ def generate_task_metadata(
     try:
         return _generate_text(
             prompt,
-            ai_config=ai_config or ({"provider": "GEMINI", "api_key": api_key} if api_key else None),
+            ai_config=ai_config or ({"provider": "OPENAI_COMPATIBLE", "api_key": api_key} if api_key else None),
             temperature=0.3,
         ) or "AI generated empty response."
         
@@ -435,7 +612,7 @@ def refine_task_spec(
     try:
         text = _generate_text(
             prompt,
-            ai_config=ai_config or ({"provider": "GEMINI", "api_key": api_key} if api_key else None),
+            ai_config=ai_config or ({"provider": "OPENAI_COMPATIBLE", "api_key": api_key} if api_key else None),
             temperature=0.25,
         )
         parsed = _extract_json_object(text or "{}")
@@ -504,7 +681,7 @@ def estimate_story_points(
     try:
         text = _generate_text(
             prompt,
-            ai_config=ai_config or ({"provider": "GEMINI", "api_key": api_key} if api_key else None),
+            ai_config=ai_config or ({"provider": "OPENAI_COMPATIBLE", "api_key": api_key} if api_key else None),
             temperature=0.2,
         )
         parsed = _extract_json_object(text or "{}")
@@ -721,7 +898,7 @@ def generate_release_notes(
     try:
         text = _generate_text(
             prompt,
-            ai_config=ai_config or ({"provider": "GEMINI", "api_key": api_key} if api_key else None),
+            ai_config=ai_config or ({"provider": "OPENAI_COMPATIBLE", "api_key": api_key} if api_key else None),
             temperature=0.3,
         )
         parsed = _extract_json_object(text or "{}")

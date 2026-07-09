@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
@@ -12,23 +11,19 @@ import {
   ChevronLeft,
   ChevronRight,
   Clock3,
-  ExternalLink,
   LayoutGrid,
   Link2,
   ListChecks,
   Loader2,
   MapPin,
-  Pencil,
   Plus,
   Repeat,
-  Trash2,
   UserRound,
   Users2,
   Video,
 } from "lucide-react";
 import { toast } from "sonner";
 
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -80,480 +75,36 @@ import {
   Project,
   ProjectMember,
 } from "@/services/project";
-import { getProjectTasks, Task, TaskPriority, TaskStatus } from "@/services/task";
+import { getProjectTasks, Task, TaskStatus } from "@/services/task";
 import { getProjectSprints, Sprint } from "@/services/sprint";
 import { generateDueTaskReminders } from "@/services/notification";
 import { useAuthStore } from "@/store/use-auth-store";
 import { useProjectStore } from "@/store/use-project-store";
-
-type CalendarView = "month" | "week" | "day" | "agenda";
-type RecurrenceMode = "none" | "daily" | "weekdays" | "weekly";
-type CalendarFeedItem =
-  | {
-      id: string;
-      kind: "task";
-      date: Date;
-      title: string;
-      task: Task;
-      assigneeName: string;
-    }
-  | {
-      id: string;
-      kind: "event";
-      date: Date;
-      title: string;
-      event: CalendarEvent;
-    }
-  | {
-      id: string;
-      kind: "availability";
-      date: Date;
-      title: string;
-      availability: CalendarAvailability;
-      userName: string;
-    }
-  | {
-      id: string;
-      kind: "sprint";
-      date: Date;
-      title: string;
-      sprint: Sprint;
-      milestone: "START" | "END";
-    };
-
-const eventTypes: { value: CalendarEventType; label: string }[] = [
-  { value: "MEETING", label: "Meeting" },
-  { value: "DAILY", label: "Daily" },
-  { value: "PLANNING", label: "Planning" },
-  { value: "REVIEW", label: "Review" },
-  { value: "RETRO", label: "Retro" },
-  { value: "FOCUS", label: "Focus" },
-  { value: "OTHER", label: "Other" },
-];
-
-const recurrenceOptions: { value: RecurrenceMode; label: string; description: string }[] = [
-  { value: "none", label: "Does not repeat", description: "Create a single event." },
-  { value: "daily", label: "Daily", description: "Repeat every day until the selected date." },
-  { value: "weekdays", label: "Weekdays", description: "Repeat Monday through Friday." },
-  { value: "weekly", label: "Weekly", description: "Repeat on the same weekday." },
-];
-
-const availabilityStatusOptions: { value: CalendarAvailabilityStatus; label: string; description: string }[] = [
-  { value: "VACATION", label: "Vacation", description: "Time off / concediu planificat." },
-  { value: "SICK_LEAVE", label: "Sick leave", description: "Medical leave or health-related absence." },
-  { value: "UNAVAILABLE", label: "Unavailable", description: "The member is blocked for work/meetings." },
-  { value: "FOCUS_TIME", label: "Focus time", description: "Protected deep-work interval." },
-  { value: "AVAILABLE", label: "Available", description: "Explicit availability window." },
-];
-
-const taskStatusClass: Record<TaskStatus, string> = {
-  [TaskStatus.TODO]: "border-slate-700 bg-slate-800/70 text-slate-300",
-  [TaskStatus.IN_PROGRESS]: "border-blue-500/25 bg-blue-500/10 text-blue-300",
-  [TaskStatus.REVIEW]: "border-violet-500/25 bg-violet-500/10 text-violet-300",
-  [TaskStatus.DONE]: "border-emerald-500/25 bg-emerald-500/10 text-emerald-300",
-};
-
-const taskPriorityClass: Record<TaskPriority, string> = {
-  [TaskPriority.LOW]: "border-slate-700 bg-slate-800/70 text-slate-300",
-  [TaskPriority.MEDIUM]: "border-blue-500/25 bg-blue-500/10 text-blue-300",
-  [TaskPriority.HIGH]: "border-orange-500/25 bg-orange-500/10 text-orange-300",
-  [TaskPriority.CRITICAL]: "border-rose-500/25 bg-rose-500/10 text-rose-300",
-};
-
-const eventTypeClass: Record<string, string> = {
-  MEETING: "border-blue-500/25 bg-blue-500/10 text-blue-300",
-  DAILY: "border-cyan-500/25 bg-cyan-500/10 text-cyan-300",
-  PLANNING: "border-violet-500/25 bg-violet-500/10 text-violet-300",
-  REVIEW: "border-amber-500/25 bg-amber-500/10 text-amber-300",
-  RETRO: "border-emerald-500/25 bg-emerald-500/10 text-emerald-300",
-  FOCUS: "border-slate-600 bg-slate-800 text-slate-300",
-  OTHER: "border-slate-600 bg-slate-800 text-slate-300",
-};
-
-const availabilityStatusClass: Record<string, string> = {
-  AVAILABLE: "border-emerald-500/25 bg-emerald-500/10 text-emerald-300",
-  UNAVAILABLE: "border-rose-500/25 bg-rose-500/10 text-rose-300",
-  VACATION: "border-sky-500/25 bg-sky-500/10 text-sky-300",
-  SICK_LEAVE: "border-orange-500/25 bg-orange-500/10 text-orange-300",
-  FOCUS_TIME: "border-violet-500/25 bg-violet-500/10 text-violet-300",
-};
-
-function availabilityLabel(status: string) {
-  return availabilityStatusOptions.find((option) => option.value === status)?.label || status.replaceAll("_", " ");
-}
-
-function rangesOverlap(startA: Date, endA: Date, startB: Date, endB: Date) {
-  return startA < endB && endA > startB;
-}
-
-function dateKey(date: Date) {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
-
-function parseDate(value?: string | null) {
-  if (!value) return null;
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? null : date;
-}
-
-function formatMonth(date: Date) {
-  return date.toLocaleDateString([], { month: "long", year: "numeric" });
-}
-
-function formatTime(date: Date) {
-  return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-}
-
-function toInputDate(date: Date) {
-  return dateKey(date);
-}
-
-function toInputTime(date: Date) {
-  const hours = String(date.getHours()).padStart(2, "0");
-  const minutes = String(date.getMinutes()).padStart(2, "0");
-  return `${hours}:${minutes}`;
-}
-
-function addDays(date: Date, days: number) {
-  const next = new Date(date);
-  next.setDate(next.getDate() + days);
-  return next;
-}
-
-function combineDateAndTime(date: Date, time: string) {
-  return `${toInputDate(date)}T${time}:00`;
-}
-
-function formatDateTime(date: Date) {
-  return date.toLocaleDateString([], {
-    weekday: "short",
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
-
-function getInitials(name?: string | null) {
-  if (!name) return "U";
-
-  const parts = name.trim().split(/\s+/).filter(Boolean).slice(0, 2);
-  return parts.length ? parts.map((part) => part[0]?.toUpperCase()).join("") : "U";
-}
-
-function getCalendarDays(cursor: Date) {
-  const firstDay = new Date(cursor.getFullYear(), cursor.getMonth(), 1);
-  const start = new Date(firstDay);
-  start.setDate(firstDay.getDate() - firstDay.getDay());
-
-  return Array.from({ length: 42 }, (_, index) => {
-    const date = new Date(start);
-    date.setDate(start.getDate() + index);
-    return date;
-  });
-}
-
-function getWeekDays(anchor: Date) {
-  const start = new Date(anchor);
-  start.setDate(anchor.getDate() - anchor.getDay());
-
-  return Array.from({ length: 7 }, (_, index) => {
-    const date = new Date(start);
-    date.setDate(start.getDate() + index);
-    return date;
-  });
-}
-
-function memberName(member?: ProjectMember) {
-  return member?.user.full_name || member?.user.email || "Unassigned";
-}
-
-function attendeeNames(event: CalendarEvent, memberMap: Map<number, ProjectMember>) {
-  return event.attendee_ids
-    .map((id) => memberName(memberMap.get(id)))
-    .filter(Boolean);
-}
-
-function feedItemTone(item: CalendarFeedItem) {
-  if (item.kind === "task") {
-    return "border border-emerald-500/20 bg-emerald-500/10 text-emerald-200";
-  }
-
-  if (item.kind === "sprint") {
-    return item.milestone === "START"
-      ? "border border-indigo-500/20 bg-indigo-500/10 text-indigo-200"
-      : "border border-emerald-500/20 bg-emerald-500/10 text-emerald-200";
-  }
-
-  if (item.kind === "availability") {
-    return availabilityStatusClass[item.availability.status] || availabilityStatusClass.UNAVAILABLE;
-  }
-
-  return eventTypeClass[item.event.event_type] || eventTypeClass.OTHER;
-}
-
-function feedItemLabel(item: CalendarFeedItem) {
-  if (item.kind === "task") return item.task.key;
-  if (item.kind === "sprint") return `SPRINT ${item.milestone}`;
-  if (item.kind === "availability") return availabilityLabel(item.availability.status);
-  return item.event.event_type;
-}
-
-function CalendarItemCard({
-  item,
-  memberMap,
-  onEditEvent,
-  onDeleteEvent,
-  onDeleteSeries,
-  onEditAvailability,
-  onDeleteAvailability,
-  canEditEvent,
-  canDeleteEvent,
-  canManageAvailability,
-}: {
-  item: CalendarFeedItem;
-  memberMap: Map<number, ProjectMember>;
-  onEditEvent: (event: CalendarEvent) => void;
-  onDeleteEvent: (event: CalendarEvent) => void;
-  onDeleteSeries: (event: CalendarEvent) => void;
-  onEditAvailability: (availability: CalendarAvailability) => void;
-  onDeleteAvailability: (availability: CalendarAvailability) => void;
-  canEditEvent: (event: CalendarEvent) => boolean;
-  canDeleteEvent: (event: CalendarEvent) => boolean;
-  canManageAvailability: (availability: CalendarAvailability) => boolean;
-}) {
-  if (item.kind === "task") {
-    return (
-      <Link
-        href={`/dashboard/tasks/${item.task.id}`}
-        className="group block rounded-2xl border border-slate-800 bg-slate-950/80 p-4 transition hover:border-blue-500/35 hover:bg-slate-950"
-      >
-        <div className="mb-3 flex flex-wrap items-center gap-2">
-          <Badge variant="outline" className="border-slate-700 bg-slate-900 font-mono text-[10px] text-slate-300">
-            {item.task.key}
-          </Badge>
-          <Badge variant="outline" className={cn("border text-[10px]", taskStatusClass[item.task.status])}>
-            {item.task.status.replaceAll("_", " ")}
-          </Badge>
-          <Badge variant="outline" className={cn("border text-[10px]", taskPriorityClass[item.task.priority])}>
-            {item.task.priority}
-          </Badge>
-        </div>
-        <p className="line-clamp-2 text-sm font-semibold text-white group-hover:text-blue-200">
-          {item.title}
-        </p>
-        <div className="mt-3 flex items-center justify-between gap-3 text-xs text-slate-500">
-          <span className="inline-flex items-center gap-1.5">
-            <UserRound className="h-3.5 w-3.5" />
-            {item.assigneeName}
-          </span>
-          <span>{formatTime(item.date)}</span>
-        </div>
-      </Link>
-    );
-  }
-
-  if (item.kind === "sprint") {
-    const tone =
-      item.milestone === "START"
-        ? "border-indigo-500/25 bg-indigo-500/10 text-indigo-200"
-        : "border-emerald-500/25 bg-emerald-500/10 text-emerald-200";
-
-    return (
-      <div className="rounded-2xl border border-slate-800 bg-slate-950/80 p-4">
-        <div className="mb-3 flex flex-wrap items-center gap-2">
-          <Badge variant="outline" className={cn("border text-[10px]", tone)}>
-            SPRINT {item.milestone}
-          </Badge>
-          {item.sprint.is_active && (
-            <Badge variant="outline" className="border-blue-500/25 bg-blue-500/10 text-[10px] text-blue-200">
-              ACTIVE
-            </Badge>
-          )}
-        </div>
-        <p className="line-clamp-2 text-sm font-semibold text-white">{item.title}</p>
-        {item.sprint.goal && (
-          <p className="mt-2 line-clamp-2 text-xs leading-5 text-slate-500">
-            {item.sprint.goal}
-          </p>
-        )}
-        <p className="mt-3 flex items-center gap-1.5 text-xs text-slate-500">
-          <CalendarClock className="h-3.5 w-3.5" />
-          {formatDateTime(item.date)}
-        </p>
-      </div>
-    );
-  }
-
-
-  if (item.kind === "availability") {
-    const block = item.availability;
-    const canManage = canManageAvailability(block);
-    const statusTone = availabilityStatusClass[block.status] || availabilityStatusClass.UNAVAILABLE;
-    const statusLabel = availabilityLabel(block.status);
-    const start = parseDate(block.starts_at) || item.date;
-    const end = parseDate(block.ends_at) || start;
-
-    return (
-      <div className="rounded-2xl border border-slate-800 bg-slate-950/80 p-4">
-        <div className="mb-3 flex items-start justify-between gap-3">
-          <div className="flex flex-wrap items-center gap-2">
-            <Badge variant="outline" className={cn("border text-[10px]", statusTone)}>
-              {statusLabel}
-            </Badge>
-            {block.all_day && (
-              <Badge variant="outline" className="border-slate-700 bg-slate-900 text-[10px] text-slate-300">
-                ALL DAY
-              </Badge>
-            )}
-          </div>
-          {canManage && (
-            <div className="flex items-center gap-1">
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-7 w-7 text-slate-500 hover:bg-blue-950/30 hover:text-blue-300"
-                onClick={() => onEditAvailability(block)}
-              >
-                <Pencil className="h-3.5 w-3.5" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-7 w-7 text-slate-500 hover:bg-red-950/30 hover:text-red-300"
-                onClick={() => onDeleteAvailability(block)}
-              >
-                <Trash2 className="h-3.5 w-3.5" />
-              </Button>
-            </div>
-          )}
-        </div>
-
-        <p className="line-clamp-2 text-sm font-semibold text-white">
-          {block.title || statusLabel}
-        </p>
-        <p className="mt-2 flex items-center gap-1.5 text-xs text-slate-500">
-          <UserRound className="h-3.5 w-3.5" />
-          {item.userName}
-        </p>
-        <p className="mt-2 flex items-center gap-1.5 text-xs text-slate-500">
-          <Clock3 className="h-3.5 w-3.5" />
-          {block.all_day ? "All day" : `${formatTime(start)} - ${formatTime(end)}`}
-        </p>
-        {block.note && (
-          <p className="mt-3 line-clamp-2 text-xs leading-5 text-slate-500">{block.note}</p>
-        )}
-      </div>
-    );
-  }
-
-  const names = attendeeNames(item.event, memberMap);
-
-  return (
-    <div className="rounded-2xl border border-slate-800 bg-slate-950/80 p-4">
-      <div className="mb-3 flex items-start justify-between gap-3">
-        <div className="flex flex-wrap items-center gap-2">
-          <Badge
-            variant="outline"
-            className={cn("border text-[10px]", eventTypeClass[item.event.event_type] || eventTypeClass.OTHER)}
-          >
-            {item.event.event_type}
-          </Badge>
-          {item.event.recurrence_series_id && (
-            <Badge variant="outline" className="border-cyan-500/25 bg-cyan-500/10 text-[10px] text-cyan-200">
-              SERIES
-            </Badge>
-          )}
-        </div>
-        <div className="flex items-center gap-1">
-          {canEditEvent(item.event) && (
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7 text-slate-500 hover:bg-blue-950/30 hover:text-blue-300"
-              onClick={() => onEditEvent(item.event)}
-            >
-              <Pencil className="h-3.5 w-3.5" />
-            </Button>
-          )}
-          {canDeleteEvent(item.event) && (
-            <>
-              {item.event.recurrence_series_id && (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-7 w-7 text-slate-500 hover:bg-cyan-950/30 hover:text-cyan-300"
-                  title="Delete entire series"
-                  onClick={() => onDeleteSeries(item.event)}
-                >
-                  <Repeat className="h-3.5 w-3.5" />
-                </Button>
-              )}
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-7 w-7 text-slate-500 hover:bg-red-950/30 hover:text-red-300"
-                title="Delete this event"
-                onClick={() => onDeleteEvent(item.event)}
-              >
-                <Trash2 className="h-3.5 w-3.5" />
-              </Button>
-            </>
-          )}
-        </div>
-      </div>
-
-      <p className="line-clamp-2 text-sm font-semibold text-white">{item.title}</p>
-      {item.event.description && (
-        <p className="mt-2 line-clamp-2 text-xs leading-5 text-slate-500">
-          {item.event.description}
-        </p>
-      )}
-
-      <div className="mt-3 space-y-2 text-xs text-slate-500">
-        <p className="flex items-center gap-1.5">
-          <Clock3 className="h-3.5 w-3.5" />
-          {formatTime(item.date)} - {formatTime(new Date(item.event.ends_at))}
-        </p>
-        {item.event.location && (
-          <p className="flex items-center gap-1.5">
-            <MapPin className="h-3.5 w-3.5" />
-            {item.event.location}
-          </p>
-        )}
-        {item.event.meeting_url && (
-          <a
-            href={item.event.meeting_url}
-            target="_blank"
-            rel="noreferrer"
-            className="flex items-center gap-1.5 text-blue-300 hover:text-blue-200"
-          >
-            <ExternalLink className="h-3.5 w-3.5" />
-            Open meeting link
-          </a>
-        )}
-      </div>
-
-      <div className="mt-4 flex items-center gap-2">
-        <div className="flex -space-x-2">
-          {names.slice(0, 4).map((name) => (
-            <Avatar key={name} className="h-7 w-7 border border-slate-800">
-              <AvatarFallback className="bg-blue-500/10 text-[10px] text-blue-200">
-                {getInitials(name)}
-              </AvatarFallback>
-            </Avatar>
-          ))}
-        </div>
-        <p className="text-xs text-slate-500">
-          {names.length ? `${names.length} attendees` : "No attendees"}
-        </p>
-      </div>
-    </div>
-  );
-}
+import { CalendarItemCard } from "./calendar-item-card";
+import {
+  addDays,
+  availabilityLabel,
+  availabilityStatusOptions,
+  CalendarFeedItem,
+  CalendarView,
+  combineDateAndTime,
+  dateKey,
+  eventTypes,
+  feedItemLabel,
+  feedItemTone,
+  formatDateTime,
+  formatMonth,
+  formatTime,
+  getCalendarDays,
+  getWeekDays,
+  memberName,
+  parseDate,
+  rangesOverlap,
+  recurrenceOptions,
+  RecurrenceMode,
+  toInputDate,
+  toInputTime,
+} from "./calendar-utils";
 
 export default function CalendarPage() {
   const currentUser = useAuthStore((state) => state.user);

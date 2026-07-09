@@ -87,7 +87,7 @@ export interface ProjectWorkflowColumn {
 
 export interface ProjectAiConfig {
   mode: "PLATFORM" | "PROJECT";
-  provider: "GEMINI" | string;
+  provider: "OPENAI_COMPATIBLE" | "OLLAMA" | string;
   provider_name?: string | null;
   base_url?: string | null;
   model?: string | null;
@@ -97,7 +97,7 @@ export interface ProjectAiConfig {
 
 export interface ProjectAiSettingsUpdate {
   mode: "PLATFORM" | "PROJECT";
-  provider?: "GEMINI" | string;
+  provider?: "OPENAI_COMPATIBLE" | "OLLAMA" | string;
   provider_name?: string;
   base_url?: string;
   model?: string;
@@ -156,6 +156,7 @@ export interface ProjectTeam {
   id: number;
   project_id: number;
   parent_id?: number | null;
+  manager_membership_id?: number | null;
   name: string;
   description?: string | null;
   member_count: number;
@@ -540,6 +541,7 @@ export interface ProjectTeamPayload {
   name: string;
   description?: string | null;
   parent_id?: number | null;
+  manager_membership_id?: number | null;
 }
 
 export const getProjectTeams = async (

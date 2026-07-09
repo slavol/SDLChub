@@ -3,7 +3,6 @@
 import { useCallback, useDeferredValue, useEffect, useMemo, useState } from "react";
 import {
   Crown,
-  GitBranch,
   Loader2,
   Mail,
   Network,
@@ -30,7 +29,6 @@ import { UserAvatar } from "@/components/user-avatar";
 import { useDebouncedRealtimeEvent } from "@/hooks/use-realtime-event";
 import { hasProjectPermission } from "@/lib/project-permissions";
 import { pickWorkspaceProject } from "@/lib/project-selection";
-import { cn } from "@/lib/utils";
 import {
   Select,
   SelectContent,
@@ -58,12 +56,20 @@ import {
   ProjectRoleWithPermissions,
   removeProjectMember,
   resendProjectInvitation,
+  updateProjectTeam,
   updateProjectMemberTeam,
   updateProjectMemberRole,
 } from "@/services/project";
 import { useAuthStore } from "@/store/use-auth-store";
 import { usePresenceStore } from "@/store/use-presence-store";
 import { useProjectStore } from "@/store/use-project-store";
+import { TeamHierarchyTree, TeamPersonCard } from "./team-hierarchy-tree";
+import {
+  memberDisplayName,
+  pickTeamManager,
+  roleBadgeClass,
+  sortMembersByDisplayName,
+} from "./team-utils";
 
 const DEFAULT_ROLE_PERMISSIONS: Record<string, boolean> = {
   TASK_CREATE: true,
@@ -83,13 +89,6 @@ const DEFAULT_ROLE_PERMISSIONS: Record<string, boolean> = {
 };
 
 const EMPTY_ONLINE_USER_IDS: number[] = [];
-
-function roleBadgeClass(role?: string | null) {
-  if (role === "Project Admin") return "border-blue-500/30 bg-blue-500/10 text-blue-300";
-  if (role?.includes("Owner") || role?.includes("Manager")) return "border-purple-500/30 bg-purple-500/10 text-purple-300";
-  if (role?.includes("Lead") || role?.includes("Master")) return "border-emerald-500/30 bg-emerald-500/10 text-emerald-300";
-  return "border-slate-700 bg-slate-800 text-slate-300";
-}
 
 type TeamConfirmAction =
   | { type: "deleteRole"; role: ProjectRoleWithPermissions }
@@ -118,6 +117,7 @@ export default function TeamPage() {
   const [newTeamName, setNewTeamName] = useState("");
   const [newTeamDescription, setNewTeamDescription] = useState("");
   const [newTeamParentId, setNewTeamParentId] = useState("root");
+  const [newTeamManagerId, setNewTeamManagerId] = useState("none");
 
   const [search, setSearch] = useState("");
   const deferredSearch = useDeferredValue(search);
@@ -138,6 +138,12 @@ export default function TeamPage() {
     () => members.filter((member) => onlineUserIdSet.has(member.user.id)).length,
     [members, onlineUserIdSet]
   );
+
+  const projectLead = useMemo(() => {
+    const projectOwner = members.find((member) => member.user.id === projectOwnerId);
+    if (projectOwner) return projectOwner;
+    return pickTeamManager(members, projectOwnerId);
+  }, [members, projectOwnerId]);
 
   const myMembership = useMemo(
     () => members.find((member) => member.user.id === currentUser?.id),
@@ -221,6 +227,8 @@ export default function TeamPage() {
     }
     return grouped;
   }, [members]);
+
+  const managerOptions = useMemo(() => sortMembersByDisplayName(members), [members]);
 
   const myTeam = useMemo(
     () => teams.find((team) => team.id === myMembership?.team?.id) || myMembership?.team || null,
@@ -389,17 +397,38 @@ export default function TeamPage() {
         name: newTeamName.trim(),
         description: newTeamDescription.trim() || null,
         parent_id: newTeamParentId === "root" ? null : Number(newTeamParentId),
+        manager_membership_id:
+          newTeamManagerId === "none" ? null : Number(newTeamManagerId),
       });
 
       setNewTeamName("");
       setNewTeamDescription("");
       setNewTeamParentId("root");
+      setNewTeamManagerId("none");
       toast.success("Team created");
       await loadData(false);
     } catch (error: unknown) {
       toast.error(getApiErrorMessage(error, "Could not create team."));
     } finally {
       setCreatingTeam(false);
+    }
+  };
+
+  const handleChangeTeamManager = async (
+    team: ProjectTeam,
+    managerMembershipId: string
+  ) => {
+    if (!projectId) return;
+
+    try {
+      await updateProjectTeam(team.id, {
+        manager_membership_id:
+          managerMembershipId === "none" ? null : Number(managerMembershipId),
+      });
+      toast.success("Team manager updated");
+      await loadData(false);
+    } catch (error: unknown) {
+      toast.error(getApiErrorMessage(error, "Could not update team manager."));
     }
   };
 
@@ -570,112 +599,6 @@ export default function TeamPage() {
     }
   };
 
-  const renderTeamTreeNode = (team: ProjectTeam, depth = 0) => {
-    const children = childTeamsByParent[team.id] || [];
-    const teamMembers = membersByTeam[team.id] || [];
-    const isMyTeam = myTeam?.id === team.id;
-
-    return (
-      <div key={team.id} className={depth > 0 ? "relative border-l border-slate-800/80 pl-4" : ""}>
-        {depth > 0 && (
-          <span className="absolute left-0 top-8 h-px w-4 bg-slate-800" />
-        )}
-        <div
-          className={cn(
-            "group rounded-3xl border bg-slate-950/80 p-4 transition hover:border-cyan-500/30 hover:bg-slate-950",
-            isMyTeam
-              ? "border-cyan-400/45 bg-cyan-500/10 shadow-lg shadow-cyan-950/20"
-              : "border-slate-800"
-          )}
-        >
-          <div className="flex items-start justify-between gap-3">
-            <div className="flex min-w-0 gap-3">
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-cyan-500/25 bg-cyan-500/10 text-cyan-200">
-                <GitBranch className="h-5 w-5" />
-              </div>
-              <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-2">
-                <p className="truncate font-semibold text-white">{team.name}</p>
-                {isMyTeam && (
-                  <Badge className="bg-cyan-500/10 text-cyan-200 hover:bg-cyan-500/10">
-                    My team
-                  </Badge>
-                )}
-              </div>
-              <p className="mt-1 text-sm leading-6 text-slate-500">
-                {team.description || "No description"}
-              </p>
-              </div>
-            </div>
-            {canManageTeams && (
-              <Button
-                variant="ghost"
-                className="h-8 w-8 p-0 text-slate-500 hover:bg-red-950/30 hover:text-red-400"
-                onClick={() => handleDeleteTeam(team)}
-              >
-                <Trash2 className="h-4 w-4" />
-              </Button>
-            )}
-          </div>
-
-          <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-3">
-            <div className="rounded-2xl border border-slate-800 bg-slate-900/70 p-3">
-              <p className="text-xs uppercase tracking-[0.16em] text-slate-600">Members</p>
-              <p className="mt-1 text-lg font-bold text-white">{teamMembers.length || team.member_count}</p>
-            </div>
-            <div className="rounded-2xl border border-slate-800 bg-slate-900/70 p-3">
-              <p className="text-xs uppercase tracking-[0.16em] text-slate-600">Tasks</p>
-              <p className="mt-1 text-lg font-bold text-white">{team.task_count}</p>
-            </div>
-            <div className="col-span-2 rounded-2xl border border-slate-800 bg-slate-900/70 p-3 md:col-span-1">
-              <p className="text-xs uppercase tracking-[0.16em] text-slate-600">Subteams</p>
-              <p className="mt-1 text-lg font-bold text-white">{children.length}</p>
-            </div>
-          </div>
-
-          {teamMembers.length > 0 && (
-            <div className="mt-4 grid gap-2 sm:grid-cols-2">
-              {teamMembers.slice(0, 6).map((member) => (
-                <div
-                  key={member.membership_id}
-                  className="flex min-w-0 items-center gap-2 rounded-2xl border border-slate-800 bg-slate-900/70 px-3 py-2"
-                >
-                  <UserAvatar
-                    name={member.user.full_name}
-                    email={member.user.email}
-                    src={member.user.avatar_url}
-                    className="h-6 w-6"
-                    fallbackClassName="text-[9px]"
-                  />
-                  <span className="max-w-32 truncate text-xs text-slate-300">
-                    {member.user.full_name || member.user.email}
-                  </span>
-                </div>
-              ))}
-              {teamMembers.length > 6 && (
-                <Badge variant="outline" className="w-fit border-slate-700 bg-slate-900 text-slate-400">
-                  +{teamMembers.length - 6}
-                </Badge>
-              )}
-            </div>
-          )}
-
-          {teamMembers.length === 0 && (
-            <div className="mt-4 rounded-2xl border border-dashed border-slate-800 bg-slate-900/40 p-3 text-sm text-slate-500">
-              No direct members assigned.
-            </div>
-          )}
-        </div>
-
-        {children.length > 0 && (
-          <div className="mt-3 grid gap-3 lg:grid-cols-2">
-            {children.map((child) => renderTeamTreeNode(child, depth + 1))}
-          </div>
-        )}
-      </div>
-    );
-  };
-
   if (loading) {
     return <WorkspaceLoadingSkeleton metricCount={6} panelCount={2} tableRows={4} withSidePanel />;
   }
@@ -817,7 +740,7 @@ export default function TeamPage() {
           </div>
 
           {canManageTeams && (
-            <div className="mb-5 grid min-w-0 gap-3 rounded-2xl border border-slate-800 bg-slate-950/70 p-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_220px_auto]">
+            <div className="mb-5 grid min-w-0 gap-3 rounded-2xl border border-slate-800 bg-slate-950/70 p-4 lg:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_210px_240px_auto]">
               <Input
                 value={newTeamName}
                 onChange={(event) => setNewTeamName(event.target.value)}
@@ -843,16 +766,60 @@ export default function TeamPage() {
                   ))}
                 </SelectContent>
               </Select>
+              <Select value={newTeamManagerId} onValueChange={setNewTeamManagerId}>
+                <SelectTrigger className="h-11 border-slate-700 bg-slate-950">
+                  <SelectValue placeholder="Team manager" />
+                </SelectTrigger>
+                <SelectContent className="border-slate-800 bg-slate-900 text-slate-200">
+                  <SelectItem value="none">No manager</SelectItem>
+                  {managerOptions.map((member) => (
+                    <SelectItem
+                      key={member.membership_id}
+                      value={String(member.membership_id)}
+                    >
+                      {memberDisplayName(member)} · {member.role?.name || "Member"}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
               <Button
                 onClick={handleCreateTeam}
                 disabled={creatingTeam || !newTeamName.trim()}
-                className="h-11 w-full bg-cyan-600 hover:bg-cyan-700 lg:w-auto"
+                className="h-11 w-full bg-cyan-600 hover:bg-cyan-700 xl:w-auto"
               >
                 {creatingTeam ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Plus className="mr-2 h-4 w-4" />}
                 Add team
               </Button>
             </div>
           )}
+
+          <div className="mb-5 rounded-3xl border border-blue-500/20 bg-blue-500/10 p-4">
+            <div className="grid gap-4 xl:grid-cols-[minmax(18rem,0.75fr)_minmax(0,1.25fr)] xl:items-center">
+              <div>
+                <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-blue-100">
+                  <Crown className="h-4 w-4" />
+                  Project leadership
+                </div>
+                <h2 className="text-xl font-bold text-white">
+                  {projectLead ? memberDisplayName(projectLead) : "No project manager assigned"}
+                </h2>
+                <p className="mt-1 text-sm leading-6 text-blue-100/70">
+                  Main accountable person for project delivery, team ownership and escalation.
+                </p>
+              </div>
+
+              <TeamPersonCard
+                member={projectLead}
+                label={
+                  projectLead?.user.id === projectOwnerId
+                    ? "Project Owner"
+                    : projectLead?.role?.name || "Project Lead"
+                }
+                muted={!projectLead}
+                onlineUserIdSet={onlineUserIdSet}
+              />
+            </div>
+          </div>
 
           <div className="mb-5 grid gap-4 xl:grid-cols-[minmax(0,1.25fr)_minmax(18rem,0.75fr)]">
           {isTeamLeadershipRole && (
@@ -937,16 +904,20 @@ export default function TeamPage() {
           </div>
           </div>
 
-          <div className="space-y-3">
-            {rootTeams.map((team) => renderTeamTreeNode(team))}
-
-            {teams.length === 0 && (
-              <div className="rounded-2xl border border-dashed border-slate-800 bg-slate-950/70 p-8 text-center">
-                <Network className="mx-auto mb-3 h-8 w-8 text-slate-600" />
-                <p className="text-sm text-slate-500">No teams created yet.</p>
-              </div>
-            )}
-          </div>
+          <TeamHierarchyTree
+            rootTeams={rootTeams}
+            allTeamsCount={teams.length}
+            childTeamsByParent={childTeamsByParent}
+            membersByTeam={membersByTeam}
+            members={members}
+            managerOptions={managerOptions}
+            myTeamId={myTeam?.id}
+            projectOwnerId={projectOwnerId}
+            canManageTeams={canManageTeams}
+            onlineUserIdSet={onlineUserIdSet}
+            onDeleteTeam={handleDeleteTeam}
+            onChangeTeamManager={handleChangeTeamManager}
+          />
         </section>
 
         <section className="grid min-w-0 gap-6 xl:grid-cols-[minmax(0,1fr)_400px]">

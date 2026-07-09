@@ -19,7 +19,7 @@ def record_ai_usage(
                 user_id=user_id,
                 project_id=project_id,
                 feature=feature,
-                provider="gemini",
+                provider="local_ollama",
                 source=source,
                 status=status,
                 detail=detail,

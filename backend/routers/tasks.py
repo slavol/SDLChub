@@ -306,6 +306,8 @@ def ensure_team_belongs_to_project(
 
 
 def ensure_task_governance_actor(member: ProjectMember, task: Task, current_user: User, action_label: str) -> None:
+    # Destructive or estimation-sensitive actions are intentionally limited to
+    # delivery leadership roles, regardless of generic TASK_UPDATE/TASK_DELETE access.
     role_name = member.role.name if member and member.role else "Member"
     is_allowed = task.project.owner_id == current_user.id or role_name in GOVERNANCE_ROLE_NAMES
 
@@ -437,7 +439,7 @@ def generate_task_ai(
             user_id=current_user.id,
             project_id=req.project_id,
             feature="TASK_GENERATE",
-            source="gemini" if description else "fallback",
+            source="local_ollama" if description else "fallback",
         )
         return {"description": description}
     except Exception as exc:
@@ -892,6 +894,8 @@ def update_task(
         task.description = update_data["description"]
 
     if status_changed_to_done:
+        # Done is the source-of-truth trigger for Wiki generation, so documentation
+        # is refreshed even when completion comes from board moves or GitHub PR flows.
         documentation_page = upsert_task_documentation_page(db, task, current_user.id)
         documentation_generated = True
         documentation_page_id = documentation_page.id
@@ -998,6 +1002,7 @@ def delete_task(
     ensure_task_governance_actor(member, task, current_user, "delete tasks")
 
     if data.confirm_key.strip().upper() != task.key.upper():
+        # GitHub-style confirmation prevents accidental destructive deletion from modals.
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f'Type "{task.key}" to confirm task deletion.',

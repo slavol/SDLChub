@@ -21,12 +21,19 @@ yarn-error.log
 out/
 build/
 dist/
+test-results/
+playwright-report/
+frontend/test-results/
+frontend/playwright-report/
 .DS_Store
 
 # --- IDE Settings ---
 .vscode/
 .idea/
 *.swp
+*.bak
+*.bak_*
+*.bak*
 
 backup/
 logs/

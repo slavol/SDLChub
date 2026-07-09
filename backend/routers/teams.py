@@ -18,6 +18,7 @@ def _team_payload(db: Session, team: ProjectTeam) -> dict:
         "id": team.id,
         "project_id": team.project_id,
         "parent_id": team.parent_id,
+        "manager_membership_id": team.manager_membership_id,
         "name": team.name,
         "description": team.description,
         "member_count": db.query(ProjectMember).filter(ProjectMember.team_id == team.id).count(),
@@ -78,6 +79,30 @@ def _ensure_parent_belongs_to_project(
     return parent
 
 
+def _ensure_manager_belongs_to_project(
+    db: Session,
+    project_id: int,
+    manager_membership_id: int | None,
+) -> ProjectMember | None:
+    # A team manager is stored as a project membership, not as a raw user id,
+    # so role/team context remains project-scoped and cannot leak across projects.
+    if not manager_membership_id:
+        return None
+
+    manager = db.query(ProjectMember).filter(
+        ProjectMember.id == manager_membership_id,
+        ProjectMember.project_id == project_id,
+    ).first()
+
+    if not manager:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Manager must be a member of this project.",
+        )
+
+    return manager
+
+
 @router.get("/project/{project_id}", response_model=list[ProjectTeamOut])
 def list_project_teams(
     project_id: int,
@@ -105,10 +130,12 @@ def create_project_team(
 ):
     require_project_permission(db, current_user.id, project_id, "TEAM_MANAGE")
     _ensure_parent_belongs_to_project(db, project_id, team_in.parent_id)
+    _ensure_manager_belongs_to_project(db, project_id, team_in.manager_membership_id)
 
     team = ProjectTeam(
         project_id=project_id,
         parent_id=team_in.parent_id,
+        manager_membership_id=team_in.manager_membership_id,
         name=team_in.name.strip(),
         description=team_in.description,
     )
@@ -140,6 +167,14 @@ def update_project_team(
     if "parent_id" in update_data:
         _ensure_parent_belongs_to_project(db, team.project_id, update_data["parent_id"], team.id)
         team.parent_id = update_data["parent_id"]
+
+    if "manager_membership_id" in update_data:
+        _ensure_manager_belongs_to_project(
+            db,
+            team.project_id,
+            update_data["manager_membership_id"],
+        )
+        team.manager_membership_id = update_data["manager_membership_id"]
 
     if "name" in update_data and update_data["name"] is not None:
         team.name = update_data["name"].strip()

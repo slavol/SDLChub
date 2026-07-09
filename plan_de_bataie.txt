@@ -1,0 +1,5 @@
+1. Terminarea aplicatiei + rezolvarea ultimelor bug-uri 
+2. Testarea automata a aplicatiei cu playwright
+3. Comentarea codului + fisierul README
+4. Filmarea aplicatiei impreuna cu explicatiile
+5. Terminarea partii scrise

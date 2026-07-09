@@ -51,7 +51,12 @@ class Settings(BaseSettings):
     mail_timeout: int = 20
 
     # AI
-    gemini_api_key: str | None = None
+    local_ai_base_url: str = "http://100.121.227.11:11434"
+    local_ai_model: str = "qwen2.5-coder:7b"
+    local_ai_provider_name: str = "Qwen local (Ollama)"
+    local_ai_auto_detect: bool = True
+    local_ai_connect_timeout_seconds: float = 5
+    local_ai_read_timeout_seconds: float = 120
 
     # GitHub
     github_webhook_secret: str | None = None

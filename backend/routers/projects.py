@@ -41,8 +41,25 @@ from backend.schemas.project import (
     ProjectOut,
 )
 from backend.services.ai_advisor import get_methodology_recommendation, get_role_suggestions
-from backend.services.ai_service import enhance_workload_suggestions, resolve_project_ai_config, test_ai_provider
-from backend.config import get_settings
+from backend.services.ai_service import (
+    DEFAULT_OLLAMA_BASE_URL,
+    DEFAULT_OLLAMA_MODEL,
+    DEFAULT_OLLAMA_PROVIDER_NAME,
+    enhance_workload_suggestions,
+    platform_ai_config,
+    resolve_project_ai_config,
+    test_ai_provider,
+)
+from backend.services.project_config import (
+    DEFAULT_WORKFLOW_CONFIG,
+    DEFAULT_ROLE_PERMISSIONS,
+    PROJECT_ADMIN_PERMISSIONS,
+    normalize_permissions_for_methodology as _normalize_permissions_for_methodology,
+    parse_permissions as _parse_permissions,
+    parse_workflow_config as _parse_workflow_config,
+    project_workflow_config as _project_workflow_config,
+    workflow_config_for_methodology as _workflow_config_for_methodology,
+)
 from backend.utils.email import send_project_invitation_email
 from backend.utils.permissions import check_project_permission, parse_role_permissions, require_project_permission
 from backend.utils.ai_usage import record_ai_usage
@@ -50,60 +67,6 @@ from backend.utils.secret_crypto import decrypt_secret, encrypt_secret
 
 
 router = APIRouter(prefix="/projects", tags=["Projects"])
-
-
-PROJECT_ADMIN_PERMISSIONS = {
-    "PROJECT_UPDATE": True,
-    "PROJECT_DELETE": True,
-    "MEMBER_INVITE": True,
-    "MEMBER_REMOVE": True,
-    "ROLE_MANAGE": True,
-    "TEAM_MANAGE": True,
-    "TASK_CREATE": True,
-    "TASK_UPDATE": True,
-    "TASK_DELETE": True,
-    "TASK_ASSIGN": True,
-    "TASK_MOVE": True,
-    "SPRINT_CREATE": True,
-    "SPRINT_UPDATE": True,
-    "SPRINT_START": True,
-    "SPRINT_CLOSE": True,
-    "SPRINT_DELETE": True,
-    "AI_USE": True,
-    "REPORT_VIEW": True,
-    "SETTINGS_MANAGE": True,
-    "CALENDAR_CREATE": True,
-    "CALENDAR_UPDATE": True,
-    "CALENDAR_DELETE": True,
-}
-
-
-DEFAULT_ROLE_PERMISSIONS = {
-    "TASK_CREATE": True,
-    "TASK_UPDATE": True,
-    "TASK_ASSIGN": True,
-    "TASK_COMMENT": True,
-    "TASK_MOVE": True,
-    "TEAM_MANAGE": False,
-    "SPRINT_CREATE": False,
-    "SPRINT_UPDATE": False,
-    "SPRINT_START": False,
-    "SPRINT_CLOSE": False,
-    "SPRINT_DELETE": False,
-    "AI_USE": True,
-    "REPORT_VIEW": True,
-    "CALENDAR_CREATE": True,
-    "CALENDAR_UPDATE": False,
-    "CALENDAR_DELETE": False,
-}
-
-SPRINT_PERMISSION_KEYS = {
-    "SPRINT_CREATE",
-    "SPRINT_UPDATE",
-    "SPRINT_START",
-    "SPRINT_CLOSE",
-    "SPRINT_DELETE",
-}
 
 
 class JoinRequest(BaseModel):
@@ -304,7 +267,7 @@ def ask_ai_methodology(
         db,
         user_id=current_user.id,
         feature="METHODOLOGY_ADVISOR",
-        source="gemini" if result.get("confidence_score", 0) else "fallback",
+        source="local_ollama" if result.get("confidence_score", 0) else "fallback",
     )
     return result
 
@@ -320,7 +283,7 @@ def ask_ai_roles(
         db,
         user_id=current_user.id,
         feature="ROLE_SUGGESTIONS",
-        source="gemini" if result.get("roles") else "fallback",
+        source="local_ollama" if result.get("roles") else "fallback",
     )
     return result
 
@@ -561,7 +524,7 @@ class WorkflowConfigUpdateRequest(BaseModel):
 
 class ProjectAiSettingsUpdateRequest(BaseModel):
     mode: str
-    provider: str = "GEMINI"
+    provider: str = "OLLAMA"
     provider_name: str | None = None
     base_url: str | None = None
     model: str | None = None
@@ -569,168 +532,14 @@ class ProjectAiSettingsUpdateRequest(BaseModel):
     clear_api_key: bool = False
 
 
-def _parse_permissions(raw_permissions: str | None) -> dict:
-    if not raw_permissions:
-        return {}
-    try:
-        parsed = json.loads(raw_permissions)
-        return parsed if isinstance(parsed, dict) else {}
-    except Exception:
-        return {}
-
-
-def _normalize_permissions_for_methodology(
-    methodology: str,
-    permissions: dict | None,
-) -> dict[str, bool]:
-    normalized = {
-        str(key): bool(value)
-        for key, value in (permissions or {}).items()
-    }
-
-    if methodology == "KANBAN":
-        for key in SPRINT_PERMISSION_KEYS:
-            normalized[key] = False
-
-    return normalized
-
-
-DEFAULT_WORKFLOW_CONFIG = {
-    "wip_limits": {
-        "TODO": None,
-        "IN_PROGRESS": 3,
-        "REVIEW": 2,
-        "DONE": None,
-    },
-    "columns": [
-        {"key": "TODO", "label": "To Do", "enabled": True, "order": 0, "color": "bg-slate-500"},
-        {"key": "IN_PROGRESS", "label": "In Progress", "enabled": True, "order": 1, "color": "bg-blue-500"},
-        {"key": "REVIEW", "label": "Code Review", "enabled": True, "order": 2, "color": "bg-purple-500"},
-        {"key": "DONE", "label": "Done", "enabled": True, "order": 3, "color": "bg-green-500"},
-    ],
-}
-
-
-METHODOLOGY_WORKFLOW_PRESETS = {
-    "SCRUM": {
-        "wip_limits": {
-            "TODO": None,
-            "IN_PROGRESS": None,
-            "REVIEW": None,
-            "DONE": None,
-        },
-        "columns": [
-            {"key": "TODO", "label": "Sprint To Do", "enabled": True, "order": 0, "color": "bg-slate-500"},
-            {"key": "IN_PROGRESS", "label": "In Progress", "enabled": True, "order": 1, "color": "bg-blue-500"},
-            {"key": "REVIEW", "label": "Sprint Review", "enabled": True, "order": 2, "color": "bg-purple-500"},
-            {"key": "DONE", "label": "Done", "enabled": True, "order": 3, "color": "bg-green-500"},
-        ],
-    },
-    "KANBAN": {
-        "wip_limits": {
-            "TODO": None,
-            "IN_PROGRESS": 5,
-            "REVIEW": 3,
-            "DONE": None,
-        },
-        "columns": [
-            {"key": "TODO", "label": "Intake", "enabled": True, "order": 0, "color": "bg-slate-500"},
-            {"key": "IN_PROGRESS", "label": "In Progress", "enabled": True, "order": 1, "color": "bg-blue-500"},
-            {"key": "REVIEW", "label": "Review", "enabled": True, "order": 2, "color": "bg-purple-500"},
-            {"key": "DONE", "label": "Done", "enabled": True, "order": 3, "color": "bg-green-500"},
-        ],
-    },
-    "SCRUMBAN": {
-        "wip_limits": {
-            "TODO": None,
-            "IN_PROGRESS": 4,
-            "REVIEW": 2,
-            "DONE": None,
-        },
-        "columns": [
-            {"key": "TODO", "label": "Ready", "enabled": True, "order": 0, "color": "bg-slate-500"},
-            {"key": "IN_PROGRESS", "label": "In Progress", "enabled": True, "order": 1, "color": "bg-blue-500"},
-            {"key": "REVIEW", "label": "Code Review", "enabled": True, "order": 2, "color": "bg-purple-500"},
-            {"key": "DONE", "label": "Done", "enabled": True, "order": 3, "color": "bg-green-500"},
-        ],
-    },
-}
-
-
-def _workflow_config_for_methodology(methodology: str) -> dict:
-    normalized_methodology = methodology.upper()
-    preset = METHODOLOGY_WORKFLOW_PRESETS.get(normalized_methodology, DEFAULT_WORKFLOW_CONFIG)
-    return json.loads(json.dumps(preset))
-
-
-def _parse_workflow_config(raw_config: str | None, base_config: dict | None = None) -> dict:
-    config = json.loads(json.dumps(base_config or DEFAULT_WORKFLOW_CONFIG))
-    if not raw_config:
-        return config
-
-    try:
-        parsed = json.loads(raw_config)
-    except Exception:
-        return config
-
-    if not isinstance(parsed, dict):
-        return config
-
-    raw_limits = parsed.get("wip_limits")
-    if isinstance(raw_limits, dict):
-        for status_key in DEFAULT_WORKFLOW_CONFIG["wip_limits"]:
-            value = raw_limits.get(status_key)
-            if value is None or value == "":
-                config["wip_limits"][status_key] = None
-                continue
-
-            try:
-                normalized_value = int(value)
-            except (TypeError, ValueError):
-                continue
-
-            config["wip_limits"][status_key] = max(0, normalized_value)
-
-    allowed_statuses = set(config["wip_limits"].keys())
-    default_columns = {
-        column["key"]: column.copy()
-        for column in config["columns"]
-    }
-    raw_columns = parsed.get("columns")
-    if isinstance(raw_columns, list):
-        for raw_column in raw_columns:
-            if not isinstance(raw_column, dict):
-                continue
-
-            status_key = str(raw_column.get("key", "")).upper()
-            if status_key not in allowed_statuses:
-                continue
-
-            next_column = default_columns[status_key].copy()
-            label = str(raw_column.get("label") or next_column["label"]).strip()
-            next_column["label"] = label[:40] or next_column["label"]
-            next_column["enabled"] = bool(raw_column.get("enabled", True))
-            next_column["color"] = str(raw_column.get("color") or next_column["color"])[:80]
-
-            try:
-                next_column["order"] = int(raw_column.get("order", next_column["order"]))
-            except (TypeError, ValueError):
-                next_column["order"] = int(next_column["order"])
-
-            default_columns[status_key] = next_column
-
-    config["columns"] = sorted(default_columns.values(), key=lambda column: (column["order"], column["key"]))
-    return config
-
-
-def _project_workflow_config(project: Project) -> dict:
-    base_config = _workflow_config_for_methodology(project.methodology)
-    if project.workflow_config:
-        return _parse_workflow_config(project.workflow_config, base_config)
-    return base_config
-
-
 def _serialize_project(project: Project) -> dict:
+    ai_mode = project.ai_provider_mode or "PLATFORM"
+    ai_provider = "OLLAMA" if ai_mode == "PLATFORM" else project.ai_provider or "OLLAMA"
+    ai_provider_name = (
+        DEFAULT_OLLAMA_PROVIDER_NAME
+        if ai_mode == "PLATFORM"
+        else project.ai_provider_name or project.ai_provider or DEFAULT_OLLAMA_PROVIDER_NAME
+    )
     return {
         "id": project.id,
         "name": project.name,
@@ -741,13 +550,13 @@ def _serialize_project(project: Project) -> dict:
         "workflow_config": _project_workflow_config(project),
         "is_archived": project.is_archived,
         "ai_config": {
-            "mode": project.ai_provider_mode or "PLATFORM",
-            "provider": project.ai_provider or "GEMINI",
-            "provider_name": project.ai_provider_name or project.ai_provider or "Gemini",
-            "base_url": project.ai_base_url,
-            "model": project.ai_model,
+            "mode": ai_mode,
+            "provider": ai_provider,
+            "provider_name": ai_provider_name,
+            "base_url": DEFAULT_OLLAMA_BASE_URL if ai_mode == "PLATFORM" else project.ai_base_url,
+            "model": DEFAULT_OLLAMA_MODEL if ai_mode == "PLATFORM" else project.ai_model,
             "has_project_key": bool(project.ai_api_key_encrypted),
-            "platform_configured": bool(get_settings().gemini_api_key),
+            "platform_configured": bool(DEFAULT_OLLAMA_BASE_URL and DEFAULT_OLLAMA_MODEL),
         },
         "owner_id": project.owner_id,
         "created_at": project.created_at,
@@ -1588,14 +1397,21 @@ def _require_project_owner(project: Project, current_user: User) -> None:
 
 
 def _serialize_project_ai_settings(project: Project) -> dict:
+    ai_mode = project.ai_provider_mode or "PLATFORM"
+    ai_provider = "OLLAMA" if ai_mode == "PLATFORM" else project.ai_provider or "OLLAMA"
+    ai_provider_name = (
+        DEFAULT_OLLAMA_PROVIDER_NAME
+        if ai_mode == "PLATFORM"
+        else project.ai_provider_name or project.ai_provider or DEFAULT_OLLAMA_PROVIDER_NAME
+    )
     return {
-        "mode": project.ai_provider_mode or "PLATFORM",
-        "provider": project.ai_provider or "GEMINI",
-        "provider_name": project.ai_provider_name or project.ai_provider or "Gemini",
-        "base_url": project.ai_base_url,
-        "model": project.ai_model,
+        "mode": ai_mode,
+        "provider": ai_provider,
+        "provider_name": ai_provider_name,
+        "base_url": DEFAULT_OLLAMA_BASE_URL if ai_mode == "PLATFORM" else project.ai_base_url,
+        "model": DEFAULT_OLLAMA_MODEL if ai_mode == "PLATFORM" else project.ai_model,
         "has_project_key": bool(project.ai_api_key_encrypted),
-        "platform_configured": bool(get_settings().gemini_api_key),
+        "platform_configured": bool(DEFAULT_OLLAMA_BASE_URL and DEFAULT_OLLAMA_MODEL),
     }
 
 
@@ -1632,26 +1448,36 @@ def update_project_ai_settings(
     provider = data.provider.upper()
     if mode not in {"PLATFORM", "PROJECT"}:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid AI mode.")
-    if provider not in {"GEMINI", "OPENAI_COMPATIBLE"}:
+    if mode == "PLATFORM":
+        provider = "OLLAMA"
+    if provider not in {"OPENAI_COMPATIBLE", "OLLAMA"}:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid AI provider type.")
 
-    provider_name = (data.provider_name or provider.replace("_", " ").title()).strip()
+    provider_name = (
+        DEFAULT_OLLAMA_PROVIDER_NAME
+        if mode == "PLATFORM"
+        else (data.provider_name or provider.replace("_", " ").title()).strip()
+    )
     if len(provider_name) > 80:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Provider name is too long.")
 
     base_url = data.base_url.strip() if data.base_url else None
     model = data.model.strip() if data.model else None
+    if mode == "PLATFORM":
+        base_url = None
+        model = None
+        project.ai_api_key_encrypted = None
 
-    if mode == "PROJECT" and provider == "OPENAI_COMPATIBLE":
+    if mode == "PROJECT" and provider in {"OPENAI_COMPATIBLE", "OLLAMA"}:
         if not base_url:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="OpenAI-compatible providers require a base URL.",
+                detail=f"{provider.replace('_', ' ').title()} providers require a base URL.",
             )
         if not model:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="OpenAI-compatible providers require a model name.",
+                detail=f"{provider.replace('_', ' ').title()} providers require a model name.",
             )
 
     if data.clear_api_key:
@@ -1660,7 +1486,7 @@ def update_project_ai_settings(
     if data.api_key and data.api_key.strip():
         project.ai_api_key_encrypted = encrypt_secret(data.api_key.strip())
 
-    if mode == "PROJECT" and not project.ai_api_key_encrypted:
+    if mode == "PROJECT" and provider != "OLLAMA" and not project.ai_api_key_encrypted:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Add a project API key before switching to project-owned AI.",
@@ -1669,7 +1495,7 @@ def update_project_ai_settings(
     project.ai_provider_mode = mode
     project.ai_provider = provider
     project.ai_provider_name = provider_name
-    project.ai_base_url = base_url if provider == "OPENAI_COMPATIBLE" else None
+    project.ai_base_url = base_url if provider in {"OPENAI_COMPATIBLE", "OLLAMA"} else None
     project.ai_model = model
 
     db.add(
@@ -1709,14 +1535,32 @@ def test_project_ai_settings(
     _require_project_owner(project, current_user)
 
     if (project.ai_provider_mode or "PLATFORM") == "PLATFORM":
-        configured = bool(get_settings().gemini_api_key)
+        local_config = platform_ai_config()
+        configured = bool(local_config.get("base_url") and local_config.get("model"))
+        if configured:
+            try:
+                ok = test_ai_provider(
+                    provider=local_config["provider"],
+                    base_url=local_config["base_url"],
+                    model=local_config["model"],
+                )
+            except Exception as exc:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Local AI test failed: {exc}",
+                ) from exc
+            return {
+                "ok": ok,
+                "message": "Local AI provider is reachable." if ok else "Local AI provider did not return the expected response.",
+            }
         return {
             "ok": configured,
-            "message": "Platform AI key is configured." if configured else "Platform AI key is not configured.",
+            "message": "Local AI is configured." if configured else "Local AI endpoint is not configured.",
         }
 
+    provider = (project.ai_provider or "OLLAMA").upper()
     api_key = decrypt_secret(project.ai_api_key_encrypted)
-    if not api_key:
+    if provider != "OLLAMA" and not api_key:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Project AI key is missing or cannot be decrypted.",
@@ -1724,8 +1568,8 @@ def test_project_ai_settings(
 
     try:
         ok = test_ai_provider(
-            provider=project.ai_provider or "GEMINI",
-            api_key=api_key,
+            provider=provider,
+            api_key=api_key or "",
             base_url=project.ai_base_url,
             model=project.ai_model,
         )

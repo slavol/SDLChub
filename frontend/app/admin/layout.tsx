@@ -65,7 +65,7 @@ const links = [
   },
   {
     name: "AI Usage",
-    description: "Gemini audit trail",
+    description: "Local and custom AI audit trail",
     href: "/admin#ai-usage",
     id: "ai-usage",
     icon: Activity,

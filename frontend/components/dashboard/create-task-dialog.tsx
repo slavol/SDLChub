@@ -532,7 +532,7 @@ export function CreateTaskDialog({ projectId, sprintId, methodology, onTaskCreat
                 </div>
                 <p className="mt-2 leading-5 opacity-80">
                   {isAiFallback(lastRefinedSpec.source)
-                    ? "Gemini was unavailable or returned an invalid response, so SDLC Hub used a structured local template."
+                    ? "The configured AI provider was unavailable or returned an invalid response, so SDLC Hub used a structured local template."
                     : "The generated description is ready to be saved with this issue."}
                 </p>
               </div>

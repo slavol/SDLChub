@@ -5333,3 +5333,904 @@ Verificari:
 - `npm run lint`: OK.
 - `npm run build`: OK.
   - ramane doar warning-ul cunoscut de mediu: `--localstorage-file was provided without a valid path`.
+
+
+6.50. BATCH CQ - Team manager assignment
+
+Context:
+- Dupa refacerea vizuala a ierarhiei, managerul unei echipe era doar dedus din roluri.
+- Cerinta noua: Project Admin / rolurile cu TEAM_MANAGE trebuie sa poata seta explicit managerul oricarei echipe, pe orice membru din proiect.
+
+Implementat:
+- backend/models/project.py:
+  - adaugata coloana `ProjectTeam.manager_membership_id`;
+  - adaugata relatia `ProjectTeam.manager`;
+  - clarificate relatiile SQLAlchemy `ProjectTeam.members` si `ProjectMember.team` cu `foreign_keys`, pentru ca acum exista doua legaturi intre teams si memberships.
+- backend/alembic/versions/2c3d4e5f6a7b_add_team_manager_membership.py:
+  - migrare noua pentru coloana `project_teams.manager_membership_id`;
+  - foreign key catre `project_members.id` cu `ON DELETE SET NULL`.
+- backend/schemas/team.py:
+  - `ProjectTeamCreate`, `ProjectTeamUpdate` si `ProjectTeamOut` includ `manager_membership_id`.
+- backend/routers/teams.py:
+  - list/create/update teams serializeaza si accepta `manager_membership_id`;
+  - managerul este validat sa fie membru al aceluiasi proiect;
+  - update manager emite `project.changed`, deci pagina Team se reimprospateaza prin realtime.
+- frontend/services/project.ts:
+  - `ProjectTeam` si `ProjectTeamPayload` includ `manager_membership_id`;
+  - `updateProjectTeam` poate trimite managerul.
+- frontend/app/dashboard/team/page.tsx:
+  - formularul de creare echipa permite selectarea managerului;
+  - fiecare card de echipa are selector `Set manager` pentru rolurile cu `TEAM_MANAGE`;
+  - daca nu exista manager explicit, UI-ul afiseaza in continuare un `Suggested manager` dedus din roluri;
+  - direct reports sunt separate vizual de manager;
+  - managerul poate fi orice membru din proiect, nu doar cineva deja alocat in acea echipa.
+
+Verificari:
+- `npm run lint`: OK.
+- `python3 -m py_compile backend/models/project.py backend/routers/teams.py backend/schemas/team.py`: OK.
+- `.venv/bin/python -c "from backend.models.project import ProjectTeam, ProjectMember; ..."`: OK, relatiile SQLAlchemy se incarca.
+- `.venv/bin/alembic -c backend/alembic.ini upgrade head`: OK pe PostgreSQL local.
+
+Urmatorii pasi logici:
+- organizare cod si curatare fisiere `.bak` doar dupa ce verificam ca nu mai contin variante utile;
+- comentarii scurte unde exista logica grea, fara incarcare inutila;
+- pregatire suita Playwright + teste API pentru fluxurile critice: auth, project switch, team manager, task board, workload, calendar, support/admin.
+
+
+6.51. BATCH CR - Curatare backup-uri si inceput reorganizare cod
+
+Context:
+- In proiect ramasesera multe fisiere backup manuale din batch-urile vechi (`*.bak_*`).
+- Codul a crescut mult in cateva fisiere mari, in special:
+  - `backend/routers/projects.py`;
+  - `frontend/app/dashboard/settings/page.tsx`;
+  - `frontend/app/dashboard/calendar/page.tsx`;
+  - `frontend/app/dashboard/tasks/[taskId]/page.tsx`;
+  - `frontend/app/dashboard/team/page.tsx`.
+
+Implementat:
+- Au fost eliminate backup-urile manuale din workspace, excluzand explicit `.venv`, `node_modules` si `.git`.
+- `frontend/app/dashboard/team/page.tsx` a fost spart partial:
+  - `frontend/app/dashboard/team/team-utils.ts`:
+    - `memberDisplayName`;
+    - `roleBadgeClass`;
+    - `sortMembersByDisplayName`;
+    - `pickTeamManager`.
+  - `frontend/app/dashboard/team/team-hierarchy-tree.tsx`:
+    - `TeamPersonCard`;
+    - `TeamHierarchyTree`;
+    - recursivitatea arborelui de echipe;
+    - manager explicit vs manager sugerat.
+- `backend/routers/projects.py` a fost usurat partial:
+  - `backend/services/project_config.py` centralizeaza:
+    - permisiunile implicite;
+    - permisiunile Project Admin;
+    - normalizarea permisiunilor in functie de metodologie;
+    - preset-urile de workflow;
+    - parsarea workflow config.
+- Comentarii adaugate doar unde regula nu este evidenta:
+  - managerul de echipa este legat de membership, nu de user global;
+  - managerul sugerat este doar fallback UX daca nu exista manager explicit;
+  - permisiunile de sprint sunt dezactivate intentionat in Kanban.
+
+Verificari:
+- `python3 -m py_compile backend/routers/projects.py backend/services/project_config.py backend/routers/teams.py`: OK.
+- import runtime `.venv/bin/python -c "from backend.routers import projects; ..."`: OK.
+- `npm run lint`: OK.
+
+Urmatorii pasi recomandati pentru organizare:
+1. `backend/routers/projects.py`:
+   - mutat dashboard/report/workload builders in servicii separate:
+     - `backend/services/project_dashboard.py`;
+     - `backend/services/project_reports.py`;
+     - `backend/services/project_workload.py`.
+2. `frontend/app/dashboard/settings/page.tsx`:
+   - spart in componente:
+     - General settings;
+     - AI provider settings;
+     - DevOps settings;
+     - Workflow/WIP settings;
+     - Role permissions;
+     - Danger zone.
+3. `frontend/app/dashboard/calendar/page.tsx`:
+   - extras form modal, calendar grid, upcoming list si availability panels.
+4. `frontend/app/dashboard/tasks/[taskId]/page.tsx`:
+   - extras issue definition, subtasks, comments, properties, audit/dev links.
+5. Teste:
+   - dupa fiecare refactor, rulat lint/build si apoi Playwright/API pentru fluxurile atinse.
+
+
+6.52. BATCH CS - Comentarii utile si reorganizare UI helpers
+
+Context:
+- S-a trecut la curatarea codului pentru prezentare si mentenanta.
+- Obiectivul nu este comentarea fiecarei linii, ci explicarea zonelor unde exista reguli de business sau decizii tehnice care nu sunt evidente.
+- Fisierele mari inca exista, dar au inceput sa fie sparte in module mai mici, fara schimbare de comportament.
+
+Implementat:
+- `frontend/app/dashboard/settings/page.tsx` a fost usurat prin:
+  - `frontend/app/dashboard/settings/settings-constants.ts`:
+    - grupurile de permisiuni;
+    - label-urile de permisiuni;
+    - help text pentru metodologii;
+    - coloanele/WIP defaults pentru board.
+  - `frontend/app/dashboard/settings/settings-utils.ts`:
+    - permisiuni active;
+    - tonuri vizuale pentru roluri si GitHub status;
+    - normalizare webhook/ngrok;
+    - formatare data;
+    - initiale proiect.
+- `frontend/app/dashboard/calendar/page.tsx` a fost usurat prin:
+  - `frontend/app/dashboard/calendar/calendar-utils.ts`:
+    - tipurile `CalendarView`, `RecurrenceMode`, `CalendarFeedItem`;
+    - optiuni event/recurrence/availability;
+    - clase vizuale pentru evenimente/disponibilitate;
+    - helpers pentru date, saptamana/luna, attendees si feed labels.
+- `frontend/app/admin/page.tsx` a fost usurat prin:
+  - `frontend/app/admin/admin-utils.ts`:
+    - status styles pentru tichete;
+    - lista de statusuri suport;
+    - formatare data admin;
+    - parsare si formatare detalii erori HTTP.
+  - `frontend/app/admin/admin-components.tsx`:
+    - `MetricCard`;
+    - `AdminConsoleSkeleton`.
+- Comentarii adaugate in zone cu reguli importante:
+  - `backend/services/project_config.py`:
+    - sursa canonica pentru permisiuni;
+    - sprint permissions dezactivate in Kanban;
+    - workflow JSON per proiect;
+    - protectie fata de statusuri workflow necunoscute.
+  - `backend/services/ai_service.py`:
+    - local-first Ollama/Qwen pe Tailscale;
+    - API keys custom raman write-only/decriptate doar server-side;
+    - Ollama nu are nevoie de API key;
+    - fallback-ul AI ramane conservator.
+  - `backend/routers/tasks.py`:
+    - guvernanta pentru delete/invalidate;
+    - trigger automat de documentatie cand task-ul ajunge Done;
+    - confirmarea de stergere tip GitHub.
+  - Team hierarchy:
+    - manager explicit pe membership;
+    - manager sugerat doar ca fallback vizual.
+
+Verificari:
+- `npm run lint`: OK dupa Settings/Calendar/Admin extraction.
+
+Urmatorii pasi recomandati pentru organizare:
+1. `frontend/app/dashboard/tasks/[taskId]/page.tsx`:
+   - extras `IssueDefinitionPanel`;
+   - extras `SubtasksPanel`;
+   - extras `TaskCommentsPanel`;
+   - extras `TaskPropertiesPanel`;
+   - extras `TaskAuditLogPanel` si `DevelopmentLinksPanel`.
+2. `frontend/app/dashboard/calendar/page.tsx`:
+   - extras `CalendarEventDialog`;
+   - extras `AvailabilityDialog`;
+   - extras `MonthGrid`;
+   - extras `UpcomingPanel`.
+3. `frontend/app/admin/page.tsx`:
+   - extras panouri:
+     - Command center;
+     - Identity;
+     - Project registry;
+     - Support desk;
+     - AI usage;
+     - System health.
+4. `backend/routers/projects.py`:
+   - mutat dashboard/report/workload builders in servicii dedicate.
+5. Dupa fiecare batch:
+   - `npm run lint`;
+   - `npm run build`;
+   - `python3 -m py_compile` pe fisierele backend atinse;
+   - apoi Playwright/API tests pentru fluxurile afectate.
+
+
+6.53. BATCH CT - Diagnostic AI local Ollama/Qwen
+
+Context:
+- AI-ul local era configurat pe:
+  - `LOCAL_AI_BASE_URL=http://100.121.227.11:11434`;
+  - `LOCAL_AI_MODEL=qwen2.5-coder:7b`.
+- Din UI, testarea AI intorcea `400 Bad Request`, iar Workload AI cadea pe timeout.
+
+Constatare:
+- Test direct:
+  - `curl http://100.121.227.11:11434/api/tags` -> timeout;
+  - `curl http://127.0.0.1:11434/api/tags` -> nu exista server local;
+  - serviciul Python confirma `httpx.ConnectTimeout`.
+- Concluzie: codul citeste corect configurarea, dar FastAPI nu poate ajunge la Ollama pe IP-ul Tailscale.
+
+Implementat:
+- `backend/config.py`:
+  - adaugat `LOCAL_AI_CONNECT_TIMEOUT_SECONDS`;
+  - adaugat `LOCAL_AI_READ_TIMEOUT_SECONDS`.
+- `.env.example`:
+  - adaugate valorile default pentru timeouts.
+- `backend/services/ai_service.py`:
+  - timeout separat pentru conectare vs generare;
+  - verificare `/api/tags` inainte de generare;
+  - verificare ca modelul selectat exista in Ollama;
+  - mesaje clare pentru:
+    - Ollama inaccesibil;
+    - model lipsa;
+    - timeout la generare;
+    - erori HTTP de la provider;
+  - cache pentru verificarea modelului dupa primul test reusit.
+- `frontend/app/dashboard/settings/page.tsx`:
+  - textul din AI provider clarifica faptul ca `Endpoint set` inseamna doar configurare, iar `Test provider` verifica accesibilitatea reala.
+
+Ce trebuie verificat pe calculatorul pe care ruleaza Ollama:
+1. Ollama pornit:
+   - `ollama serve`
+2. Model instalat:
+   - `ollama list`
+   - daca lipseste: `ollama pull qwen2.5-coder:7b`
+3. Ollama expus pe Tailscale, nu doar pe localhost:
+   - Linux/systemd: setat `OLLAMA_HOST=0.0.0.0:11434` pentru serviciul Ollama si restart;
+   - test local pe calculatorul AI: `curl http://127.0.0.1:11434/api/tags`;
+   - test de pe laptop/aplicatie: `curl http://100.121.227.11:11434/api/tags`.
+4. Firewall/port:
+   - portul `11434` trebuie permis pe interfata Tailscale.
+
+Verificari:
+- `python3 -m py_compile backend/config.py backend/services/ai_service.py backend/routers/projects.py`: OK.
+- Testul Python al providerului cade acum rapid, in ~5 secunde, cu mesaj explicit despre Ollama/Tailscale/OLLAMA_HOST.
+
+
+6.54. BATCH CU - WSL + Ollama pe Windows auto-detect
+
+Context:
+- Aplicatia ruleaza in WSL, dar Ollama este instalat pe Windows.
+- In acest setup, `127.0.0.1:11434` din WSL nu este acelasi lucru cu `127.0.0.1:11434` din Windows.
+- WSL vede Windows host de obicei prin gateway-ul din `/etc/resolv.conf`.
+
+Implementat:
+- `backend/config.py`:
+  - adaugat `LOCAL_AI_AUTO_DETECT=true`.
+- `.env.example`:
+  - documentat `LOCAL_AI_AUTO_DETECT`.
+- `backend/services/ai_service.py`:
+  - detecteaza automat daca ruleaza in WSL;
+  - citeste Windows host gateway din `/etc/resolv.conf`;
+  - incearca in ordine:
+    - `http://<windows-gateway-din-WSL>:11434`;
+    - `LOCAL_AI_BASE_URL`;
+    - `http://127.0.0.1:11434`;
+    - `http://localhost:11434`;
+    - `http://100.121.227.11:11434`;
+  - foloseste primul endpoint Ollama care raspunde la `/api/tags`;
+  - pastreaza diagnosticul complet daca niciun endpoint nu raspunde.
+- `scripts/configure_windows_ollama.ps1`:
+  - seteaza `OLLAMA_HOST=0.0.0.0:11434` pentru userul Windows;
+  - seteaza variabila si in procesul curent;
+  - incearca sa adauge regula Windows Firewall pentru TCP 11434 daca scriptul ruleaza ca Administrator;
+  - reporneste Ollama;
+  - verifica `/api/tags`;
+  - descarca modelul `qwen2.5-coder:7b` daca lipseste.
+- `scripts/configure_windows_ollama.cmd`:
+  - wrapper simplu pentru rulare din Command Prompt / Explorer.
+- `README.md`:
+  - adaugata sectiune pentru setup AI local cu Ollama pe Windows si aplicatie in WSL.
+
+Limitare observata:
+- Din sandboxul Codex, `powershell.exe` / `cmd.exe` prin WSL interop returneaza `UtilBindVsockAnyPort: socket failed`, deci configurarea Windows nu a putut fi executata automat de aici.
+- Scriptul trebuie rulat manual o singura data din Windows Terminal/PowerShell.
+
+Test WSL dupa rularea scriptului:
+- `curl http://$(awk '/nameserver/{print $2; exit}' /etc/resolv.conf):11434/api/tags`
+- apoi in aplicatie: `Settings -> Project AI provider -> Test provider`.
+
+
+6.55. BATCH CV - Refactorizare Task Detail si comentarii romanesti
+
+Context:
+- `frontend/app/dashboard/tasks/[taskId]/page.tsx` ajunsese foarte mare si greu de intretinut.
+- Pagina continea in acelasi fisier:
+  - helper-ele de formatari/status/priority;
+  - skeleton-ul de loading;
+  - sectiunea Development Links;
+  - panoul Properties;
+  - Audit Log;
+  - logica realtime pentru comentarii si typing.
+
+Implementat:
+- Creat `frontend/app/dashboard/tasks/[taskId]/task-detail-utils.ts`:
+  - optiuni status/priority;
+  - clase vizuale pentru status si prioritate;
+  - formatare date;
+  - filtrare evenimente GitHub dupa task id/key/titlu.
+- Creat `frontend/app/dashboard/tasks/[taskId]/task-detail-skeleton.tsx`:
+  - skeleton-ul de incarcare pentru pagina Task Detail.
+- Creat `frontend/app/dashboard/tasks/[taskId]/development-links-card.tsx`:
+  - afiseaza commit-uri si pull request-uri legate de task;
+  - are empty state clar cand nu exista link-uri GitHub.
+- Creat `frontend/app/dashboard/tasks/[taskId]/task-properties-panel.tsx`:
+  - status, priority, story points, due date, assignee si delivery team;
+  - actiuni AI estimate/invalidate si link catre board.
+- Creat `frontend/app/dashboard/tasks/[taskId]/task-audit-log-card.tsx`:
+  - muta afisarea audit log-ului intr-o componenta dedicata.
+- Creat `frontend/app/dashboard/tasks/[taskId]/issue-definition-card.tsx`:
+  - muta titlul, descrierea rich text si feedback-ul de AI refine;
+  - exporta tipul `IssueAiStatusMessage` folosit de pagina principala.
+- Creat `frontend/app/dashboard/tasks/[taskId]/task-subtasks-card.tsx`:
+  - muta UI-ul pentru progres, AI suggested subtasks, edit/delete/toggle subtask;
+  - pagina principala pastreaza doar handler-ele API si state-ul.
+- Creat `frontend/app/dashboard/tasks/[taskId]/task-comments-card.tsx`:
+  - muta lista de comentarii, edit/delete comentariu si indicatorul de typing;
+  - pagina principala ramane responsabila de websocket si sincronizare locala.
+- Creat `frontend/app/dashboard/tasks/[taskId]/task-governance-dialogs.tsx`:
+  - muta dialogurile pentru invalidare estimare, stergere task, stergere subtask si stergere comentariu;
+  - pagina principala pastreaza doar actiunile confirmate si resetarea state-ului.
+- Actualizat `frontend/app/dashboard/tasks/[taskId]/page.tsx`:
+  - eliminat cod UI extras in componente;
+  - adaugate comentarii in romana pentru:
+    - sincronizarea incrementala a comentariilor prin websocket;
+    - expirarea indicatorului de typing;
+    - throttling pentru mesajele de typing.
+
+Rezultat:
+- `page.tsx` Task Detail a scazut de la peste 1900 linii la aproximativ 957 linii.
+- Codul este mai usor de impartit mai departe in:
+  - `TaskDetailHeader`;
+  - `TaskDetailMetrics`;
+  - eventual hook-uri pentru comments/subtasks/governance.
+
+Verificari:
+- `npm run lint`: OK.
+- `npm run build`: OK.
+
+Urmatorul batch recomandat:
+1. Continua refactorizarea `frontend/app/dashboard/tasks/[taskId]/page.tsx`.
+2. Extrage:
+   - header-ul de task;
+   - cardurile de metrici din partea de sus;
+   - eventual un hook `useTaskDetailRealtime`.
+3. Pastreaza comentariile in romana doar unde explica fluxuri complexe, nu pe fiecare linie.
+
+
+6.56. BATCH CW - Curatare artefacte Playwright si continuare split Task Detail
+
+Context:
+- `frontend/test-results/.last-run.json` era un artefact generat de Playwright, dar era urmarit in Git.
+- Acest fisier nu reprezinta cod sursa si poate reaparea dupa rulari de teste, deci nu trebuie versionat.
+- `frontend/app/dashboard/tasks/[taskId]/page.tsx` inca avea header-ul si cardurile de metrici direct in pagina.
+
+Implementat:
+- Sters din repo:
+  - `frontend/test-results/.last-run.json`.
+- Actualizat `.gitignore`:
+  - `test-results/`;
+  - `playwright-report/`;
+  - `frontend/test-results/`;
+  - `frontend/playwright-report/`;
+  - `*.bak`, `*.bak_*`, `*.bak*` pentru backup-uri locale viitoare.
+- Actualizat `frontend/.gitignore`:
+  - `/test-results`;
+  - `/playwright-report`.
+- Creat `frontend/app/dashboard/tasks/[taskId]/task-detail-header.tsx`:
+  - muta header-ul task-ului, badge-urile de context si actiunile principale;
+  - comentariu in romana pentru gruparea badge-urilor de context.
+- Creat `frontend/app/dashboard/tasks/[taskId]/task-detail-metrics.tsx`:
+  - muta cardurile de status, prioritate, estimare, target date si assignee.
+- Actualizat `frontend/app/dashboard/tasks/[taskId]/page.tsx`:
+  - eliminat header-ul si metricile inline;
+  - adaugate comentarii in romana pentru:
+    - zona de permisiuni;
+    - valorile derivate;
+    - incarcarea principala a task-ului si datelor auxiliare.
+
+Rezultat:
+- `frontend/test-results` nu mai exista local dupa build si nu va mai fi urmarit in commit-uri viitoare.
+- `page.tsx` Task Detail a scazut de la aproximativ 957 linii la aproximativ 824 linii.
+- Pagina Task Detail este acum mai aproape de rolul corect de container/orchestrator.
+
+Verificari:
+- `npm run lint`: OK.
+- `npm run build`: OK.
+- Verificare dupa build: `frontend/test-results` si `frontend/playwright-report` nu exista.
+
+Urmatorul batch recomandat:
+1. Continua curatarea codului din Task Detail prin hook-uri:
+   - `useTaskDetailLoader`;
+   - `useTaskRealtime`;
+   - `useTaskComments`;
+   - `useTaskSubtasks`.
+2. Dupa Task Detail, treci la paginile mari ramase:
+   - `frontend/app/dashboard/calendar/page.tsx`;
+   - `frontend/app/dashboard/settings/page.tsx`;
+   - `frontend/app/admin/page.tsx`.
+3. Pastreaza comentariile in romana pe fluxuri importante: permisiuni, realtime, AI, audit, guvernanta.
+
+
+6.57. BATCH CX - Modularizare Dashboard principal si comentarii romanesti
+
+Context:
+- `frontend/app/dashboard/page.tsx` combina in acelasi fisier:
+  - incarcarea proiectului curent;
+  - agregatele pentru dashboard;
+  - helper-ele de status/priority;
+  - cardurile de metrici;
+  - risk radar, delivery signals, work distribution si activitate.
+- Pentru mentenanta si prezentare la licenta, pagina trebuia sa ramana containerul de date, iar UI-ul sa fie separat in componente clare.
+
+Implementat:
+- Creat `frontend/app/dashboard/dashboard-utils.ts`:
+  - label-uri status;
+  - clase vizuale pentru severity/status/priority;
+  - tipuri pentru configuratia cardurilor de metrici si semnale;
+  - helper-e pentru data scurta, timp relativ si initiale.
+- Creat `frontend/app/dashboard/dashboard-components.tsx`:
+  - `MetricCard`;
+  - `SignalTile`;
+  - `EmptyState`;
+  - `TaskRow`;
+  - `ActivityRow`;
+  - `DashboardPageSkeleton`.
+- Creat `frontend/app/dashboard/dashboard-sections.tsx`:
+  - `DashboardHero`;
+  - `DeliverySignalsCard`;
+  - `WorkDistributionCard`;
+  - `MyActiveTasksCard`;
+  - `FlowStatusCard`;
+  - `RiskRadarCard`;
+  - `DashboardActivityCard`.
+- Actualizat `frontend/app/dashboard/page.tsx`:
+  - pagina a ramas responsabila doar de selectie proiect, incarcare dashboard, realtime debounce si configuratia datelor pentru componente;
+  - adaugate comentarii in romana pentru:
+    - rolul paginii ca orchestrator de date;
+    - debounce-ul evenimentelor realtime;
+    - configuratia cardurilor ca date, nu JSX duplicat.
+
+Rezultat:
+- `frontend/app/dashboard/page.tsx` a scazut de la aproximativ 1010 linii la aproximativ 312 linii.
+- Codul dashboard-ului este impartit in:
+  - container de date;
+  - componente mici reutilizabile;
+  - sectiuni mari de pagina;
+  - utilitare de formatari/stiluri.
+- Logica functionala nu a fost schimbata.
+
+Verificari:
+- `npm run lint`: OK.
+- `npm run build`: OK.
+- Observatie: build-ul pastreaza warning-ul existent `--localstorage-file was provided without a valid path`, dar compilarea se termina cu succes.
+
+Urmatorul batch recomandat:
+1. Modularizare controlata pentru paginile mari ramase, in aceasta ordine:
+   - `frontend/app/dashboard/settings/page.tsx`;
+   - `frontend/app/dashboard/calendar/page.tsx`;
+   - `frontend/app/admin/page.tsx`.
+2. Pentru backend, `backend/routers/projects.py` trebuie spart intr-un batch separat si testat mai atent, fiindca are impact mare pe API-uri.
+3. Comentariile in romana trebuie adaugate pe fluxuri importante: permisiuni, audit, AI, realtime, guvernanta si integrare DevOps, nu pe cod evident.
+
+
+6.58. BATCH CY - Modularizare partiala Settings fara schimbare de logica
+
+Context:
+- `frontend/app/dashboard/settings/page.tsx` ramanea una dintre cele mai mari pagini frontend.
+- Pagina contine multe fluxuri sensibile: stergere proiect, transfer ownership, AI provider, GitHub/ngrok, workflow columns si role permissions.
+- Pentru a evita regresii, prima separare a vizat doar zonele de prezentare cu risc mic.
+
+Implementat:
+- Creat `frontend/app/dashboard/settings/settings-components.tsx`:
+  - `SettingsLoadingState`;
+  - `SettingsUnavailableState`;
+  - `SettingsHero`;
+  - `SettingsSummaryCards`;
+  - comentarii in romana pentru rolul componentelor extrase.
+- Creat `frontend/app/dashboard/settings/settings-general-card.tsx`:
+  - identitate proiect;
+  - icon proiect upload/remove;
+  - descriere proiect;
+  - selectie metodologie si text explicativ.
+- Actualizat `frontend/app/dashboard/settings/page.tsx`:
+  - pagina pastreaza handler-ele API si state-ul;
+  - UI-ul de sus si cardul General sunt mutate in componente;
+  - eliminate importuri si valori derivate care erau folosite doar de UI-ul extras.
+
+Rezultat:
+- `frontend/app/dashboard/settings/page.tsx` a scazut de la aproximativ 2254 linii la aproximativ 2039 linii.
+- Logica functionala nu a fost schimbata.
+- Codul este mai usor de continuat prin extrageri pe sectiuni:
+  - AI provider;
+  - Repository integration;
+  - WIP/workflow;
+  - Role permissions;
+  - Governance/danger/ownership.
+
+Verificari:
+- `npm run lint`: OK.
+- `npm run build`: OK.
+- Observatie: ramane warning-ul existent `--localstorage-file was provided without a valid path`, dar build-ul se finalizeaza cu succes.
+
+Urmatorul batch recomandat:
+1. Continua Settings cu extragerea cardurilor mari:
+   - `settings-ai-card.tsx`;
+   - `settings-github-card.tsx`;
+   - `settings-workflow-card.tsx`;
+   - `settings-permissions-card.tsx`;
+   - `settings-governance-panel.tsx`.
+2. Dupa Settings, treci la `frontend/app/dashboard/calendar/page.tsx`.
+
+
+6.59. BATCH CZ - Final sweep modularizare minima inainte de testare
+
+Context:
+- S-a cerut inchiderea partii de modularizare cat mai minimal, pentru a muta focusul pe testare.
+- Nu s-a dorit o spargere agresiva care sa schimbe logica sau sa consume timp pe refactorizari cu risc.
+
+Implementat:
+- Creat `frontend/app/dashboard/calendar/calendar-item-card.tsx`:
+  - muta `CalendarItemCard` din pagina Calendar;
+  - contine afisarea pentru task-uri, sprinturi, evenimente si availability blocks;
+  - pastreaza aceleasi callback-uri pentru edit/delete, fara apeluri API noi.
+- Actualizat `frontend/app/dashboard/calendar/page.tsx`:
+  - importa `CalendarItemCard`;
+  - elimina clasele locale pentru status/priority task;
+  - elimina importurile care tineau doar de cardul extras.
+
+Rezultat:
+- `frontend/app/dashboard/calendar/page.tsx` a scazut de la aproximativ 2062 linii la aproximativ 1787 linii.
+- `frontend/app/dashboard/calendar/calendar-item-card.tsx` are aproximativ 302 linii.
+- Modularizarea frontend minima este suficienta pentru trecerea la etapa de testare:
+  - Task Detail este separat pe carduri/componente;
+  - Dashboard este separat pe sections/components/utils;
+  - Settings are componente pentru hero, summary si General;
+  - Calendar are cardul de feed separat.
+
+Decizie:
+- `frontend/app/admin/page.tsx` ramane momentan nerefactorizat agresiv deoarece are deja:
+  - `frontend/app/admin/admin-components.tsx`;
+  - `frontend/app/admin/admin-utils.ts`.
+- `backend/routers/projects.py` ramane pentru un refactor separat doar daca apar probleme la testare. Spargerea lui acum ar creste riscul de regresii API exact inainte de testarea functionala.
+
+Verificari:
+- `npm run lint`: OK.
+- `npm run build`: OK.
+- Observatie: ramane warning-ul existent `--localstorage-file was provided without a valid path`, dar build-ul se finalizeaza cu succes.
+
+Urmatorul focus:
+1. Testare functionala manuala si automata.
+2. Teste API pentru backend.
+3. Teste UI cu Playwright pe fluxurile principale:
+   - login/register/verify;
+   - onboarding/project wizard;
+   - dashboard/tasks/task detail;
+   - board/backlog/calendar/team/settings;
+   - admin global/support tickets;
+   - AI local/Ollama.
+
+
+6.60. BATCH DA - Testare automata Playwright pentru licenta
+
+Context:
+- S-a trecut de la verificari manuale la testare automata repetabila.
+- Obiectivul este sa existe teste functionale, API si UI/responsive, plus un raport Markdown care poate fi folosit in lucrarea de licenta.
+
+Implementat:
+- Creat configuratia Playwright:
+  - `frontend/playwright.config.ts`;
+  - proiecte browser: `chromium-desktop` si `chromium-mobile`;
+  - reporter HTML in `frontend/playwright-report/index.html`;
+  - rezultate JSON in `frontend/test-results/playwright-results.json`.
+- Creat helper de autentificare:
+  - `frontend/tests/e2e/helpers/auth.ts`;
+  - login prin API;
+  - injectare stare autentificata in `localStorage`;
+  - selectare proiect curent pentru testele de workspace.
+- Creat teste API:
+  - `frontend/tests/e2e/api.spec.ts`;
+  - verifica acces anonim respins;
+  - verifica login;
+  - verifica proiecte;
+  - verifica endpointuri principale pentru dashboard, tasks, calendar si notificari.
+- Creat teste functionale workspace:
+  - `frontend/tests/e2e/functional-workspace.spec.ts`;
+  - verifica navigarea prin Dashboard, Tasks, Calendar, Activity, Team si Settings;
+  - verifica faptul ca login-ul invalid afiseaza eroare fara refresh distructiv.
+- Creat teste UI/responsive:
+  - `frontend/tests/e2e/ui-responsive.spec.ts`;
+  - verifica lipsa overflow-ului orizontal;
+  - verifica meniul mobil;
+  - verifica inputul de cautare din Tasks.
+- Creat test Global Admin:
+  - `frontend/tests/e2e/admin.spec.ts`;
+  - verifica accesul in consola Global Admin si sectiunile principale.
+- Creat generator de raport:
+  - `frontend/scripts/generate-playwright-report.mjs`;
+  - genereaza `licenta/RAPORT_TESTARE_PLAYWRIGHT.md`.
+- Creat runner complet:
+  - `frontend/scripts/run-playwright-with-report.mjs`;
+  - ruleaza Playwright si genereaza raportul chiar daca exista esecuri.
+- Actualizat `frontend/package.json`:
+  - `npm run test:e2e`;
+  - `npm run test:e2e:headed`;
+  - `npm run test:e2e:report`;
+  - `npm run test:e2e:licenta`;
+  - `npm run test:e2e:licenta-report`.
+
+Rezultat executie curenta:
+- Comanda folosita:
+  - `SDLC_TEST_EMAIL=... SDLC_TEST_PASSWORD=... npm run test:e2e:licenta`
+- Rezultat:
+  - 15 teste totale;
+  - 14 passed;
+  - 0 failed;
+  - 1 skipped intentionat, pentru testul de meniu mobil pe proiectul desktop;
+  - pass rate raportat: 93%.
+- Raport generat:
+  - `licenta/RAPORT_TESTARE_PLAYWRIGHT.md`.
+- Raport HTML:
+  - `frontend/playwright-report/index.html`.
+
+Verificari:
+- `npm run lint`: OK.
+- Playwright in afara sandbox-ului Codex: OK.
+
+Observatii importante:
+- Testele folosesc date reale din aplicatie, deci trebuie pornite backend-ul si frontend-ul inainte de rulare.
+- Pentru rulare locala, trebuie setate credentialele:
+  - `SDLC_TEST_EMAIL`;
+  - `SDLC_TEST_PASSWORD`.
+- Testele destructive sunt evitate momentan, ca sa nu stearga proiecte, sprinturi sau utilizatori demo.
+- In sandbox-ul Codex, Playwright poate esua din cauza restrictiilor browser/network; pentru rezultatul real se ruleaza local, in mediul WSL/Windows normal.
+
+Urmatoarele extensii recomandate pentru testare:
+1. Teste API backend mai profunde:
+   - task create/update/delete governance;
+   - subtask create/edit/delete;
+   - sprint create/edit/delete/start/complete;
+   - project archive readonly behavior;
+   - notifications delete/read state.
+2. Teste functionale UI pentru fluxuri reale:
+   - create issue;
+   - task detail comments/subtasks/audit/development links;
+   - workload drag and drop;
+   - documentation generate;
+   - devops repository settings;
+   - account avatar upload/remove.
+3. Teste admin global:
+   - support ticket comments/delete/status;
+   - project archive/delete modal;
+   - CSV/PDF export smoke;
+   - regression testing tab daca este implementat ulterior.
+4. Teste AI local/Ollama:
+   - health check provider;
+   - spec refiner;
+   - workload balancer;
+   - fallback cand Ollama nu raspunde.
+
+
+6.61. BATCH DB - Extindere masiva testare Playwright si raport cu grafice
+
+Context:
+- S-a cerut o suita de testare mult mai ampla, potrivita pentru prezentare in lucrarea de licenta.
+- Obiectivul a fost sa acoperim cat mai multe module prin teste API, functionale si UI/responsive, fara operatii destructive pe datele demo.
+
+Implementat:
+- Extins selectorul proiectului de test in `frontend/tests/e2e/helpers/auth.ts`:
+  - prefera proiectul din `SDLC_TEST_PROJECT_KEY`;
+  - implicit prefera `GFW`, deoarece are date demo consistente;
+  - evita proiectele arhivate daca exista proiecte active.
+- Creat helper comun `frontend/tests/e2e/helpers/assertions.ts`:
+  - validare raspunsuri API obiect/lista;
+  - validare statusuri acceptate;
+  - verificare lipsa overflow orizontal;
+  - verificare text pagina.
+- Adaugate teste API noi:
+  - `api-auth-account.spec.ts`;
+  - `api-project-data.spec.ts`;
+  - `api-work-items.spec.ts`;
+  - `api-devops-admin.spec.ts`.
+- Adaugate teste UI noi:
+  - `ui-public-auth.spec.ts`;
+  - `ui-workspace-pages.spec.ts`;
+  - `ui-task-detail.spec.ts`;
+  - `ui-admin-console.spec.ts`.
+- Actualizat `frontend/playwright.config.ts`:
+  - testele API ruleaza doar pe desktop;
+  - UI si responsive ruleaza pe desktop si mobile;
+  - mobile ignora fisierele `api*.spec.ts`.
+- Imbunatatit `frontend/scripts/generate-playwright-report.mjs`:
+  - indicatori de calitate;
+  - grafic Mermaid pie pentru passed/failed/skipped;
+  - grafic Mermaid bar pentru acoperirea pe categorii;
+  - matrice de acoperire pe categorii;
+  - rezultate pe browser/proiect Playwright;
+  - lista celor mai lente teste;
+  - rezultate detaliate pentru fiecare test.
+
+Acoperire noua:
+- API identitate si cont:
+  - `/auth/me`;
+  - `/auth/me/account-summary`;
+  - `/auth/me/sessions`;
+  - `/auth/me/security-log`;
+  - `/projects/onboarding/status`;
+  - `/projects/invitations/pending`;
+  - `/notifications`;
+  - `/notifications/unread-count`;
+  - login invalid;
+  - forgot password generic, fara trimitere reala catre contul principal.
+- API proiect si raportare:
+  - proiect;
+  - membri;
+  - permisiuni;
+  - roluri;
+  - invitatii;
+  - audit log;
+  - dashboard summary;
+  - dashboard activity;
+  - dashboard complet;
+  - reports overview;
+  - workload;
+  - AI settings;
+  - preview tranzitie metodologie.
+- API work engine:
+  - task-uri board/backlog;
+  - task detail;
+  - task audit;
+  - activitate task engine;
+  - sprinturi;
+  - calendar events;
+  - availability/concedii;
+  - documentatie;
+  - istoric documentatie;
+  - echipe;
+  - activity feed global.
+- API DevOps si Global Admin:
+  - GitHub integration;
+  - GitHub events;
+  - Pull Requests;
+  - ngrok status;
+  - admin overview;
+  - admin users;
+  - admin projects;
+  - support tickets;
+  - own support tickets;
+  - HTTP errors;
+  - AI usage;
+  - CSV exports.
+- UI:
+  - landing;
+  - login/register/forgot/verify/reset;
+  - dashboard;
+  - tasks;
+  - board;
+  - backlog;
+  - calendar;
+  - activity;
+  - workload;
+  - reports;
+  - documentation;
+  - devops;
+  - pull requests;
+  - team;
+  - support;
+  - settings;
+  - account;
+  - notifications;
+  - task detail;
+  - global admin;
+  - responsive desktop/mobile.
+
+Rezultat executie curenta:
+- Comanda folosita:
+  - `SDLC_TEST_EMAIL=... SDLC_TEST_PASSWORD=... npm run test:e2e:licenta`
+- Rezultat:
+  - 132 teste totale;
+  - 131 passed;
+  - 0 failed;
+  - 1 skipped intentionat, pentru testul meniului mobil pe proiectul desktop;
+  - pass rate raportat: 99%.
+- Raport Markdown:
+  - `licenta/RAPORT_TESTARE_PLAYWRIGHT.md`.
+- Grafic SVG exportabil:
+  - `licenta/figures/playwright-summary.svg`.
+- Raport HTML:
+  - `frontend/playwright-report/index.html`.
+
+Verificari:
+- `npm run lint`: OK.
+- `npm run test:e2e:licenta`: OK.
+
+Observatii pentru lucrare:
+- Raportul Markdown poate fi citat direct in capitolul de testare.
+- Graficele Mermaid pot fi randate in GitHub/Markdown viewers compatibile sau pot fi transformate in imagine pentru lucrarea PDF.
+- Testele destructive raman evitate pentru stabilitatea datelor demo.
+
+Urmatoarea extindere posibila:
+1. Teste E2E controlate cu date temporare:
+   - create issue;
+   - edit issue;
+   - add/edit/delete comment;
+   - add/edit/delete subtask;
+   - create/edit/delete sprint.
+2. Teste AI local/Ollama:
+   - spec refiner;
+   - poker estimator;
+   - workload suggestions;
+   - fallback cand modelul local nu raspunde.
+3. Teste de performanta:
+   - buget maxim pentru `/dashboard/tasks`;
+   - timp de tastare in searchbar;
+   - numar requesturi duplicate per pagina.
+
+============================================================
+BATCH 6.62 - TESTARE AI, GRAFIC RAPORT SI README FINAL
+============================================================
+
+Obiectiv:
+- Extinderea testarii automate pentru functionalitatile asistate de inteligenta artificiala.
+- Refacerea graficului SVG pentru raportul Playwright, astfel incat sa fie lizibil si potrivit pentru lucrarea de licenta.
+- Refacerea README-ului principal ca documentatie de proiect profesionala.
+
+Implementat:
+- `frontend/tests/e2e/api-ai.spec.ts`
+  - Smart Methodology Advisor;
+  - AI Role Suggestions;
+  - Spec Refiner pentru generare descriere task;
+  - Spec Refiner pentru rafinare cerinte, criterii si subtaskuri;
+  - Poker Estimator;
+  - Workload Balancer cu sugestii explicate;
+  - Project AI provider settings si test provider;
+  - Release Notes pentru sprint;
+  - documentatie automata din task finalizat.
+- `frontend/tests/e2e/ui-ai-functional.spec.ts`
+  - controale AI din modalul Create Issue;
+  - AI Workload Desk;
+  - Project AI provider in Settings;
+  - Release Notes in Reports/Backlog;
+  - zona de documentatie generata.
+- `frontend/scripts/generate-playwright-report.mjs`
+  - categorie separata `API - inteligenta artificiala`;
+  - categorie separata `UI AI functional`;
+  - SVG refacut ca dashboard pe doua coloane, fara suprapuneri intre etichete, bare si valori.
+- `README.md`
+  - titlul lucrarii de licenta;
+  - descriere produs;
+  - stack tehnologic;
+  - instalare backend/frontend;
+  - PostgreSQL;
+  - env vars;
+  - SMTP;
+  - AI local cu Ollama/Tailscale;
+  - provider AI custom;
+  - testare Playwright;
+  - troubleshooting si securitate.
+
+De verificat dupa rularea suitei:
+- `cd frontend && npm run lint`
+- `cd frontend && SDLC_TEST_EMAIL=... SDLC_TEST_PASSWORD=... npm run test:e2e:licenta`
+- `licenta/RAPORT_TESTARE_PLAYWRIGHT.md`
+- `licenta/figures/playwright-summary.svg`
+
+Rezultat executie dupa batch:
+- `npm run lint`: OK.
+- `npm run test:e2e:licenta`: OK.
+- 151 teste totale;
+- 150 passed;
+- 0 failed;
+- 1 skipped intentionat pentru cazul de meniu mobil pe proiect desktop;
+- categorii noi in raport:
+  - `API - inteligenta artificiala`: 9/9 passed;
+  - `UI AI functional`: 10/10 passed.
+- SVG-ul `licenta/figures/playwright-summary.svg` a fost refacut si verificat vizual prin screenshot Playwright.
+
+Urmatorul pas logic:
+1. Teste cu date temporare create de suita:
+   - create issue complet;
+   - edit issue;
+   - comment add/edit/delete;
+   - subtask add/edit/delete;
+   - sprint create/edit/delete.
+2. Teste de performanta:
+   - timp initial de incarcare pentru `/dashboard/tasks`;
+   - searchbar tasks fara lag vizibil;
+   - Workload drag/drop fara refresh complet;
+   - numar de requesturi duplicate pe paginile grele.
+3. Stabilizare finala UI/UX:
+   - verificare mobile pentru toate dialogurile;
+   - verificare contrast light/dark;
+   - skeleton loading pentru paginile grele.
